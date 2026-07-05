@@ -32,11 +32,19 @@ export default async function RootLayout({
                 GET<span className="text-orange-500">FIT</span> AF
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
               </span>
-              <form action={signOut}>
-                <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
-                  Sign out
-                </button>
-              </form>
+              <div className="flex items-center gap-4">
+                <a
+                  href="https://learn.getfitaf.fitness/dashboard.html"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                >
+                  My Lessons
+                </a>
+                <form action={signOut}>
+                  <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
+                    Sign out
+                  </button>
+                </form>
+              </div>
             </div>
           </header>
         )}
