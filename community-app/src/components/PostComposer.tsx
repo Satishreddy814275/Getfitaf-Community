@@ -4,10 +4,11 @@ import { useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
 
-export default function PostComposer() {
+export default function PostComposer({ isAdmin = false }: { isAdmin?: boolean }) {
   const [content, setContent] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [isAnnouncement, setIsAnnouncement] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -17,6 +18,7 @@ export default function PostComposer() {
     setUploading(true)
     const formData = new FormData()
     formData.set('content', content)
+    formData.set('is_announcement', String(isAdmin && isAnnouncement))
 
     if (file) {
       const supabase = createClient()
@@ -40,6 +42,7 @@ export default function PostComposer() {
     await createPost(formData)
     setContent('')
     setFile(null)
+    setIsAnnouncement(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setUploading(false)
   }
@@ -54,6 +57,17 @@ export default function PostComposer() {
         rows={3}
       />
       {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
+      {isAdmin && (
+        <label className="flex items-center gap-2 px-2 mb-2 text-xs text-zinc-400 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={isAnnouncement}
+            onChange={(e) => setIsAnnouncement(e.target.checked)}
+            className="rounded border-zinc-700 bg-zinc-900 text-orange-500 focus:ring-orange-500"
+          />
+          Post as announcement 📢
+        </label>
+      )}
       <div className="flex items-center justify-between border-t border-zinc-800 pt-3 mt-2">
         <input
           ref={fileInputRef}

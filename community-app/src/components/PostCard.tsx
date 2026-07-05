@@ -35,7 +35,18 @@ export default function PostCard({
   }
 
   return (
-    <div className="glass rounded-2xl p-4">
+    <div
+      className={
+        post.is_announcement
+          ? 'glass rounded-2xl p-4 border-l-4 border-l-orange-500 bg-orange-500/5'
+          : 'glass rounded-2xl p-4'
+      }
+    >
+      {post.is_announcement && (
+        <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
+          📢 Announcement from your coach
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
           {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}

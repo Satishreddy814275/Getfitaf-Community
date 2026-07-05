@@ -31,6 +31,9 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
     <div className="space-y-4">
       {posts.map((post) => (
         <div key={post.id} className="glass rounded-2xl p-4">
+          {post.is_announcement && (
+            <p className="text-xs font-semibold text-orange-400 mb-2">📢 Announcement</p>
+          )}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
