@@ -22,6 +22,16 @@ export default async function RootLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
+  let isAdmin = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_admin")
+      .eq("id", user.id)
+      .single();
+    isAdmin = !!profile?.is_admin;
+  }
+
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
@@ -33,6 +43,14 @@ export default async function RootLayout({
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
               </span>
               <div className="flex items-center gap-4">
+                {isAdmin && (
+                  <a
+                    href="/admin"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                  >
+                    Admin
+                  </a>
+                )}
                 <a
                   href="https://learn.getfitaf.fitness/dashboard.html"
                   className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
