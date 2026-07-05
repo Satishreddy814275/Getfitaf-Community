@@ -66,7 +66,7 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
             <img
               src={post.media_url}
               alt=""
-              className="mt-3 rounded-lg max-h-64 w-full object-cover"
+              className="mt-3 rounded-lg max-h-64 w-full object-contain bg-black/20"
             />
           )}
           {post.media_url && post.media_type === 'video' && (
