@@ -15,6 +15,7 @@ export default function PostCard({
   const [commentText, setCommentText] = useState('')
   const [showComments, setShowComments] = useState(false)
   const [pending, setPending] = useState(false)
+  const [imageExpanded, setImageExpanded] = useState(false)
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
   const likeCount = post.likes.length
@@ -66,15 +67,42 @@ export default function PostCard({
       )}
 
       {post.media_url && post.media_type === 'image' && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={post.media_url}
-          alt=""
-          className="mt-3 rounded-lg max-h-96 w-full object-cover"
-        />
+        <button
+          type="button"
+          onClick={() => setImageExpanded(true)}
+          className="mt-3 block w-full cursor-zoom-in"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={post.media_url}
+            alt=""
+            className="rounded-lg max-h-96 w-full object-contain bg-black/20"
+          />
+        </button>
       )}
       {post.media_url && post.media_type === 'video' && (
         <video src={post.media_url} controls className="mt-3 rounded-lg max-h-96 w-full" />
+      )}
+
+      {imageExpanded && post.media_url && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
+          onClick={() => setImageExpanded(false)}
+        >
+          <button
+            onClick={() => setImageExpanded(false)}
+            className="absolute top-4 right-4 text-white text-sm border border-zinc-600 rounded-lg px-3 py-1.5 hover:bg-white/10 transition"
+          >
+            ✕ Close
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={post.media_url}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
 
       <div className="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-sm text-zinc-400">
