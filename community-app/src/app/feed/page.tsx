@@ -4,12 +4,20 @@ import PostComposer from '@/components/PostComposer'
 import FeedTabs from '@/components/FeedTabs'
 import type { Post } from '@/types'
 
-export default async function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lesson?: string; title?: string }>
+}) {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  const params = await searchParams
+  const lessonId = params.lesson || null
+  const lessonTitle = params.title || null
 
   const [profileRes, postsRes, streakRes] = await Promise.all([
     supabase.from('profiles').select('is_admin').eq('id', user.id).single(),
@@ -42,7 +50,7 @@ export default async function FeedPage() {
           </span>
         </div>
       )}
-      <PostComposer isAdmin={isAdmin} />
+      <PostComposer isAdmin={isAdmin} initialLessonId={lessonId} initialLessonTitle={lessonTitle} />
       <div className="mt-8">
         <FeedTabs posts={(posts as unknown as Post[] | null) || []} currentUserId={user.id} />
       </div>

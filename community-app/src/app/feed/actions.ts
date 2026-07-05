@@ -14,6 +14,7 @@ export async function createPost(formData: FormData) {
   const mediaUrl = (formData.get('media_url') as string) || null
   const mediaType = (formData.get('media_type') as string) || null
   const isAnnouncement = formData.get('is_announcement') === 'true'
+  const lessonId = (formData.get('lesson_id') as string) || null
 
   if (!content && !mediaUrl) return
 
@@ -23,6 +24,7 @@ export async function createPost(formData: FormData) {
     media_url: mediaUrl,
     media_type: mediaType,
     is_announcement: isAnnouncement,
+    lesson_id: lessonId,
   })
 
   revalidatePath('/feed')
