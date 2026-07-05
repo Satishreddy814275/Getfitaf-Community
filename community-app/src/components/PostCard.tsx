@@ -19,6 +19,7 @@ export default function PostCard({
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
   const likeCount = post.likes.length
+  const hasMedia = !!post.media_url
 
   async function handleLike() {
     setPending(true)
@@ -39,49 +40,57 @@ export default function PostCard({
     <div
       className={
         post.is_announcement
-          ? 'glass rounded-2xl p-4 border-l-4 border-l-orange-500 bg-orange-500/5'
-          : 'glass rounded-2xl p-4'
+          ? 'glass rounded-2xl overflow-hidden border-l-4 border-l-orange-500 bg-orange-500/5'
+          : 'glass rounded-2xl overflow-hidden'
       }
     >
-      {post.is_announcement && (
-        <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
-          📢 Announcement from your coach
-        </p>
-      )}
-      <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
-          {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-white">
-            {post.profiles?.full_name || 'Member'}
+      {/* Text section — header, announcement label, caption */}
+      <div className="p-4">
+        {post.is_announcement && (
+          <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
+            📢 Announcement from your coach
           </p>
-          <p className="text-xs text-zinc-500">
-            {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
-          </p>
+        )}
+        <div className="flex items-center gap-2">
+          <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
+            {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">
+              {post.profiles?.full_name || 'Member'}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+            </p>
+          </div>
         </div>
+
+        {post.content && (
+          <p className="mt-3 text-sm whitespace-pre-wrap text-zinc-200">{post.content}</p>
+        )}
       </div>
 
-      {post.content && (
-        <p className="mt-3 text-sm whitespace-pre-wrap text-zinc-200">{post.content}</p>
-      )}
-
-      {post.media_url && post.media_type === 'image' && (
+      {/* Media section — full-bleed, clearly separated from the text above */}
+      {hasMedia && post.media_type === 'image' && (
         <button
           type="button"
           onClick={() => setImageExpanded(true)}
-          className="mt-3 block w-full cursor-zoom-in"
+          className="block w-full cursor-zoom-in border-y border-zinc-800"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={post.media_url}
+            src={post.media_url!}
             alt=""
-            className="rounded-lg max-h-96 w-full object-contain bg-black/20"
+            className="w-full max-h-[600px] object-contain bg-black/30"
           />
         </button>
       )}
-      {post.media_url && post.media_type === 'video' && (
-        <video src={post.media_url} controls className="mt-3 rounded-lg max-h-96 w-full" />
+      {hasMedia && post.media_type === 'video' && (
+        <video
+          src={post.media_url!}
+          controls
+          className="w-full max-h-[600px] border-y border-zinc-800"
+        />
       )}
 
       {imageExpanded && post.media_url && (
@@ -105,45 +114,48 @@ export default function PostCard({
         </div>
       )}
 
-      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-sm text-zinc-400">
-        <button
-          onClick={handleLike}
-          disabled={pending}
-          className={liked ? 'text-orange-500 font-medium' : 'hover:text-zinc-200 transition'}
-        >
-          ♥ {likeCount > 0 ? likeCount : ''} Like
-        </button>
-        <button
-          onClick={() => setShowComments((s) => !s)}
-          className="hover:text-zinc-200 transition"
-        >
-          💬 {post.comments.length > 0 ? post.comments.length : ''} Comment
-        </button>
-      </div>
-
-      {showComments && (
-        <div className="mt-3 space-y-2">
-          {post.comments.map((c) => (
-            <div key={c.id} className="text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200">
-              <span className="font-semibold text-white">
-                {c.profiles?.full_name || 'Member'}:{' '}
-              </span>
-              {c.content}
-            </div>
-          ))}
-          <form onSubmit={handleComment} className="flex gap-2 mt-2">
-            <input
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
-              className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
-            />
-            <button type="submit" className="text-sm font-medium text-orange-500 hover:text-orange-400">
-              Send
-            </button>
-          </form>
+      {/* Actions + comments section */}
+      <div className={hasMedia ? 'p-4' : 'p-4 pt-3 border-t border-zinc-800'}>
+        <div className="flex items-center gap-4 text-sm text-zinc-400">
+          <button
+            onClick={handleLike}
+            disabled={pending}
+            className={liked ? 'text-orange-500 font-medium' : 'hover:text-zinc-200 transition'}
+          >
+            ♥ {likeCount > 0 ? likeCount : ''} Like
+          </button>
+          <button
+            onClick={() => setShowComments((s) => !s)}
+            className="hover:text-zinc-200 transition"
+          >
+            💬 {post.comments.length > 0 ? post.comments.length : ''} Comment
+          </button>
         </div>
-      )}
+
+        {showComments && (
+          <div className="mt-3 space-y-2">
+            {post.comments.map((c) => (
+              <div key={c.id} className="text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200">
+                <span className="font-semibold text-white">
+                  {c.profiles?.full_name || 'Member'}:{' '}
+                </span>
+                {c.content}
+              </div>
+            ))}
+            <form onSubmit={handleComment} className="flex gap-2 mt-2">
+              <input
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Write a comment..."
+                className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
+              />
+              <button type="submit" className="text-sm font-medium text-orange-500 hover:text-orange-400">
+                Send
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
