@@ -8,6 +8,12 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        domain: '.getfitaf.fitness',
+        path: '/',
+        sameSite: 'lax',
+        secure: true,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll()
