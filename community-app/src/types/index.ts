@@ -21,6 +21,7 @@ export interface Post {
   content: string | null
   media_url: string | null
   media_type: 'image' | 'video' | null
+  is_announcement: boolean
   created_at: string
   profiles: Profile | null
   comments: Comment[]
