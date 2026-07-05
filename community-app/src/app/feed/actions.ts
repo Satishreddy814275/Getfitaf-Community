@@ -13,6 +13,7 @@ export async function createPost(formData: FormData) {
   const content = ((formData.get('content') as string) || '').trim() || null
   const mediaUrl = (formData.get('media_url') as string) || null
   const mediaType = (formData.get('media_type') as string) || null
+  const isAnnouncement = formData.get('is_announcement') === 'true'
 
   if (!content && !mediaUrl) return
 
@@ -21,6 +22,7 @@ export async function createPost(formData: FormData) {
     content,
     media_url: mediaUrl,
     media_type: mediaType,
+    is_announcement: isAnnouncement,
   })
 
   revalidatePath('/feed')
