@@ -1,0 +1,69 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import AdminFeedList from '@/components/AdminFeedList'
+import type { Post } from '@/types'
+
+export default async function AdminPage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile?.is_admin) redirect('/feed')
+
+  const [postsRes, postCountRes, commentCountRes, posterCountRes] = await Promise.all([
+    supabase
+      .from('posts')
+      .select(
+        `
+        id, content, media_url, media_type, created_at,
+        profiles ( id, full_name, avatar_url ),
+        comments ( id, content, created_at, profiles ( id, full_name, avatar_url ) ),
+        likes ( id, user_id )
+      `
+      )
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabase.from('posts').select('id', { count: 'exact', head: true }),
+    supabase.from('comments').select('id', { count: 'exact', head: true }),
+    supabase.from('posts').select('author_id'),
+  ])
+
+  const posts = (postsRes.data as unknown as Post[] | null) || []
+  const totalPosts = postCountRes.count || 0
+  const totalComments = commentCountRes.count || 0
+  const uniquePosters = new Set((posterCountRes.data || []).map((p) => p.author_id)).size
+
+  return (
+    <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
+      <div className="mb-8">
+        <h1 className="text-xl font-bold text-white">Community Moderation</h1>
+        <p className="text-sm text-zinc-500 mt-1">Review and remove posts or comments from the feed.</p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="glass rounded-2xl p-5 text-center">
+          <p className="text-2xl font-black text-orange-500">{totalPosts}</p>
+          <p className="text-zinc-500 text-xs mt-1">Total posts</p>
+        </div>
+        <div className="glass rounded-2xl p-5 text-center">
+          <p className="text-2xl font-black text-orange-500">{totalComments}</p>
+          <p className="text-zinc-500 text-xs mt-1">Total comments</p>
+        </div>
+        <div className="glass rounded-2xl p-5 text-center">
+          <p className="text-2xl font-black text-orange-500">{uniquePosters}</p>
+          <p className="text-zinc-500 text-xs mt-1">Members who've posted</p>
+        </div>
+      </div>
+
+      <AdminFeedList posts={posts} />
+    </div>
+  )
+}
