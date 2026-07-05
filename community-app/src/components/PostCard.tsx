@@ -45,18 +45,18 @@ export default function PostCard({
       }
     >
       {/* Text section — header, announcement label, caption */}
-      <div className="p-4">
+      <div className="p-5">
         {post.is_announcement && (
           <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
             📢 Announcement from your coach
           </p>
         )}
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
             {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">
+            <p className="text-[15px] font-semibold text-white">
               {post.profiles?.full_name || 'Member'}
             </p>
             <p className="text-xs text-zinc-500">
@@ -66,11 +66,15 @@ export default function PostCard({
         </div>
 
         {post.content && (
-          <p className="mt-3 text-sm whitespace-pre-wrap text-zinc-200">{post.content}</p>
+          <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-200">
+            {post.content}
+          </p>
         )}
       </div>
 
-      {/* Media section — full-bleed, clearly separated from the text above */}
+      {/* Media section — full-bleed, clearly separated from the text above.
+          max-h uses viewport height rather than a fixed px cap so photos
+          render as large as they naturally can, closer to Facebook's scale. */}
       {hasMedia && post.media_type === 'image' && (
         <button
           type="button"
@@ -81,7 +85,7 @@ export default function PostCard({
           <img
             src={post.media_url!}
             alt=""
-            className="w-full max-h-[600px] object-contain bg-black/30"
+            className="w-full max-h-[80vh] object-contain bg-black/30"
           />
         </button>
       )}
@@ -89,7 +93,7 @@ export default function PostCard({
         <video
           src={post.media_url!}
           controls
-          className="w-full max-h-[600px] border-y border-zinc-800"
+          className="w-full max-h-[80vh] border-y border-zinc-800"
         />
       )}
 
@@ -115,7 +119,7 @@ export default function PostCard({
       )}
 
       {/* Actions + comments section */}
-      <div className={hasMedia ? 'p-4' : 'p-4 pt-3 border-t border-zinc-800'}>
+      <div className={hasMedia ? 'p-5' : 'p-5 pt-3 border-t border-zinc-800'}>
         <div className="flex items-center gap-4 text-sm text-zinc-400">
           <button
             onClick={handleLike}
