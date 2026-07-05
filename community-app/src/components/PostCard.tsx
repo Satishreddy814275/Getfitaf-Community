@@ -35,20 +35,24 @@ export default function PostCard({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+    <div className="glass rounded-2xl p-4">
       <div className="flex items-center gap-2">
-        <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold shrink-0">
+        <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
           {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
         </div>
         <div>
-          <p className="text-sm font-semibold">{post.profiles?.full_name || 'Member'}</p>
-          <p className="text-xs text-gray-400">
+          <p className="text-sm font-semibold text-white">
+            {post.profiles?.full_name || 'Member'}
+          </p>
+          <p className="text-xs text-zinc-500">
             {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
           </p>
         </div>
       </div>
 
-      {post.content && <p className="mt-3 text-sm whitespace-pre-wrap">{post.content}</p>}
+      {post.content && (
+        <p className="mt-3 text-sm whitespace-pre-wrap text-zinc-200">{post.content}</p>
+      )}
 
       {post.media_url && post.media_type === 'image' && (
         // eslint-disable-next-line @next/next/no-img-element
@@ -62,15 +66,18 @@ export default function PostCard({
         <video src={post.media_url} controls className="mt-3 rounded-lg max-h-96 w-full" />
       )}
 
-      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500">
+      <div className="flex items-center gap-4 mt-3 pt-3 border-t border-zinc-800 text-sm text-zinc-400">
         <button
           onClick={handleLike}
           disabled={pending}
-          className={liked ? 'text-red-500 font-medium' : ''}
+          className={liked ? 'text-orange-500 font-medium' : 'hover:text-zinc-200 transition'}
         >
           ♥ {likeCount > 0 ? likeCount : ''} Like
         </button>
-        <button onClick={() => setShowComments((s) => !s)}>
+        <button
+          onClick={() => setShowComments((s) => !s)}
+          className="hover:text-zinc-200 transition"
+        >
           💬 {post.comments.length > 0 ? post.comments.length : ''} Comment
         </button>
       </div>
@@ -78,8 +85,10 @@ export default function PostCard({
       {showComments && (
         <div className="mt-3 space-y-2">
           {post.comments.map((c) => (
-            <div key={c.id} className="text-sm bg-gray-50 rounded-lg px-3 py-2">
-              <span className="font-semibold">{c.profiles?.full_name || 'Member'}: </span>
+            <div key={c.id} className="text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200">
+              <span className="font-semibold text-white">
+                {c.profiles?.full_name || 'Member'}:{' '}
+              </span>
               {c.content}
             </div>
           ))}
@@ -88,9 +97,9 @@ export default function PostCard({
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Write a comment..."
-              className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2"
+              className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
             />
-            <button type="submit" className="text-sm font-medium text-black">
+            <button type="submit" className="text-sm font-medium text-orange-500 hover:text-orange-400">
               Send
             </button>
           </form>

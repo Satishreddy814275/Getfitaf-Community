@@ -45,30 +45,27 @@ export default function PostComposer() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm"
-    >
+    <form onSubmit={handleSubmit} className="glass rounded-2xl p-4">
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="Share an update, win, or question with the group..."
-        className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none"
+        className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500"
         rows={3}
       />
-      {file && <p className="text-xs text-gray-500 px-2">{file.name} selected</p>}
-      <div className="flex items-center justify-between border-t border-gray-100 pt-3 mt-2">
+      {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
+      <div className="flex items-center justify-between border-t border-zinc-800 pt-3 mt-2">
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*,video/*"
           onChange={(e) => setFile(e.target.files?.[0] || null)}
-          className="text-xs"
+          className="text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:text-zinc-300 file:text-xs hover:file:bg-zinc-700"
         />
         <button
           type="submit"
           disabled={uploading || (!content.trim() && !file)}
-          className="bg-black text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-40"
+          className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-lg disabled:opacity-40 transition"
         >
           {uploading ? 'Posting...' : 'Post'}
         </button>
