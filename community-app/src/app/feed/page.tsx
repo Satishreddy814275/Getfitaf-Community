@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import PostComposer from '@/components/PostComposer'
-import PostCard from '@/components/PostCard'
+import FeedTabs from '@/components/FeedTabs'
 import type { Post } from '@/types'
 
 export default async function FeedPage() {
@@ -43,15 +43,8 @@ export default async function FeedPage() {
         </div>
       )}
       <PostComposer isAdmin={isAdmin} />
-      <div className="mt-8 space-y-6">
-        {(posts as unknown as Post[] | null)?.map((post) => (
-          <PostCard key={post.id} post={post} currentUserId={user.id} />
-        ))}
-        {posts?.length === 0 && (
-          <p className="text-center text-sm text-zinc-500 py-12">
-            No posts yet — be the first to share something with the group.
-          </p>
-        )}
+      <div className="mt-8">
+        <FeedTabs posts={(posts as unknown as Post[] | null) || []} currentUserId={user.id} />
       </div>
     </div>
   )
