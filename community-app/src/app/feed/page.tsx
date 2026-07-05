@@ -24,14 +24,14 @@ export default async function FeedPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4">
+    <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
       <PostComposer />
       <div className="mt-8 space-y-6">
         {(posts as unknown as Post[] | null)?.map((post) => (
           <PostCard key={post.id} post={post} currentUserId={user.id} />
         ))}
         {posts?.length === 0 && (
-          <p className="text-center text-sm text-gray-400 py-12">
+          <p className="text-center text-sm text-zinc-500 py-12">
             No posts yet — be the first to share something with the group.
           </p>
         )}
