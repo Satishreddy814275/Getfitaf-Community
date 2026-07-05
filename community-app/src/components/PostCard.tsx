@@ -72,14 +72,16 @@ export default function PostCard({
         )}
       </div>
 
-      {/* Media section — full-bleed, clearly separated from the text above.
-          max-h uses viewport height rather than a fixed px cap so photos
-          render as large as they naturally can, closer to Facebook's scale. */}
+      {/* Media section — full-bleed, no hard divider line so it flows
+          straight out of the text above instead of looking like a
+          separate boxed-in block. max-h uses viewport height rather
+          than a fixed px cap so photos render as large as they
+          naturally can, closer to Facebook's scale. */}
       {hasMedia && post.media_type === 'image' && (
         <button
           type="button"
           onClick={() => setImageExpanded(true)}
-          className="block w-full cursor-zoom-in border-y border-zinc-800"
+          className="block w-full cursor-zoom-in"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -90,11 +92,7 @@ export default function PostCard({
         </button>
       )}
       {hasMedia && post.media_type === 'video' && (
-        <video
-          src={post.media_url!}
-          controls
-          className="w-full max-h-[80vh] border-y border-zinc-800"
-        />
+        <video src={post.media_url!} controls className="w-full max-h-[80vh]" />
       )}
 
       {imageExpanded && post.media_url && (
