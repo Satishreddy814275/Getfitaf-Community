@@ -35,9 +35,9 @@ export default async function RootLayout({
               <div className="flex items-center gap-4">
                 <a
                   href="https://learn.getfitaf.fitness/dashboard.html"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                  className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
                 >
-                  My Lessons
+                  Go to your lessons
                 </a>
                 <form action={signOut}>
                   <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
