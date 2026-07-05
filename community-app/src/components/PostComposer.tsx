@@ -4,11 +4,22 @@ import { useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
 
-export default function PostComposer({ isAdmin = false }: { isAdmin?: boolean }) {
-  const [content, setContent] = useState('')
+export default function PostComposer({
+  isAdmin = false,
+  initialLessonId = null,
+  initialLessonTitle = null,
+}: {
+  isAdmin?: boolean
+  initialLessonId?: string | null
+  initialLessonTitle?: string | null
+}) {
+  const [content, setContent] = useState(
+    initialLessonTitle ? `Just finished "${initialLessonTitle}"! ` : ''
+  )
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [isAnnouncement, setIsAnnouncement] = useState(false)
+  const [lessonId, setLessonId] = useState(initialLessonId)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -19,6 +30,7 @@ export default function PostComposer({ isAdmin = false }: { isAdmin?: boolean })
     const formData = new FormData()
     formData.set('content', content)
     formData.set('is_announcement', String(isAdmin && isAnnouncement))
+    if (lessonId) formData.set('lesson_id', lessonId)
 
     if (file) {
       const supabase = createClient()
@@ -43,12 +55,25 @@ export default function PostComposer({ isAdmin = false }: { isAdmin?: boolean })
     setContent('')
     setFile(null)
     setIsAnnouncement(false)
+    setLessonId(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setUploading(false)
   }
 
   return (
     <form onSubmit={handleSubmit} className="glass rounded-2xl p-4">
+      {lessonId && initialLessonTitle && (
+        <div className="flex items-center justify-between mb-2 px-2 py-1.5 rounded-lg bg-orange-500/10 text-xs text-orange-400">
+          <span>Sharing about: {initialLessonTitle}</span>
+          <button
+            type="button"
+            onClick={() => setLessonId(null)}
+            className="text-orange-400/70 hover:text-orange-300 transition"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
