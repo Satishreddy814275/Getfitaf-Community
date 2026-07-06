@@ -32,7 +32,24 @@ export default function ExternalNavLink({
           // those open a new tab and don't leave this page at all, so
           // showing a full-screen overlay here would be wrong.
           if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return
+
+          // Take over navigation ourselves instead of letting the
+          // browser's default anchor click handle it. Without this,
+          // the browser can start unloading the page immediately after
+          // this handler returns — potentially before React's state
+          // update ever gets painted, so the overlay would silently
+          // lose that race and never actually appear. Two nested
+          // requestAnimationFrame calls is the standard way to
+          // guarantee at least one full frame has rendered before
+          // continuing, which is what actually makes the overlay
+          // visible before we navigate away.
+          e.preventDefault()
           setLoading(true)
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.location.href = href
+            })
+          })
         }}
       >
         {children}
