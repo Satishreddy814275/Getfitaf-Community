@@ -3,6 +3,8 @@ import Link from "next/link";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
+import NotificationBell from "@/components/NotificationBell";
+import type { Notification } from "@/types";
 
 export const metadata: Metadata = {
   title: "GetFit AF Community",
@@ -24,13 +26,21 @@ export default async function RootLayout({
   } = await supabase.auth.getUser();
 
   let isAdmin = false;
+  let notifications: Notification[] = [];
   if (user) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .single();
-    isAdmin = !!profile?.is_admin;
+    const [profileRes, notificationsRes] = await Promise.all([
+      supabase.from("profiles").select("is_admin").eq("id", user.id).single(),
+      supabase
+        .from("notifications")
+        .select(
+          "id, type, post_id, comment_id, read, created_at, actor:profiles!notifications_actor_id_fkey(id, full_name, avatar_url)"
+        )
+        .eq("recipient_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20),
+    ]);
+    isAdmin = !!profileRes.data?.is_admin;
+    notifications = (notificationsRes.data as unknown as Notification[] | null) || [];
   }
 
   return (
@@ -47,6 +57,7 @@ export default async function RootLayout({
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
               </Link>
               <div className="flex items-center gap-4">
+                <NotificationBell initialNotifications={notifications} />
                 <a
                   href="/leaderboard"
                   className="text-sm font-medium text-zinc-400 hover:text-white transition"
