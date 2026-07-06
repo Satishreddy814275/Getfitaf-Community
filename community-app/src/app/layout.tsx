@@ -53,6 +53,12 @@ export default async function RootLayout({
                 >
                   Leaderboard
                 </a>
+                <a
+                  href="/profile"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                >
+                  Edit Profile
+                </a>
                 {isAdmin && (
                   <a
                     href="/admin"
