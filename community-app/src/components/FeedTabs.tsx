@@ -39,6 +39,25 @@ export default function FeedTabs({
   const [postNotFound, setPostNotFound] = useState(false)
   const [search, setSearch] = useState('')
 
+  // Drives the overlay's fade/scale transition. Kept separate from
+  // selectedPost itself: opening needs a render with the "hidden"
+  // styles committed first, then a follow-up frame flipping to
+  // "visible" for the transition to actually have something to
+  // animate from — and closing needs the overlay to fade out before
+  // selectedPost is cleared, otherwise the content would just vanish
+  // mid-transition instead of fading with it.
+  const [overlayEntered, setOverlayEntered] = useState(false)
+
+  useEffect(() => {
+    if (!selectedPost) return
+    const id = requestAnimationFrame(() => setOverlayEntered(true))
+    return () => cancelAnimationFrame(id)
+  }, [selectedPost])
+
+  function closeOverlay() {
+    setOverlayEntered(false)
+  }
+
   // Arriving from a notification link (?post=<id>&comment=<id>) — open
   // that exact post in the overlay immediately, with comments already
   // expanded and scrolled to the specific one, regardless of which tab
@@ -224,21 +243,34 @@ export default function FeedTabs({
 
       {/* Clicking a media thumbnail opens the full post here, with
           working likes/comments — this is the "go to the post from
-          the grid" behavior. */}
+          the grid" behavior. Fades and scales in/out (overlayEntered)
+          instead of snapping instantly; closeOverlay only starts the
+          fade-out, and the actual unmount happens in onTransitionEnd
+          once that's finished, so the content fades along with the
+          backdrop instead of disappearing mid-transition. */}
       {selectedPost && (
         <div
-          className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-          onClick={() => {
-            setSelectedPost(null)
-            setActiveCommentId(null)
+          className={
+            'fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8 transition-opacity duration-200' +
+            (overlayEntered ? ' opacity-100' : ' opacity-0')
+          }
+          onClick={closeOverlay}
+          onTransitionEnd={(e) => {
+            if (e.propertyName === 'opacity' && !overlayEntered) {
+              setSelectedPost(null)
+              setActiveCommentId(null)
+            }
           }}
         >
-          <div className="w-full max-w-lg mt-8" onClick={(e) => e.stopPropagation()}>
+          <div
+            className={
+              'w-full max-w-lg mt-8 transition-all duration-200 ease-out' +
+              (overlayEntered ? ' opacity-100 scale-100' : ' opacity-0 scale-95')
+            }
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
-              onClick={() => {
-                setSelectedPost(null)
-                setActiveCommentId(null)
-              }}
+              onClick={closeOverlay}
               className="mb-3 text-sm text-zinc-400 hover:text-white transition"
             >
               ✕ Close
