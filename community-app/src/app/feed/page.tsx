@@ -59,34 +59,32 @@ export default async function FeedPage({
           </span>
         </div>
       )}
-      {topFive.length > 0 && (
-        <div className="glass rounded-2xl p-4 mb-6">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-white text-sm font-semibold">🏆 Community Leaderboard</p>
-            <Link
-              href="/leaderboard"
-              className="text-orange-500 hover:text-orange-400 text-xs font-medium transition"
-            >
-              View full →
-            </Link>
-          </div>
-          <p className="text-zinc-500 text-xs mb-2">Most active this month</p>
-          <LeaderboardList rows={topFive} currentUserId={user.id} />
-
-          {!inTopFive && myRow && fifthPlaceScore !== null && (
-            <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
-              You&apos;re <span className="text-white font-medium">#{myRow.rank}</span> with{' '}
-              {myRow.score} this month — {Math.max(fifthPlaceScore - myRow.score, 1)} more to reach the
-              top 5.
-            </p>
-          )}
-          {!myRow && (
-            <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
-              You haven&apos;t posted or commented this month yet — jump in to get on the board.
-            </p>
-          )}
+      <div className="glass rounded-2xl p-4 mb-6">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-white text-sm font-semibold">🏆 Community Leaderboard</p>
+          <Link
+            href="/leaderboard"
+            className="text-orange-500 hover:text-orange-400 text-xs font-medium transition"
+          >
+            View full →
+          </Link>
         </div>
-      )}
+        <p className="text-zinc-500 text-xs mb-2">Most active this month</p>
+        <LeaderboardList rows={topFive} currentUserId={user.id} />
+
+        {topFive.length > 0 && !inTopFive && myRow && fifthPlaceScore !== null && (
+          <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
+            You&apos;re <span className="text-white font-medium">#{myRow.rank}</span> with{' '}
+            {myRow.score} this month — {Math.max(fifthPlaceScore - myRow.score, 1)} more to reach the
+            top 5.
+          </p>
+        )}
+        {topFive.length > 0 && !myRow && (
+          <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
+            You haven&apos;t posted or commented this month yet — jump in to get on the board.
+          </p>
+        )}
+      </div>
       <PostComposer isAdmin={isAdmin} initialLessonId={lessonId} initialLessonTitle={lessonTitle} />
       <div className="mt-8">
         <FeedTabs posts={(posts as unknown as Post[] | null) || []} currentUserId={user.id} />
