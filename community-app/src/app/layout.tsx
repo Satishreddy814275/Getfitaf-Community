@@ -37,7 +37,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
         {user && (
           <header className="border-b border-zinc-800 bg-[#0a0a0a]">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
               <span className="font-black text-base tracking-tight text-white">
                 GET<span className="text-orange-500">FIT</span> AF
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
