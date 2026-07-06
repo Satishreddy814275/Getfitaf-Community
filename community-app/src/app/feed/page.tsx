@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import PostComposer from '@/components/PostComposer'
 import FeedTabs from '@/components/FeedTabs'
 import LeaderboardList from '@/components/LeaderboardList'
 import type { Post, LeaderboardRow } from '@/types'
@@ -41,7 +40,7 @@ export default async function FeedPage({
   ])
 
   const isAdmin = !!profileRes.data?.is_admin
-  const posts = postsRes.data
+  const posts = (postsRes.data as unknown as Post[] | null) || []
   const streak = typeof streakRes.data === 'number' ? streakRes.data : 0
   const allRankings = (leaderboardRes.data as LeaderboardRow[] | null) || []
   const topFive = allRankings.slice(0, 5)
@@ -50,7 +49,7 @@ export default async function FeedPage({
   const fifthPlaceScore = topFive[4]?.score ?? null
 
   return (
-    <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
+    <div className="max-w-6xl mx-auto w-full py-8 px-4 sm:px-6">
       {streak > 0 && (
         <div className="mb-4 flex items-center gap-2 text-sm text-orange-400">
           <span>🔥</span>
@@ -59,35 +58,49 @@ export default async function FeedPage({
           </span>
         </div>
       )}
-      <div className="glass rounded-2xl p-4 mb-6">
-        <div className="flex items-center justify-between mb-1">
-          <p className="text-white text-sm font-semibold">🏆 Community Leaderboard</p>
-          <Link
-            href="/leaderboard"
-            className="text-orange-500 hover:text-orange-400 text-xs font-medium transition"
-          >
-            View full →
-          </Link>
-        </div>
-        <p className="text-zinc-500 text-xs mb-2">Most active this month</p>
-        <LeaderboardList rows={topFive} currentUserId={user.id} />
 
-        {topFive.length > 0 && !inTopFive && myRow && fifthPlaceScore !== null && (
-          <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
-            You&apos;re <span className="text-white font-medium">#{myRow.rank}</span> with{' '}
-            {myRow.score} this month — {Math.max(fifthPlaceScore - myRow.score, 1)} more to reach the
-            top 5.
-          </p>
-        )}
-        {topFive.length > 0 && !myRow && (
-          <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
-            You haven&apos;t posted or commented this month yet — jump in to get on the board.
-          </p>
-        )}
-      </div>
-      <PostComposer isAdmin={isAdmin} initialLessonId={lessonId} initialLessonTitle={lessonTitle} />
-      <div className="mt-8">
-        <FeedTabs posts={(posts as unknown as Post[] | null) || []} currentUserId={user.id} />
+      <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
+        {/* Main column — tabs, mobile leaderboard teaser, composer, feed */}
+        <div className="lg:col-span-2">
+          <FeedTabs
+            posts={posts}
+            currentUserId={user.id}
+            isAdmin={isAdmin}
+            initialLessonId={lessonId}
+            initialLessonTitle={lessonTitle}
+            leaderboardRows={topFive}
+          />
+        </div>
+
+        {/* Sidebar — desktop only, full detailed leaderboard, sticky */}
+        <div className="hidden lg:block lg:sticky lg:top-6">
+          <div className="glass rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-white text-sm font-semibold">🏆 Leaderboard</p>
+              <Link
+                href="/leaderboard"
+                className="text-orange-500 hover:text-orange-400 text-xs font-medium transition"
+              >
+                View full →
+              </Link>
+            </div>
+            <p className="text-zinc-500 text-xs mb-2">Most active this month</p>
+            <LeaderboardList rows={topFive} currentUserId={user.id} />
+
+            {topFive.length > 0 && !inTopFive && myRow && fifthPlaceScore !== null && (
+              <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
+                You&apos;re <span className="text-white font-medium">#{myRow.rank}</span> with{' '}
+                {myRow.score} this month — {Math.max(fifthPlaceScore - myRow.score, 1)} more to reach
+                the top 5.
+              </p>
+            )}
+            {topFive.length > 0 && !myRow && (
+              <p className="text-xs text-zinc-400 mt-3 pt-3 border-t border-zinc-800">
+                You haven&apos;t posted or commented this month yet — jump in to get on the board.
+              </p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
