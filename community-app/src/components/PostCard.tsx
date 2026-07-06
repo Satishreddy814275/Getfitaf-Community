@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { addComment, toggleLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
+import LikeButton from './LikeButton'
+import CommentThread from './CommentThread'
 import type { Post } from '@/types'
 
 export default function PostCard({
@@ -15,18 +17,11 @@ export default function PostCard({
 }) {
   const [commentText, setCommentText] = useState('')
   const [showComments, setShowComments] = useState(false)
-  const [pending, setPending] = useState(false)
   const [imageExpanded, setImageExpanded] = useState(false)
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
   const likeCount = post.likes.length
   const hasMedia = !!post.media_url
-
-  async function handleLike() {
-    setPending(true)
-    await toggleLike(post.id, liked)
-    setPending(false)
-  }
 
   async function handleComment(e: React.FormEvent) {
     e.preventDefault()
@@ -123,13 +118,11 @@ export default function PostCard({
       {/* Actions + comments section */}
       <div className={hasMedia ? 'p-5' : 'p-5 pt-3 border-t border-zinc-800'}>
         <div className="flex items-center gap-4 text-sm text-zinc-400">
-          <button
-            onClick={handleLike}
-            disabled={pending}
-            className={liked ? 'text-orange-500 font-medium' : 'hover:text-zinc-200 transition'}
-          >
-            ♥ {likeCount > 0 ? likeCount : ''} Like
-          </button>
+          <LikeButton
+            liked={liked}
+            count={likeCount}
+            onToggle={() => toggleLike(post.id, liked)}
+          />
           <button
             onClick={() => setShowComments((s) => !s)}
             className="hover:text-zinc-200 transition"
@@ -140,20 +133,7 @@ export default function PostCard({
 
         {showComments && (
           <div className="mt-3 space-y-2">
-            {post.comments.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-start gap-2 text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200"
-              >
-                <Avatar avatarUrl={c.profiles?.avatar_url} name={c.profiles?.full_name} size={22} />
-                <p>
-                  <span className="font-semibold text-white">
-                    {c.profiles?.full_name || 'Member'}:{' '}
-                  </span>
-                  {c.content}
-                </p>
-              </div>
-            ))}
+            <CommentThread postId={post.id} comments={post.comments} currentUserId={currentUserId} />
             <form onSubmit={handleComment} className="flex gap-2 mt-2">
               <input
                 value={commentText}

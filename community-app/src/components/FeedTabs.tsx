@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
@@ -14,6 +15,7 @@ export default function FeedTabs({
   isAdmin,
   initialLessonId,
   initialLessonTitle,
+  initialPostId,
   leaderboardRows,
 }: {
   posts: Post[]
@@ -21,11 +23,32 @@ export default function FeedTabs({
   isAdmin: boolean
   initialLessonId: string | null
   initialLessonTitle: string | null
+  initialPostId?: string | null
   leaderboardRows: LeaderboardRow[]
 }) {
+  const router = useRouter()
   const [tab, setTab] = useState<Tab>('posts')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
+  const [postNotFound, setPostNotFound] = useState(false)
   const [search, setSearch] = useState('')
+
+  // Arriving from a notification link (?post=<id>) — open that exact
+  // post in the overlay immediately, regardless of which tab it'd
+  // normally live under. Posts are loaded unpaginated in feed/page.tsx,
+  // so the target is already in `posts` unless it's been deleted.
+  useEffect(() => {
+    if (!initialPostId) return
+    const match = posts.find((p) => p.id === initialPostId)
+    if (match) {
+      setSelectedPost(match)
+    } else {
+      setPostNotFound(true)
+    }
+    // Clear the query param so a refresh or closing the overlay
+    // doesn't keep re-triggering this.
+    router.replace('/feed')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Single combined search — matches either the poster's name or the
   // post text, so one box covers "find a member" and "find a keyword"
@@ -50,6 +73,18 @@ export default function FeedTabs({
 
   return (
     <>
+      {postNotFound && (
+        <div className="lg:col-span-3 mb-4 text-sm text-zinc-400 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span>That post is no longer available.</span>
+          <button
+            onClick={() => setPostNotFound(false)}
+            className="text-zinc-500 hover:text-white transition"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Tab bar spans the full grid width (both columns), so the main
           content below it and the sidebar next to it both start at the
           same row — otherwise the sidebar box lines up with this row
