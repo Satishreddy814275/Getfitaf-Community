@@ -60,17 +60,18 @@ export default async function FeedPage({
       )}
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
-        {/* Main column — tabs, mobile leaderboard teaser, composer, feed */}
-        <div className="lg:col-span-2">
-          <FeedTabs
-            posts={posts}
-            currentUserId={user.id}
-            isAdmin={isAdmin}
-            initialLessonId={lessonId}
-            initialLessonTitle={lessonTitle}
-            leaderboardRows={topFive}
-          />
-        </div>
+        {/* Tabs, mobile leaderboard teaser, composer, and feed — FeedTabs
+            supplies its own lg:col-span-3 (tab bar) and lg:col-span-2
+            (everything else) grid-item children directly, so it must be
+            rendered as a direct grid child here, not wrapped in a div. */}
+        <FeedTabs
+          posts={posts}
+          currentUserId={user.id}
+          isAdmin={isAdmin}
+          initialLessonId={lessonId}
+          initialLessonTitle={lessonTitle}
+          leaderboardRows={topFive}
+        />
 
         {/* Sidebar — desktop only, full detailed leaderboard, sticky */}
         <div className="hidden lg:block lg:sticky lg:top-6">
