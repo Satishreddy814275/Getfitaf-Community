@@ -30,11 +30,18 @@ export default function LikeButton({
   liked,
   count,
   onToggle,
+  onViewLikers,
   compact = false,
 }: {
   liked: boolean
   count: number
   onToggle: () => Promise<void>
+  // When provided, the count becomes its own small clickable target
+  // (stopping propagation so it doesn't also toggle the like) that
+  // opens the "who liked this" list — used for the compact comment
+  // case, where there's no room for a separate summary line the way
+  // posts get (see LikeSummary.tsx).
+  onViewLikers?: () => void
   compact?: boolean
 }) {
   const [optimisticLiked, setOptimisticLiked] = useState(liked)
@@ -98,7 +105,21 @@ export default function LikeButton({
         <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
       </svg>
       <span>
-        {optimisticCount > 0 ? optimisticCount : ''} {compact ? '' : 'Like'}
+        {optimisticCount > 0 &&
+          (onViewLikers ? (
+            <span
+              onClick={(e) => {
+                e.stopPropagation()
+                onViewLikers()
+              }}
+              className="hover:underline"
+            >
+              {optimisticCount}
+            </span>
+          ) : (
+            optimisticCount
+          ))}{' '}
+        {compact ? '' : 'Like'}
       </span>
     </button>
   )

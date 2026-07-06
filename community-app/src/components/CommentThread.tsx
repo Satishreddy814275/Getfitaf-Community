@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { addComment, toggleCommentLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
+import LikersModal from './LikersModal'
 import type { Comment } from '@/types'
 
 // Renders comments as a two-tier thread: top-level comments, with
@@ -100,6 +101,7 @@ function CommentRow({
 }) {
   const [replying, setReplying] = useState(false)
   const [replyText, setReplyText] = useState('')
+  const [showLikers, setShowLikers] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
 
   const liked = comment.comment_likes.some((l) => l.user_id === currentUserId)
@@ -162,6 +164,7 @@ function CommentRow({
               count={likeCount}
               compact
               onToggle={() => toggleCommentLike(postId, comment.id, liked)}
+              onViewLikers={() => setShowLikers(true)}
             />
             <button
               type="button"
@@ -173,6 +176,10 @@ function CommentRow({
           </div>
         </div>
       </div>
+
+      {showLikers && (
+        <LikersModal likers={comment.comment_likes} onClose={() => setShowLikers(false)} />
+      )}
 
       {replying && (
         <form onSubmit={handleReply} className="flex gap-2 mt-2 ml-8">

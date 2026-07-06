@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { addComment, toggleLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
+import LikeSummary from './LikeSummary'
 import CommentThread from './CommentThread'
 import type { Post } from '@/types'
 
@@ -123,6 +124,7 @@ export default function PostCard({
 
       {/* Actions + comments section */}
       <div className={hasMedia ? 'p-5' : 'p-5 pt-3 border-t border-zinc-800'}>
+        <LikeSummary likes={post.likes} currentUserId={currentUserId} />
         <div className="flex items-center gap-4 text-sm text-zinc-400">
           <LikeButton
             liked={liked}
