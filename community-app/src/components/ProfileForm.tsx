@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { updateProfile } from '@/app/profile/actions'
 import Avatar from './Avatar'
+import AvatarCropper from './AvatarCropper'
 
 export default function ProfileForm({
   userId,
@@ -17,18 +18,20 @@ export default function ProfileForm({
   const [name, setName] = useState(initialName)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [file, setFile] = useState<File | null>(null)
+  const [file, setFile] = useState<Blob | null>(null)
+  const [cropFile, setCropFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Mirrors the server-side bucket limits (2MB, image/* only) so people
-  // get an immediate, friendly message instead of a failed upload
-  // round-trip. The real enforcement is still on the server — this is
-  // just for a faster, clearer error.
-  const MAX_AVATAR_BYTES = 2 * 1024 * 1024
+  // These only gate the *source* photo you pick, before cropping — the
+  // actual uploaded result is always a small re-compressed JPEG (see
+  // AvatarCropper), so the source can be a normal, uncompressed phone
+  // photo (often 3-8MB) without hitting the server's 2MB-per-avatar
+  // limit, which applies to the final cropped output, not the original.
+  const MAX_SOURCE_BYTES = 10 * 1024 * 1024
   const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -36,27 +39,30 @@ export default function ProfileForm({
     setSaved(false)
     setFileError(null)
 
-    if (!f) {
-      setFile(null)
-      return
-    }
+    if (!f) return
 
     if (!ALLOWED_TYPES.includes(f.type)) {
       setFileError('Please choose a JPG, PNG, WEBP, or GIF image.')
-      setFile(null)
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    if (f.size > MAX_AVATAR_BYTES) {
-      setFileError('That image is too large — please choose one under 2MB.')
-      setFile(null)
+    if (f.size > MAX_SOURCE_BYTES) {
+      setFileError('That image is too large — please choose one under 10MB.')
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    setFile(f)
-    setPreviewUrl(URL.createObjectURL(f))
+    // Open the crop step rather than uploading this raw file directly —
+    // `file`/`previewUrl` only get set once cropping is confirmed.
+    setCropFile(f)
+  }
+
+  function handleCropConfirm(blob: Blob) {
+    setFile(blob)
+    setPreviewUrl(URL.createObjectURL(blob))
+    setCropFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -82,7 +88,7 @@ export default function ProfileForm({
         const path = `${userId}/avatar`
         const { error } = await supabase.storage
           .from('avatars')
-          .upload(path, file, { upsert: true, contentType: file.type })
+          .upload(path, file, { upsert: true, contentType: 'image/jpeg' })
 
         if (error) {
           throw new Error(`Photo upload failed: ${error.message}`)
@@ -116,7 +122,19 @@ export default function ProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-2xl p-5 space-y-5">
+    <>
+      {cropFile && (
+        <AvatarCropper
+          file={cropFile}
+          onCancel={() => {
+            setCropFile(null)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+          }}
+          onConfirm={handleCropConfirm}
+        />
+      )}
+
+      <form onSubmit={handleSubmit} className="glass rounded-2xl p-5 space-y-5">
       <div className="flex items-center gap-4">
         <Avatar avatarUrl={previewUrl || avatarUrl} name={name} size={64} />
         <div>
@@ -130,7 +148,7 @@ export default function ProfileForm({
               className="hidden"
             />
           </label>
-          {file && <p className="text-xs text-zinc-500 mt-1.5">{file.name} selected</p>}
+          {file && <p className="text-xs text-zinc-500 mt-1.5">New photo selected</p>}
           {fileError && <p className="text-xs text-red-400 mt-1.5">{fileError}</p>}
         </div>
       </div>
@@ -159,6 +177,7 @@ export default function ProfileForm({
         {saved && <span className="text-xs text-green-400">Saved ✓</span>}
       </div>
       {submitError && <p className="text-xs text-red-400">{submitError}</p>}
-    </form>
+      </form>
+    </>
   )
 }
