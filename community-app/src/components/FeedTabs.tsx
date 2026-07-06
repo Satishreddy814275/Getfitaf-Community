@@ -36,6 +36,13 @@ export default function FeedTabs({
   // post in the overlay immediately, regardless of which tab it'd
   // normally live under. Posts are loaded unpaginated in feed/page.tsx,
   // so the target is already in `posts` unless it's been deleted.
+  //
+  // Keyed on initialPostId, not run-once-on-mount: the bell lives in
+  // the header on every page, so most clicks happen while you're
+  // already sitting on /feed — Next.js then only updates the search
+  // param instead of remounting this component. A mount-only effect
+  // would silently never fire again in that case, which is exactly
+  // why clicking a notification looked like it did nothing.
   useEffect(() => {
     if (!initialPostId) return
     const match = posts.find((p) => p.id === initialPostId)
@@ -48,7 +55,7 @@ export default function FeedTabs({
     // doesn't keep re-triggering this.
     router.replace('/feed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [initialPostId])
 
   // Single combined search — matches either the poster's name or the
   // post text, so one box covers "find a member" and "find a keyword"
