@@ -8,7 +8,7 @@ import type { Post, LeaderboardRow } from '@/types'
 export default async function FeedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lesson?: string; title?: string }>
+  searchParams: Promise<{ lesson?: string; title?: string; post?: string }>
 }) {
   const supabase = await createClient()
   const {
@@ -19,6 +19,13 @@ export default async function FeedPage({
   const params = await searchParams
   const lessonId = params.lesson || null
   const lessonTitle = params.title || null
+  // Set when arriving from a notification link (?post=<id>) — FeedTabs
+  // opens that exact post in its overlay on load, regardless of which
+  // tab it'd normally sit under. No extra fetch needed: posts are
+  // loaded unpaginated below, so the target post is already present
+  // unless it's been deleted, which FeedTabs handles as a "not found"
+  // case.
+  const initialPostId = params.post || null
 
   const [profileRes, postsRes, streakRes, leaderboardRes] = await Promise.all([
     supabase.from('profiles').select('is_admin').eq('id', user.id).single(),
@@ -28,7 +35,7 @@ export default async function FeedPage({
         `
       id, content, media_url, media_type, is_announcement, pinned, created_at,
       profiles ( id, full_name, avatar_url ),
-      comments ( id, content, created_at, profiles ( id, full_name, avatar_url ) ),
+      comments ( id, content, created_at, parent_comment_id, profiles ( id, full_name, avatar_url ), comment_likes ( id, user_id ) ),
       likes ( id, user_id )
     `
       )
@@ -70,6 +77,7 @@ export default async function FeedPage({
           isAdmin={isAdmin}
           initialLessonId={lessonId}
           initialLessonTitle={lessonTitle}
+          initialPostId={initialPostId}
           leaderboardRows={topFive}
         />
 
