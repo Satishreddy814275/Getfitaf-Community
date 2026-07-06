@@ -43,6 +43,12 @@ export default async function RootLayout({
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
               </span>
               <div className="flex items-center gap-4">
+                <a
+                  href="/leaderboard"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                >
+                  Leaderboard
+                </a>
                 {isAdmin && (
                   <a
                     href="/admin"
