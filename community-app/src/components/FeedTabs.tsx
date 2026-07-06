@@ -36,8 +36,12 @@ export default function FeedTabs({
   ]
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-6">
+    <>
+      {/* Tab bar spans the full grid width (both columns), so the main
+          content below it and the sidebar next to it both start at the
+          same row — otherwise the sidebar box lines up with this row
+          instead of with the composer, which looks mismatched. */}
+      <div className="lg:col-span-3 flex items-center gap-2 mb-6">
         {tabs.map((t) => (
           <button
             key={t.key}
@@ -54,21 +58,23 @@ export default function FeedTabs({
         ))}
       </div>
 
-      {/* Compact leaderboard teaser — mobile only. On desktop the full
-          detailed leaderboard lives in the sticky sidebar instead. */}
+      {/* Compact leaderboard teaser — mobile only, hidden entirely (no
+          grid placement) at the lg breakpoint where the real sidebar
+          takes over. */}
       <div className="lg:hidden">
         <LeaderboardTeaser rows={leaderboardRows} />
       </div>
 
-      <div className="mb-6">
-        <PostComposer
-          isAdmin={isAdmin}
-          initialLessonId={initialLessonId}
-          initialLessonTitle={initialLessonTitle}
-        />
-      </div>
+      <div className="lg:col-span-2">
+        <div className="mb-6">
+          <PostComposer
+            isAdmin={isAdmin}
+            initialLessonId={initialLessonId}
+            initialLessonTitle={initialLessonTitle}
+          />
+        </div>
 
-      {tab === 'posts' && (
+        {tab === 'posts' && (
         <div className="space-y-6">
           {posts.map((post) => (
             <PostCard key={post.id} post={post} currentUserId={currentUserId} />
@@ -107,13 +113,13 @@ export default function FeedTabs({
                   {post.media_type === 'video' ? (
                     <video
                       src={post.media_url!}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                       muted
                       preload="metadata"
                     />
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={post.media_url!} alt="" className="w-full h-full object-cover" />
+                    <img src={post.media_url!} alt="" className="w-full h-full object-contain" />
                   )}
                   {post.media_type === 'video' && (
                     <span className="absolute inset-0 flex items-center justify-center text-white text-2xl bg-black/20 group-hover:bg-black/30 transition">
@@ -127,6 +133,7 @@ export default function FeedTabs({
           )}
         </>
       )}
+      </div>
 
       {/* Clicking a media thumbnail opens the full post here, with
           working likes/comments — this is the "go to the post from
@@ -147,6 +154,6 @@ export default function FeedTabs({
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

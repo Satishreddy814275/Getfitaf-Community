@@ -12,7 +12,7 @@ export default function LeaderboardList({
   if (rows.length === 0) {
     return (
       <p className="text-center text-sm text-zinc-500 py-8">
-        No activity yet this month — be the first to show up on the board.
+        No activity yet this month - be the first to show up on the board.
       </p>
     )
   }

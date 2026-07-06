@@ -27,7 +27,7 @@ export default function LeaderboardTeaser({ rows }: { rows: LeaderboardRow[] }) 
             ))}
           </>
         ) : (
-          'No activity yet this month — be the first on the board.'
+          'No activity yet this month - be the first on the board.'
         )}
       </p>
       <span className="text-orange-500 text-xs font-medium shrink-0">View full →</span>
