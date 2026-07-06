@@ -23,7 +23,7 @@ export default async function LeaderboardPage() {
       </div>
 
       <div className="glass rounded-2xl p-5">
-        <LeaderboardList rows={rows} />
+        <LeaderboardList rows={rows} currentUserId={user.id} />
       </div>
     </div>
   )
