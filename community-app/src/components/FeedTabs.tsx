@@ -2,16 +2,26 @@
 
 import { useState } from 'react'
 import PostCard from './PostCard'
-import type { Post } from '@/types'
+import PostComposer from './PostComposer'
+import LeaderboardTeaser from './LeaderboardTeaser'
+import type { Post, LeaderboardRow } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
 
 export default function FeedTabs({
   posts,
   currentUserId,
+  isAdmin,
+  initialLessonId,
+  initialLessonTitle,
+  leaderboardRows,
 }: {
   posts: Post[]
   currentUserId: string
+  isAdmin: boolean
+  initialLessonId: string | null
+  initialLessonTitle: string | null
+  leaderboardRows: LeaderboardRow[]
 }) {
   const [tab, setTab] = useState<Tab>('posts')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
@@ -42,6 +52,20 @@ export default function FeedTabs({
             {t.count > 0 ? ` (${t.count})` : ''}
           </button>
         ))}
+      </div>
+
+      {/* Compact leaderboard teaser — mobile only. On desktop the full
+          detailed leaderboard lives in the sticky sidebar instead. */}
+      <div className="lg:hidden">
+        <LeaderboardTeaser rows={leaderboardRows} />
+      </div>
+
+      <div className="mb-6">
+        <PostComposer
+          isAdmin={isAdmin}
+          initialLessonId={initialLessonId}
+          initialLessonTitle={initialLessonTitle}
+        />
       </div>
 
       {tab === 'posts' && (
