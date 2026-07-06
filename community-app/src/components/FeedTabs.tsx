@@ -25,12 +25,25 @@ export default function FeedTabs({
 }) {
   const [tab, setTab] = useState<Tab>('posts')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
+  const [search, setSearch] = useState('')
 
-  const announcements = posts.filter((p) => p.is_announcement)
-  const mediaPosts = posts.filter((p) => p.media_url)
+  // Single combined search — matches either the poster's name or the
+  // post text, so one box covers "find a member" and "find a keyword"
+  // without a second input crowding the tab row.
+  const query = search.trim().toLowerCase()
+  const filteredPosts = query
+    ? posts.filter(
+        (p) =>
+          p.content?.toLowerCase().includes(query) ||
+          p.profiles?.full_name?.toLowerCase().includes(query)
+      )
+    : posts
+
+  const announcements = filteredPosts.filter((p) => p.is_announcement)
+  const mediaPosts = filteredPosts.filter((p) => p.media_url)
 
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'posts', label: 'Posts', count: posts.length },
+    { key: 'posts', label: 'Posts', count: filteredPosts.length },
     { key: 'announcements', label: 'Announcements', count: announcements.length },
     { key: 'media', label: 'Media', count: mediaPosts.length },
   ]
@@ -40,22 +53,38 @@ export default function FeedTabs({
       {/* Tab bar spans the full grid width (both columns), so the main
           content below it and the sidebar next to it both start at the
           same row — otherwise the sidebar box lines up with this row
-          instead of with the composer, which looks mismatched. */}
-      <div className="lg:col-span-3 flex items-center gap-2 mb-6">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={
-              tab === t.key
-                ? 'px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
-                : 'px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
-            }
-          >
-            {t.label}
-            {t.count > 0 ? ` (${t.count})` : ''}
-          </button>
-        ))}
+          instead of with the composer, which looks mismatched. Internally
+          it mirrors the outer 2/3 + 1/3 grid split (same col-span-2 /
+          gap-6 proportions) so the search box's left edge lines up with
+          the leaderboard sidebar's left edge below it, instead of just
+          drifting to the far right of the full-width row. */}
+      <div className="lg:col-span-3 lg:grid lg:grid-cols-3 lg:gap-6 mb-6">
+        <div className="lg:col-span-2 flex items-center gap-2">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={
+                tab === t.key
+                  ? 'px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
+                  : 'px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
+              }
+            >
+              {t.label}
+              {t.count > 0 ? ` (${t.count})` : ''}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-2 lg:mt-0">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search members or posts..."
+            className="w-full glass rounded-full px-4 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 transition"
+          />
+        </div>
       </div>
 
       {/* Compact leaderboard teaser — mobile only, hidden entirely (no
@@ -76,12 +105,14 @@ export default function FeedTabs({
 
         {tab === 'posts' && (
         <div className="space-y-6">
-          {posts.map((post) => (
+          {filteredPosts.map((post) => (
             <PostCard key={post.id} post={post} currentUserId={currentUserId} />
           ))}
-          {posts.length === 0 && (
+          {filteredPosts.length === 0 && (
             <p className="text-center text-sm text-zinc-500 py-12">
-              No posts yet — be the first to share something with the group.
+              {query
+                ? `No posts or members match "${search.trim()}".`
+                : 'No posts yet — be the first to share something with the group.'}
             </p>
           )}
         </div>
@@ -93,7 +124,9 @@ export default function FeedTabs({
             <PostCard key={post.id} post={post} currentUserId={currentUserId} />
           ))}
           {announcements.length === 0 && (
-            <p className="text-center text-sm text-zinc-500 py-12">No announcements yet.</p>
+            <p className="text-center text-sm text-zinc-500 py-12">
+              {query ? `No announcements match "${search.trim()}".` : 'No announcements yet.'}
+            </p>
           )}
         </div>
       )}
@@ -101,7 +134,9 @@ export default function FeedTabs({
       {tab === 'media' && (
         <>
           {mediaPosts.length === 0 ? (
-            <p className="text-center text-sm text-zinc-500 py-12">No photos or videos yet.</p>
+            <p className="text-center text-sm text-zinc-500 py-12">
+              {query ? `No photos or videos match "${search.trim()}".` : 'No photos or videos yet.'}
+            </p>
           ) : (
             <div className="grid grid-cols-3 gap-1">
               {mediaPosts.map((post) => (
