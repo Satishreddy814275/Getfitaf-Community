@@ -21,6 +21,7 @@ export default function ProfileForm({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Mirrors the server-side bucket limits (2MB, image/* only) so people
@@ -62,40 +63,56 @@ export default function ProfileForm({
     e.preventDefault()
     setSaving(true)
     setSaved(false)
+    setSubmitError(null)
 
-    let newAvatarUrl: string | null = null
+    // Everything below is wrapped in try/catch/finally — previously an
+    // upload failure (bad bucket policy, network hiccup, anything
+    // unexpected) would leave the button stuck on "Saving..." forever,
+    // since nothing ever reset `saving` back to false if a step threw.
+    // The finally block guarantees that always happens now, and the
+    // catch surfaces what actually went wrong instead of failing silently.
+    try {
+      let newAvatarUrl: string | null = null
 
-    if (file) {
-      const supabase = createClient()
-      // Fixed path per user (not timestamped, unlike post media) with
-      // upsert:true — replacing a photo overwrites the old file in
-      // place instead of leaving old versions to pile up in storage.
-      const path = `${userId}/avatar`
-      const { error } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type })
+      if (file) {
+        const supabase = createClient()
+        // Fixed path per user (not timestamped, unlike post media) with
+        // upsert:true — replacing a photo overwrites the old file in
+        // place instead of leaving old versions to pile up in storage.
+        const path = `${userId}/avatar`
+        const { error } = await supabase.storage
+          .from('avatars')
+          .upload(path, file, { upsert: true, contentType: file.type })
 
-      if (!error) {
+        if (error) {
+          throw new Error(`Photo upload failed: ${error.message}`)
+        }
+
         const { data } = supabase.storage.from('avatars').getPublicUrl(path)
         // Cache-bust the URL (same trick used for the site favicon) since
         // the path itself doesn't change when a photo is replaced, so
         // browsers would otherwise keep showing a cached old version.
         newAvatarUrl = `${data.publicUrl}?v=${Date.now()}`
       }
+
+      const formData = new FormData()
+      formData.set('full_name', name)
+      if (newAvatarUrl) formData.set('avatar_url', newAvatarUrl)
+
+      await updateProfile(formData)
+
+      if (newAvatarUrl) setAvatarUrl(newAvatarUrl)
+      setFile(null)
+      setPreviewUrl(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      setSaved(true)
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error ? err.message : 'Something went wrong — please try again.'
+      )
+    } finally {
+      setSaving(false)
     }
-
-    const formData = new FormData()
-    formData.set('full_name', name)
-    if (newAvatarUrl) formData.set('avatar_url', newAvatarUrl)
-
-    await updateProfile(formData)
-
-    if (newAvatarUrl) setAvatarUrl(newAvatarUrl)
-    setFile(null)
-    setPreviewUrl(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    setSaving(false)
-    setSaved(true)
   }
 
   return (
@@ -141,6 +158,7 @@ export default function ProfileForm({
         </button>
         {saved && <span className="text-xs text-green-400">Saved ✓</span>}
       </div>
+      {submitError && <p className="text-xs text-red-400">{submitError}</p>}
     </form>
   )
 }
