@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Link from "next/link";
 import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
@@ -38,10 +39,13 @@ export default async function RootLayout({
         {user && (
           <header className="border-b border-zinc-800 bg-[#0a0a0a]">
             <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-              <span className="font-black text-base tracking-tight text-white">
+              <Link
+                href="/feed"
+                className="font-black text-base tracking-tight text-white hover:opacity-80 transition"
+              >
                 GET<span className="text-orange-500">FIT</span> AF
                 <span className="ml-1.5 font-medium text-zinc-400">Community</span>
-              </span>
+              </Link>
               <div className="flex items-center gap-4">
                 <a
                   href="/leaderboard"
