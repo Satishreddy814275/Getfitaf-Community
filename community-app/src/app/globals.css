@@ -55,3 +55,18 @@ body {
   overflow: hidden;
   min-height: 0;
 }
+
+/* Brief highlight flash on the specific comment/reply a notification
+   points at (CommentThread.tsx). Deliberately no animation-fill-mode:
+   forwards — that would freeze the row at the animation's final
+   background-color (transparent) forever, permanently masking its
+   normal bg-zinc-900. Without forwards, the animation plays once and
+   then stops overriding, so the row's real background naturally
+   takes back over once the flash fades. */
+@keyframes comment-highlight-fade {
+  0% { background-color: rgba(249, 115, 22, 0.22); }
+  100% { background-color: transparent; }
+}
+.comment-highlight {
+  animation: comment-highlight-fade 2s ease-out;
+}

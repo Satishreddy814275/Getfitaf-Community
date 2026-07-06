@@ -4,6 +4,7 @@ import "./globals.css";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import NotificationBell from "@/components/NotificationBell";
+import ExternalNavLink from "@/components/ExternalNavLink";
 import type { Notification } from "@/types";
 
 export const metadata: Metadata = {
@@ -78,12 +79,13 @@ export default async function RootLayout({
                     Admin
                   </a>
                 )}
-                <a
+                <ExternalNavLink
                   href="https://learn.getfitaf.fitness/dashboard.html"
                   className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                  loadingLabel="Taking you to your lessons..."
                 >
                   Go to your lessons
-                </a>
+                </ExternalNavLink>
                 <form action={signOut}>
                   <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
                     Sign out
