@@ -19,7 +19,11 @@ export default function ProfileForm({
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [file, setFile] = useState<Blob | null>(null)
-  const [cropFile, setCropFile] = useState<File | null>(null)
+  // Holds either a freshly-picked File or the URL string of the existing
+  // saved avatar — the "Reposition" button below reuses the same crop
+  // screen against the current photo instead of only supporting a new
+  // upload.
+  const [cropSource, setCropSource] = useState<File | string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [fileError, setFileError] = useState<string | null>(null)
@@ -55,13 +59,18 @@ export default function ProfileForm({
 
     // Open the crop step rather than uploading this raw file directly —
     // `file`/`previewUrl` only get set once cropping is confirmed.
-    setCropFile(f)
+    setCropSource(f)
+  }
+
+  function handleRepositionExisting() {
+    if (!avatarUrl) return
+    setCropSource(avatarUrl)
   }
 
   function handleCropConfirm(blob: Blob) {
     setFile(blob)
     setPreviewUrl(URL.createObjectURL(blob))
-    setCropFile(null)
+    setCropSource(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -123,11 +132,11 @@ export default function ProfileForm({
 
   return (
     <>
-      {cropFile && (
+      {cropSource && (
         <AvatarCropper
-          file={cropFile}
+          source={cropSource}
           onCancel={() => {
-            setCropFile(null)
+            setCropSource(null)
             if (fileInputRef.current) fileInputRef.current.value = ''
           }}
           onConfirm={handleCropConfirm}
@@ -138,16 +147,30 @@ export default function ProfileForm({
       <div className="flex items-center gap-4">
         <Avatar avatarUrl={previewUrl || avatarUrl} name={name} size={64} />
         <div>
-          <label className="inline-block text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 transition rounded-lg px-3 py-2 cursor-pointer">
-            Choose photo
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="hidden"
-            />
-          </label>
+          <div className="flex items-center gap-2">
+            <label className="inline-block text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 transition rounded-lg px-3 py-2 cursor-pointer">
+              Choose photo
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </label>
+            {/* Only relevant if there's already a saved photo and no new
+                one is pending — repositions the existing avatar without
+                needing to re-pick it from your files. */}
+            {avatarUrl && !file && (
+              <button
+                type="button"
+                onClick={handleRepositionExisting}
+                className="text-xs font-medium text-zinc-400 hover:text-white transition"
+              >
+                Reposition
+              </button>
+            )}
+          </div>
           {file && <p className="text-xs text-zinc-500 mt-1.5">New photo selected</p>}
           {fileError && <p className="text-xs text-red-400 mt-1.5">{fileError}</p>}
         </div>

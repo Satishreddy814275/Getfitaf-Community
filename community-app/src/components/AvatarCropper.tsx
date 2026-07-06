@@ -11,11 +11,15 @@ const PREVIEW_SIZE = 240
 const OUTPUT_SIZE = 320
 
 export default function AvatarCropper({
-  file,
+  source,
   onCancel,
   onConfirm,
 }: {
-  file: File
+  // A freshly-chosen file, or the URL of an already-saved avatar — lets
+  // this same crop screen be reused both for a brand-new photo and for
+  // repositioning the one already on the profile, without needing to
+  // re-pick it from the file system.
+  source: File | string
   onCancel: () => void
   onConfirm: (blob: Blob) => void
 }) {
@@ -28,10 +32,19 @@ export default function AvatarCropper({
   const dragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
 
-  // Load the source image once when a file is handed in.
+  // Load the source image once when a file/URL is handed in.
   useEffect(() => {
-    const url = URL.createObjectURL(file)
+    setReady(false)
+    const isFile = typeof source !== 'string'
+    const url = isFile ? URL.createObjectURL(source) : source
+
     const img = new Image()
+    // Needed so an existing avatar (loaded cross-origin from Supabase's
+    // storage domain) can still be read back out via canvas.toBlob() —
+    // without this, the canvas would be "tainted" and exports would
+    // fail for repositioning an existing photo, even though it works
+    // fine for a freshly-picked local file.
+    if (!isFile) img.crossOrigin = 'anonymous'
     img.onload = () => {
       imgRef.current = img
       // Minimum zoom = whatever scale makes the image just cover the
@@ -43,8 +56,10 @@ export default function AvatarCropper({
       setReady(true)
     }
     img.src = url
-    return () => URL.revokeObjectURL(url)
-  }, [file])
+    return () => {
+      if (isFile) URL.revokeObjectURL(url)
+    }
+  }, [source])
 
   // Redraw whenever pan/zoom changes.
   useEffect(() => {
@@ -101,6 +116,14 @@ export default function AvatarCropper({
     dragging.current = false
   }
 
+  // Deliberately no onPointerLeave handler here — combined with
+  // setPointerCapture below, the drag should keep tracking correctly
+  // even once the cursor moves outside the (fairly small, 240px) crop
+  // circle. Also ending the drag on pointerleave was the actual bug:
+  // it fired the moment the cursor left the small preview area, which
+  // is almost immediately during any real drag, cancelling the
+  // reposition before it could do anything.
+
   function handleZoomChange(e: React.ChangeEvent<HTMLInputElement>) {
     const z = parseFloat(e.target.value)
     setZoom(z)
@@ -152,7 +175,6 @@ export default function AvatarCropper({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerLeave={handlePointerUp}
           />
         </div>
 
