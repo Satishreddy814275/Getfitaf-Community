@@ -27,3 +27,13 @@ export interface Post {
   comments: Comment[]
   likes: Like[]
 }
+
+export interface LeaderboardRow {
+  rank: number
+  user_id: string
+  first_name: string
+  post_count: number
+  comment_count: number
+  score: number
+  streak: number
+}
