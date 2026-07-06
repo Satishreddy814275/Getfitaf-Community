@@ -16,6 +16,7 @@ export default function FeedTabs({
   initialLessonId,
   initialLessonTitle,
   initialPostId,
+  initialCommentId,
   leaderboardRows,
 }: {
   posts: Post[]
@@ -24,18 +25,26 @@ export default function FeedTabs({
   initialLessonId: string | null
   initialLessonTitle: string | null
   initialPostId?: string | null
+  initialCommentId?: string | null
   leaderboardRows: LeaderboardRow[]
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('posts')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
+  // Captured into state (not read straight from the initialCommentId
+  // prop) because router.replace below clears the query param shortly
+  // after this runs, which would otherwise flip the prop back to null
+  // out from under the open overlay.
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
   const [postNotFound, setPostNotFound] = useState(false)
   const [search, setSearch] = useState('')
 
-  // Arriving from a notification link (?post=<id>) — open that exact
-  // post in the overlay immediately, regardless of which tab it'd
-  // normally live under. Posts are loaded unpaginated in feed/page.tsx,
-  // so the target is already in `posts` unless it's been deleted.
+  // Arriving from a notification link (?post=<id>&comment=<id>) — open
+  // that exact post in the overlay immediately, with comments already
+  // expanded and scrolled to the specific one, regardless of which tab
+  // it'd normally live under. Posts are loaded unpaginated in
+  // feed/page.tsx, so the target is already in `posts` unless it's
+  // been deleted.
   //
   // Keyed on initialPostId, not run-once-on-mount: the bell lives in
   // the header on every page, so most clicks happen while you're
@@ -48,10 +57,11 @@ export default function FeedTabs({
     const match = posts.find((p) => p.id === initialPostId)
     if (match) {
       setSelectedPost(match)
+      setActiveCommentId(initialCommentId || null)
     } else {
       setPostNotFound(true)
     }
-    // Clear the query param so a refresh or closing the overlay
+    // Clear the query params so a refresh or closing the overlay
     // doesn't keep re-triggering this.
     router.replace('/feed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -218,16 +228,26 @@ export default function FeedTabs({
       {selectedPost && (
         <div
           className="fixed inset-0 bg-black/80 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-          onClick={() => setSelectedPost(null)}
+          onClick={() => {
+            setSelectedPost(null)
+            setActiveCommentId(null)
+          }}
         >
           <div className="w-full max-w-lg mt-8" onClick={(e) => e.stopPropagation()}>
             <button
-              onClick={() => setSelectedPost(null)}
+              onClick={() => {
+                setSelectedPost(null)
+                setActiveCommentId(null)
+              }}
               className="mb-3 text-sm text-zinc-400 hover:text-white transition"
             >
               ✕ Close
             </button>
-            <PostCard post={selectedPost} currentUserId={currentUserId} />
+            <PostCard
+              post={selectedPost}
+              currentUserId={currentUserId}
+              initialCommentId={activeCommentId}
+            />
           </div>
         </div>
       )}

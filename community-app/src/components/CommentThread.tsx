@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { addComment, toggleCommentLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
@@ -19,10 +19,12 @@ export default function CommentThread({
   postId,
   comments,
   currentUserId,
+  highlightCommentId,
 }: {
   postId: string
   comments: Comment[]
   currentUserId: string
+  highlightCommentId?: string | null
 }) {
   const byId = comments.reduce<Record<string, Comment>>((acc, c) => {
     acc[c.id] = c
@@ -61,6 +63,7 @@ export default function CommentThread({
             comment={comment}
             topLevelId={comment.id}
             currentUserId={currentUserId}
+            highlightId={highlightCommentId}
           />
           {(repliesByTopLevel[comment.id] || []).length > 0 && (
             <div className="ml-8 mt-2 space-y-2">
@@ -71,6 +74,7 @@ export default function CommentThread({
                   comment={reply}
                   topLevelId={comment.id}
                   currentUserId={currentUserId}
+                  highlightId={highlightCommentId}
                 />
               ))}
             </div>
@@ -86,14 +90,17 @@ function CommentRow({
   comment,
   topLevelId,
   currentUserId,
+  highlightId,
 }: {
   postId: string
   comment: Comment
   topLevelId: string
   currentUserId: string
+  highlightId?: string | null
 }) {
   const [replying, setReplying] = useState(false)
   const [replyText, setReplyText] = useState('')
+  const rowRef = useRef<HTMLDivElement>(null)
 
   const liked = comment.comment_likes.some((l) => l.user_id === currentUserId)
   const likeCount = comment.comment_likes.length
@@ -101,6 +108,18 @@ function CommentRow({
   // comment) — replying to one of these is what needs the @mention
   // prefix, since the flat layout would otherwise lose who it's aimed at.
   const isReply = comment.id !== topLevelId
+  const isHighlighted = !!highlightId && comment.id === highlightId
+
+  // Arriving from a notification about this exact comment/reply —
+  // scroll it into view inside the overlay's scroll container. Only
+  // runs once per mount, which lines up with the overlay itself being
+  // freshly opened when this fires.
+  useEffect(() => {
+    if (isHighlighted && rowRef.current) {
+      rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleReply(e: React.FormEvent) {
     e.preventDefault()
@@ -121,7 +140,14 @@ function CommentRow({
 
   return (
     <div>
-      <div className="flex items-start gap-2 text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200">
+      <div
+        ref={rowRef}
+        className={
+          isHighlighted
+            ? 'comment-highlight flex items-start gap-2 text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200'
+            : 'flex items-start gap-2 text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200'
+        }
+      >
         <Avatar avatarUrl={comment.profiles?.avatar_url} name={comment.profiles?.full_name} size={22} />
         <div className="flex-1">
           <p>

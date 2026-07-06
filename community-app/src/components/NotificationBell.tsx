@@ -96,7 +96,11 @@ export default function NotificationBell({
               {notifications.map((n) => (
                 <Link
                   key={n.id}
-                  href={`/feed?post=${n.post_id}`}
+                  href={
+                    n.comment_id
+                      ? `/feed?post=${n.post_id}&comment=${n.comment_id}`
+                      : `/feed?post=${n.post_id}`
+                  }
                   onClick={() => setOpen(false)}
                   className={
                     n.read

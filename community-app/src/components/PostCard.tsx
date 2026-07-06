@@ -11,12 +11,18 @@ import type { Post } from '@/types'
 export default function PostCard({
   post,
   currentUserId,
+  initialCommentId,
 }: {
   post: Post
   currentUserId: string
+  initialCommentId?: string | null
 }) {
   const [commentText, setCommentText] = useState('')
-  const [showComments, setShowComments] = useState(false)
+  // Opened via a notification pointing at a specific comment/reply —
+  // start with comments already expanded instead of landing on the
+  // post and still requiring a click to see what the notification was
+  // actually about.
+  const [showComments, setShowComments] = useState(!!initialCommentId)
   const [imageExpanded, setImageExpanded] = useState(false)
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
@@ -140,7 +146,12 @@ export default function PostCard({
             instead of a jarring jump. */}
         <div className={`comments-collapse mt-3${showComments ? ' comments-open' : ''}`}>
           <div className="space-y-2">
-            <CommentThread postId={post.id} comments={post.comments} currentUserId={currentUserId} />
+            <CommentThread
+              postId={post.id}
+              comments={post.comments}
+              currentUserId={currentUserId}
+              highlightCommentId={initialCommentId}
+            />
             <form onSubmit={handleComment} className="flex gap-2 mt-2">
               <input
                 value={commentText}
