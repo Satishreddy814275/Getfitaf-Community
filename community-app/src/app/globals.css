@@ -36,3 +36,22 @@ body {
   55% { transform: scale(0.9); }
   100% { transform: scale(1); }
 }
+
+/* Smooth comment-thread collapse (PostCard.tsx). CSS can't transition
+   to/from height: auto directly, so this uses the grid-template-rows
+   trick instead: the row track animates between 0fr and 1fr, and the
+   inner div's overflow:hidden clips the content as the track shrinks.
+   No JS height measurement needed, and it animates correctly no
+   matter how tall the comment thread actually is. */
+.comments-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 250ms ease;
+}
+.comments-collapse.comments-open {
+  grid-template-rows: 1fr;
+}
+.comments-collapse > div {
+  overflow: hidden;
+  min-height: 0;
+}
