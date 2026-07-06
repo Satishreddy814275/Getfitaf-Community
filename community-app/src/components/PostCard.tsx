@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { addComment, toggleLike } from '@/app/feed/actions'
+import Avatar from './Avatar'
 import type { Post } from '@/types'
 
 export default function PostCard({
@@ -57,9 +58,7 @@ export default function PostCard({
           </p>
         )}
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
-            {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-          </div>
+          <Avatar avatarUrl={post.profiles?.avatar_url} name={post.profiles?.full_name} size={40} />
           <div>
             <p className="text-[15px] font-semibold text-white">
               {post.profiles?.full_name || 'Member'}
@@ -142,11 +141,17 @@ export default function PostCard({
         {showComments && (
           <div className="mt-3 space-y-2">
             {post.comments.map((c) => (
-              <div key={c.id} className="text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200">
-                <span className="font-semibold text-white">
-                  {c.profiles?.full_name || 'Member'}:{' '}
-                </span>
-                {c.content}
+              <div
+                key={c.id}
+                className="flex items-start gap-2 text-sm bg-zinc-900 rounded-lg px-3 py-2 text-zinc-200"
+              >
+                <Avatar avatarUrl={c.profiles?.avatar_url} name={c.profiles?.full_name} size={22} />
+                <p>
+                  <span className="font-semibold text-white">
+                    {c.profiles?.full_name || 'Member'}:{' '}
+                  </span>
+                  {c.content}
+                </p>
               </div>
             ))}
             <form onSubmit={handleComment} className="flex gap-2 mt-2">

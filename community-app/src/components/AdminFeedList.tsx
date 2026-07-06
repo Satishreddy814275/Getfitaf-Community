@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { deletePost, deleteComment, togglePin } from '@/app/admin/actions'
+import Avatar from './Avatar'
 import type { Post } from '@/types'
 
 export default function AdminFeedList({ posts }: { posts: Post[] }) {
@@ -45,9 +46,7 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
           )}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm font-semibold shrink-0">
-                {post.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-              </div>
+              <Avatar avatarUrl={post.profiles?.avatar_url} name={post.profiles?.full_name} size={36} />
               <div>
                 <p className="text-sm font-semibold text-white">
                   {post.profiles?.full_name || 'Member'}
