@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import AdminFeedList from '@/components/AdminFeedList'
 import type { Post } from '@/types'
 
@@ -44,6 +45,13 @@ export default async function AdminPage() {
 
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
+      <Link
+        href="/feed"
+        className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
+      >
+        ← Back to Community
+      </Link>
+
       <div className="mb-8">
         <h1 className="text-xl font-bold text-white">Community Moderation</h1>
         <p className="text-sm text-zinc-500 mt-1">Review and remove posts or comments from the feed.</p>
