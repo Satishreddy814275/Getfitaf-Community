@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { markNotificationsRead } from '@/app/feed/actions'
 import Avatar from './Avatar'
@@ -22,8 +22,23 @@ export default function NotificationBell({
   const [notifications, setNotifications] = useState(initialNotifications)
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  // Drives the loading overlay below. The dropdown closes the instant
+  // you click (existing behavior), so a spinner on the row itself
+  // would vanish along with it — isPending instead tracks the actual
+  // navigation itself, independent of the dropdown, and automatically
+  // flips back to false once the destination page has finished
+  // loading, with no manual bookkeeping needed.
+  const [isPending, startTransition] = useTransition()
 
   const unreadCount = notifications.filter((n) => !n.read).length
+
+  function handleNotificationClick(href: string) {
+    setOpen(false)
+    startTransition(() => {
+      router.push(href)
+    })
+  }
 
   // Close on outside click — standard dropdown behavior.
   useEffect(() => {
@@ -93,37 +108,53 @@ export default function NotificationBell({
             <p className="text-sm text-zinc-500 text-center py-8 px-4">No notifications yet.</p>
           ) : (
             <div className="divide-y divide-zinc-800">
-              {notifications.map((n) => (
-                <Link
-                  key={n.id}
-                  href={
-                    n.comment_id
-                      ? `/feed?post=${n.post_id}&comment=${n.comment_id}`
-                      : `/feed?post=${n.post_id}`
-                  }
-                  onClick={() => setOpen(false)}
-                  className={
-                    n.read
-                      ? 'flex items-start gap-2.5 px-4 py-3 hover:bg-zinc-800/50 transition'
-                      : 'flex items-start gap-2.5 px-4 py-3 bg-orange-500/5 hover:bg-orange-500/10 transition'
-                  }
-                >
-                  <Avatar avatarUrl={n.actor?.avatar_url} name={n.actor?.full_name} size={28} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200">
-                      <span className="font-semibold text-white">
-                        {n.actor?.full_name || 'Someone'}
-                      </span>{' '}
-                      {LABELS[n.type]}
-                    </p>
-                    <p className="text-xs text-zinc-500 mt-0.5">
-                      {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+              {notifications.map((n) => {
+                const href = n.comment_id
+                  ? `/feed?post=${n.post_id}&comment=${n.comment_id}`
+                  : `/feed?post=${n.post_id}`
+                return (
+                  <a
+                    key={n.id}
+                    href={href}
+                    onClick={(e) => {
+                      // Taking this over ourselves (rather than a
+                      // plain Link) is what lets isPending above
+                      // actually track this specific navigation, so
+                      // the overlay below has something real to key
+                      // off of.
+                      e.preventDefault()
+                      handleNotificationClick(href)
+                    }}
+                    className={
+                      n.read
+                        ? 'flex items-start gap-2.5 px-4 py-3 hover:bg-zinc-800/50 transition cursor-pointer'
+                        : 'flex items-start gap-2.5 px-4 py-3 bg-orange-500/5 hover:bg-orange-500/10 transition cursor-pointer'
+                    }
+                  >
+                    <Avatar avatarUrl={n.actor?.avatar_url} name={n.actor?.full_name} size={28} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-zinc-200">
+                        <span className="font-semibold text-white">
+                          {n.actor?.full_name || 'Someone'}
+                        </span>{' '}
+                        {LABELS[n.type]}
+                      </p>
+                      <p className="text-xs text-zinc-500 mt-0.5">
+                        {formatDistanceToNow(new Date(n.created_at), { addSuffix: true })}
+                      </p>
+                    </div>
+                  </a>
+                )
+              })}
             </div>
           )}
+        </div>
+      )}
+
+      {isPending && (
+        <div className="fixed inset-0 bg-[#0a0a0a]/90 z-[100] flex flex-col items-center justify-center gap-3">
+          <div className="h-8 w-8 rounded-full border-2 border-zinc-700 border-t-orange-500 animate-spin" />
+          <p className="text-sm text-zinc-400">Opening post...</p>
         </div>
       )}
     </div>
