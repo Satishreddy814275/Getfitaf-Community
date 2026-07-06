@@ -59,25 +59,29 @@ export default async function RootLayout({
               </Link>
               <div className="flex items-center gap-4">
                 <NotificationBell initialNotifications={notifications} />
-                <a
+                {/* next/link, not a plain <a> — a plain anchor here
+                    triggers a full browser reload instead of Next's
+                    client-side transition, which is exactly why
+                    loading.tsx never got a chance to show for these. */}
+                <Link
                   href="/leaderboard"
                   className="text-sm font-medium text-zinc-400 hover:text-white transition"
                 >
                   Leaderboard
-                </a>
-                <a
+                </Link>
+                <Link
                   href="/profile"
                   className="text-sm font-medium text-zinc-400 hover:text-white transition"
                 >
                   Edit Profile
-                </a>
+                </Link>
                 {isAdmin && (
-                  <a
+                  <Link
                     href="/admin"
                     className="text-sm font-medium text-zinc-400 hover:text-white transition"
                   >
                     Admin
-                  </a>
+                  </Link>
                 )}
                 <ExternalNavLink
                   href="https://learn.getfitaf.fitness/dashboard.html"
