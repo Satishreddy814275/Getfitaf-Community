@@ -44,8 +44,13 @@ export default function PostCard({
           : 'glass rounded-2xl overflow-hidden'
       }
     >
-      {/* Text section — header, announcement label, caption */}
+      {/* Text section — header, pin/announcement labels, caption */}
       <div className="p-5">
+        {post.pinned && (
+          <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-1.5">
+            📌 Pinned
+          </p>
+        )}
         {post.is_announcement && (
           <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
             📢 Announcement from your coach

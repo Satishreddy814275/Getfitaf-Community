@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { deletePost, deleteComment } from '@/app/admin/actions'
+import { deletePost, deleteComment, togglePin } from '@/app/admin/actions'
 import type { Post } from '@/types'
 
 export default function AdminFeedList({ posts }: { posts: Post[] }) {
@@ -23,6 +23,12 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
     setPendingId(null)
   }
 
+  async function handleTogglePin(postId: string, pinned: boolean) {
+    setPendingId(postId)
+    await togglePin(postId, !pinned)
+    setPendingId(null)
+  }
+
   if (posts.length === 0) {
     return <p className="text-center text-sm text-zinc-500 py-12">No posts yet.</p>
   }
@@ -31,6 +37,9 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
     <div className="space-y-4">
       {posts.map((post) => (
         <div key={post.id} className="glass rounded-2xl p-4">
+          {post.pinned && (
+            <p className="text-xs font-semibold text-zinc-300 mb-2">📌 Pinned</p>
+          )}
           {post.is_announcement && (
             <p className="text-xs font-semibold text-orange-400 mb-2">📢 Announcement</p>
           )}
@@ -48,13 +57,22 @@ export default function AdminFeedList({ posts }: { posts: Post[] }) {
                 </p>
               </div>
             </div>
-            <button
-              onClick={() => handleDeletePost(post.id, post.media_url)}
-              disabled={pendingId === post.id}
-              className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition shrink-0 disabled:opacity-40"
-            >
-              {pendingId === post.id ? 'Deleting...' : 'Delete post'}
-            </button>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => handleTogglePin(post.id, post.pinned)}
+                disabled={pendingId === post.id}
+                className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:border-orange-500/30 hover:text-orange-500 transition disabled:opacity-40"
+              >
+                {pendingId === post.id ? '...' : post.pinned ? 'Unpin' : 'Pin'}
+              </button>
+              <button
+                onClick={() => handleDeletePost(post.id, post.media_url)}
+                disabled={pendingId === post.id}
+                className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition disabled:opacity-40"
+              >
+                {pendingId === post.id ? 'Deleting...' : 'Delete post'}
+              </button>
+            </div>
           </div>
 
           {post.content && (
