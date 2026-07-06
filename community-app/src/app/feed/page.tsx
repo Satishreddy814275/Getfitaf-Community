@@ -8,7 +8,7 @@ import type { Post, LeaderboardRow } from '@/types'
 export default async function FeedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lesson?: string; title?: string; post?: string }>
+  searchParams: Promise<{ lesson?: string; title?: string; post?: string; comment?: string }>
 }) {
   const supabase = await createClient()
   const {
@@ -26,6 +26,11 @@ export default async function FeedPage({
   // unless it's been deleted, which FeedTabs handles as a "not found"
   // case.
   const initialPostId = params.post || null
+  // Set when the notification was about a specific comment/reply
+  // (?comment=<id>) — the opened post auto-expands its comments and
+  // scrolls to/highlights this one, instead of landing on the post
+  // with comments still collapsed.
+  const initialCommentId = params.comment || null
 
   const [profileRes, postsRes, streakRes, leaderboardRes] = await Promise.all([
     supabase.from('profiles').select('is_admin').eq('id', user.id).single(),
@@ -78,6 +83,7 @@ export default async function FeedPage({
           initialLessonId={lessonId}
           initialLessonTitle={lessonTitle}
           initialPostId={initialPostId}
+          initialCommentId={initialCommentId}
           leaderboardRows={topFive}
         />
 
