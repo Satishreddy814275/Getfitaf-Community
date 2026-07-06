@@ -7,6 +7,11 @@ export interface Profile {
 export interface CommentLike {
   id: string
   user_id: string
+  // Optional — only populated where the query actually joins it (the
+  // main feed query does; admin's post list doesn't need liker names,
+  // just the count, so it's left out there rather than changing a
+  // query that doesn't need this).
+  profiles?: Profile | null
 }
 
 export interface Comment {
@@ -21,6 +26,7 @@ export interface Comment {
 export interface Like {
   id: string
   user_id: string
+  profiles?: Profile | null
 }
 
 export type NotificationType = 'post_like' | 'post_comment' | 'comment_reply' | 'comment_like'
