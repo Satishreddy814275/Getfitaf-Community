@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 // Shared like button for both posts and comments. It doesn't know or
 // care which kind — the parent passes in the current liked/count
@@ -11,9 +11,21 @@ import { useEffect, useState } from 'react'
 // heart flips and the count changes the instant you click, before the
 // server responds. Previously the like button waited for a full
 // server round-trip (server action + revalidatePath) before anything
-// visibly changed, which is what made likes feel slow. If the server
-// call actually fails, it reverts — but the common case (success) now
-// feels instant.
+// visibly changed, which is what made likes feel slow.
+//
+// Once clicked, this component's own local state becomes the source
+// of truth — it deliberately does NOT resync from the `liked`/`count`
+// props afterward. An earlier version did resync the moment the
+// server call finished, which caused a visible flicker back to the
+// stale pre-click state: the server call resolving and the page's
+// props actually refreshing are two separate moments (revalidatePath
+// takes a beat to propagate), so resyncing right when the call
+// finished meant briefly showing data that was already out of date,
+// before the real refresh arrived a moment later and corrected it
+// again. Trusting the optimistic state avoids that entirely — the
+// only trade-off is that the same post open in a second browser tab
+// won't reflect a like made in this tab without a full reload, which
+// is a fine trade for something this low-stakes.
 export default function LikeButton({
   liked,
   count,
@@ -29,16 +41,6 @@ export default function LikeButton({
   const [optimisticCount, setOptimisticCount] = useState(count)
   const [pending, setPending] = useState(false)
   const [popping, setPopping] = useState(false)
-
-  // Reconcile with the server's real state once fresh props arrive
-  // (e.g. after revalidatePath) — but only when we're not mid-click,
-  // so a slow response can't stomp on a newer click.
-  useEffect(() => {
-    if (!pending) {
-      setOptimisticLiked(liked)
-      setOptimisticCount(count)
-    }
-  }, [liked, count, pending])
 
   async function handleClick() {
     if (pending) return

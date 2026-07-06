@@ -6,13 +6,15 @@ import Avatar from './Avatar'
 import LikeButton from './LikeButton'
 import type { Comment } from '@/types'
 
-// Renders a flat list of comments (top-level + replies, distinguished
-// by parent_comment_id) as a two-tier thread: top-level comments, with
-// their replies indented beneath. Replies deliberately can't be
-// replied to themselves (allowReply=false below) — one level of
-// nesting reads as "layered" without the complexity of a real
-// recursive thread, and matches how most small communities actually
-// use it (Facebook visually collapses past one level anyway).
+// Renders comments as a two-tier thread: top-level comments, with
+// every reply underneath them at one single indent level — no matter
+// how many times someone replies to a reply, it never nests deeper
+// than that one tier. "Reply" stays available on every row, including
+// replies themselves; replying to a reply (rather than the original
+// comment) auto-prefixes the text with an @mention so it's still
+// clear who it's aimed at despite the flat layout — the same trick
+// Instagram/Facebook use to avoid runaway nesting while still letting
+// people reply to a specific reply.
 export default function CommentThread({
   postId,
   comments,
@@ -22,26 +24,58 @@ export default function CommentThread({
   comments: Comment[]
   currentUserId: string
 }) {
-  const topLevel = comments.filter((c) => !c.parent_comment_id)
-  const repliesByParent = comments.reduce<Record<string, Comment[]>>((acc, c) => {
-    if (c.parent_comment_id) {
-      acc[c.parent_comment_id] = acc[c.parent_comment_id] || []
-      acc[c.parent_comment_id].push(c)
-    }
+  const byId = comments.reduce<Record<string, Comment>>((acc, c) => {
+    acc[c.id] = c
     return acc
   }, {})
+
+  function topLevelIdOf(comment: Comment): string {
+    let current = comment
+    while (current.parent_comment_id) {
+      const parent = byId[current.parent_comment_id]
+      if (!parent) break
+      current = parent
+    }
+    return current.id
+  }
+
+  const topLevel = comments.filter((c) => !c.parent_comment_id)
+
+  const repliesByTopLevel: Record<string, Comment[]> = {}
+  comments.forEach((c) => {
+    if (!c.parent_comment_id) return
+    const topId = topLevelIdOf(c)
+    repliesByTopLevel[topId] = repliesByTopLevel[topId] || []
+    repliesByTopLevel[topId].push(c)
+  })
+  Object.values(repliesByTopLevel).forEach((arr) =>
+    arr.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+  )
 
   return (
     <div className="space-y-3">
       {topLevel.map((comment) => (
-        <CommentRow
-          key={comment.id}
-          postId={postId}
-          comment={comment}
-          replies={repliesByParent[comment.id] || []}
-          currentUserId={currentUserId}
-          allowReply
-        />
+        <div key={comment.id}>
+          <CommentRow
+            postId={postId}
+            comment={comment}
+            topLevelId={comment.id}
+            currentUserId={currentUserId}
+          />
+          {(repliesByTopLevel[comment.id] || []).length > 0 && (
+            <div className="ml-8 mt-2 space-y-2">
+              {repliesByTopLevel[comment.id].map((reply) => (
+                <CommentRow
+                  key={reply.id}
+                  postId={postId}
+                  comment={reply}
+                  topLevelId={comment.id}
+                  currentUserId={currentUserId}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ))}
     </div>
   )
@@ -50,27 +84,36 @@ export default function CommentThread({
 function CommentRow({
   postId,
   comment,
-  replies,
+  topLevelId,
   currentUserId,
-  allowReply,
 }: {
   postId: string
   comment: Comment
-  replies: Comment[]
+  topLevelId: string
   currentUserId: string
-  allowReply: boolean
 }) {
   const [replying, setReplying] = useState(false)
   const [replyText, setReplyText] = useState('')
 
   const liked = comment.comment_likes.some((l) => l.user_id === currentUserId)
   const likeCount = comment.comment_likes.length
+  // True when this row is itself a reply (not the original top-level
+  // comment) — replying to one of these is what needs the @mention
+  // prefix, since the flat layout would otherwise lose who it's aimed at.
+  const isReply = comment.id !== topLevelId
 
   async function handleReply(e: React.FormEvent) {
     e.preventDefault()
     if (!replyText.trim()) return
+    const content = isReply
+      ? `@${comment.profiles?.full_name || 'Member'} ${replyText}`
+      : replyText
     const formData = new FormData()
-    formData.set('content', replyText)
+    formData.set('content', content)
+    // parent_comment_id is always the exact row that was replied to
+    // (even if that's itself a reply) — this keeps notification
+    // recipients accurate (whoever you actually replied to gets
+    // pinged) even though the rendering flattens everything visually.
     await addComment(postId, formData, comment.id)
     setReplyText('')
     setReplying(false)
@@ -94,15 +137,13 @@ function CommentRow({
               compact
               onToggle={() => toggleCommentLike(postId, comment.id, liked)}
             />
-            {allowReply && (
-              <button
-                type="button"
-                onClick={() => setReplying((r) => !r)}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition"
-              >
-                Reply
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setReplying((r) => !r)}
+              className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+            >
+              Reply
+            </button>
           </div>
         </div>
       </div>
@@ -120,21 +161,6 @@ function CommentRow({
             Send
           </button>
         </form>
-      )}
-
-      {replies.length > 0 && (
-        <div className="ml-8 mt-2 space-y-2">
-          {replies.map((reply) => (
-            <CommentRow
-              key={reply.id}
-              postId={postId}
-              comment={reply}
-              replies={[]}
-              currentUserId={currentUserId}
-              allowReply={false}
-            />
-          ))}
-        </div>
       )}
     </div>
   )
