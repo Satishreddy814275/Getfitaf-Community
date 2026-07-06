@@ -62,3 +62,19 @@ export async function togglePin(postId: string, pinned: boolean) {
   revalidatePath('/admin')
   revalidatePath('/feed')
 }
+
+export async function resetAvatar(userId: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  // Best-effort cleanup of the stored file — avatars always live at a
+  // fixed "{userId}/avatar" path (no extension in the path itself; the
+  // content-type header handles rendering), so this is a single known
+  // path rather than needing to parse a stored URL.
+  await supabase.storage.from('avatars').remove([`${userId}/avatar`])
+  await supabase.from('profiles').update({ avatar_url: null }).eq('id', userId)
+
+  revalidatePath('/admin/members')
+  revalidatePath('/feed')
+  revalidatePath('/admin')
+}
