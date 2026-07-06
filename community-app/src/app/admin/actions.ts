@@ -53,3 +53,12 @@ export async function deleteComment(commentId: string) {
   revalidatePath('/admin')
   revalidatePath('/feed')
 }
+
+export async function togglePin(postId: string, pinned: boolean) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase.from('posts').update({ pinned }).eq('id', postId)
+  revalidatePath('/admin')
+  revalidatePath('/feed')
+}
