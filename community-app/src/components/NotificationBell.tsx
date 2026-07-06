@@ -50,10 +50,18 @@ export default function NotificationBell({
 
   return (
     <div className="relative" ref={panelRef}>
+      {/* inline-flex + items-center centers the SVG within the
+          button's own box — without it, an inline SVG aligns to the
+          text baseline like an image would, which sits a few px
+          higher than the flex-centered text links next to it. */}
       <button
         type="button"
         onClick={handleOpen}
-        className="relative text-zinc-400 hover:text-white transition"
+        className={
+          unreadCount > 0
+            ? 'relative inline-flex items-center text-orange-500 hover:text-orange-400 transition'
+            : 'relative inline-flex items-center text-zinc-400 hover:text-white transition'
+        }
         aria-label="Notifications"
       >
         {/* Real bell icon rather than the 🔔 emoji, which renders as a

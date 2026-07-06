@@ -131,8 +131,15 @@ export default function PostCard({
           </button>
         </div>
 
-        {showComments && (
-          <div className="mt-3 space-y-2">
+        {/* Comments stay mounted at all times — collapsing hides them
+            via a grid-row animation (globals.css) rather than
+            unmounting instantly. Without the animation, collapsing
+            snaps the whole block to zero height in one reflow, which
+            makes everything below jump into place abruptly; animating
+            it makes the same reflow read as an intentional collapse
+            instead of a jarring jump. */}
+        <div className={`comments-collapse mt-3${showComments ? ' comments-open' : ''}`}>
+          <div className="space-y-2">
             <CommentThread postId={post.id} comments={post.comments} currentUserId={currentUserId} />
             <form onSubmit={handleComment} className="flex gap-2 mt-2">
               <input
@@ -146,7 +153,7 @@ export default function PostCard({
               </button>
             </form>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
