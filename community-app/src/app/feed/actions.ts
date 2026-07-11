@@ -18,6 +18,19 @@ export async function createPost(formData: FormData) {
 
   if (!content && !mediaUrl) return
 
+  // Tag the post with whichever space this member belongs to, so it
+  // only shows up in that space's feed (see migration-spaces.sql). A
+  // member could in principle belong to both — nobody does yet, so
+  // this just takes the first membership found rather than needing a
+  // space-switcher in the composer UI.
+  const { data: membership } = await supabase
+    .from('space_memberships')
+    .select('space')
+    .eq('profile_id', user.id)
+    .limit(1)
+    .maybeSingle()
+  const space = membership?.space || 'premium'
+
   await supabase.from('posts').insert({
     author_id: user.id,
     content,
@@ -25,6 +38,7 @@ export async function createPost(formData: FormData) {
     media_type: mediaType,
     is_announcement: isAnnouncement,
     lesson_id: lessonId,
+    space,
   })
 
   revalidatePath('/feed')

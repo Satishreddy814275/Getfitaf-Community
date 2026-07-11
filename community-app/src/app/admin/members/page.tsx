@@ -18,10 +18,16 @@ export default async function AdminMembersPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  const { data: members } = await supabase
-    .from('profiles')
-    .select('id, full_name, avatar_url')
-    .order('full_name')
+  const [{ data: members }, { data: memberships }] = await Promise.all([
+    supabase.from('profiles').select('id, full_name, avatar_url').order('full_name'),
+    supabase.from('space_memberships').select('profile_id, space').eq('space', 'low_ticket'),
+  ])
+
+  const lowTicketIds = new Set((memberships || []).map((m) => m.profile_id))
+  const membersWithSpace = (members || []).map((m) => ({
+    ...m,
+    hasLowTicket: lowTicketIds.has(m.id),
+  }))
 
   return (
     <div className="max-w-2xl mx-auto w-full py-8 px-4 sm:px-6">
@@ -35,11 +41,12 @@ export default async function AdminMembersPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">Members</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Reset a member&apos;s profile photo if it needs to come down.
+          Reset a profile photo, or grant/revoke low-ticket community access once
+          someone's paid.
         </p>
       </div>
 
-      <AdminMembersList members={members || []} />
+      <AdminMembersList members={membersWithSpace} />
     </div>
   )
 }

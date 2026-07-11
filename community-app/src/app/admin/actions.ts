@@ -78,3 +78,31 @@ export async function resetAvatar(userId: string) {
   revalidatePath('/feed')
   revalidatePath('/admin')
 }
+
+// Manual assignment for the low-ticket (₹500/mo) space — this is the
+// bridge until an automated payment flow exists. Once someone's paid
+// (Stripe Payment Link for domestic, or the satish@getfitaf.fitness
+// contact path for international), grant it here.
+export async function grantLowTicketAccess(userId: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase
+    .from('space_memberships')
+    .upsert({ profile_id: userId, space: 'low_ticket' }, { onConflict: 'profile_id,space' })
+
+  revalidatePath('/admin/members')
+}
+
+export async function revokeLowTicketAccess(userId: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase
+    .from('space_memberships')
+    .delete()
+    .eq('profile_id', userId)
+    .eq('space', 'low_ticket')
+
+  revalidatePath('/admin/members')
+}

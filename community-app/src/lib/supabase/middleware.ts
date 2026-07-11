@@ -35,7 +35,10 @@ export async function updateSession(request: NextRequest) {
 
   const isPublicRoute =
     request.nextUrl.pathname.startsWith('/login') ||
-    request.nextUrl.pathname.startsWith('/auth')
+    request.nextUrl.pathname.startsWith('/auth') ||
+    // /join is the low-ticket community's public landing page — has to
+    // be reachable by people who don't have an account yet.
+    request.nextUrl.pathname.startsWith('/join')
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()

@@ -24,7 +24,7 @@ export default async function AdminPage() {
       .from('posts')
       .select(
         `
-        id, content, media_url, media_type, is_announcement, pinned, created_at,
+        id, content, media_url, media_type, is_announcement, pinned, space, created_at,
         profiles ( id, full_name, avatar_url ),
         comments ( id, content, created_at, profiles ( id, full_name, avatar_url ) ),
         likes ( id, user_id )

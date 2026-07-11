@@ -41,6 +41,8 @@ export interface Notification {
   actor: Profile | null
 }
 
+export type Space = 'premium' | 'low_ticket'
+
 export interface Post {
   id: string
   content: string | null
@@ -48,6 +50,7 @@ export interface Post {
   media_type: 'image' | 'video' | null
   is_announcement: boolean
   pinned: boolean
+  space: Space
   created_at: string
   profiles: Profile | null
   comments: Comment[]
