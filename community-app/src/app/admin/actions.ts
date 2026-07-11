@@ -106,3 +106,17 @@ export async function revokeLowTicketAccess(userId: string) {
 
   revalidatePath('/admin/members')
 }
+
+// Approves a member into the premium space — same `approved` flag
+// admin.html's Approve button on learn.getfitaf.fitness already
+// manages. Duplicated here as a shortcut so a brand new signup can be
+// handled (approved as premium, or granted low-ticket, or both) from
+// this one screen instead of needing to jump between two admin pages.
+export async function approveProfile(userId: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase.from('profiles').update({ approved: true }).eq('id', userId)
+
+  revalidatePath('/admin/members')
+}
