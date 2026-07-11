@@ -45,7 +45,16 @@ export default function PostComposer({
         const uploadFile = file.type.startsWith('image/') ? await compressImage(file) : file
         const ext = uploadFile.name.split('.').pop()
         const path = `${user.id}/${Date.now()}.${ext}`
-        const { error } = await supabase.storage.from('post-media').upload(path, uploadFile)
+        // Upload raw bytes rather than handing the File/Blob object
+        // straight to fetch — some browsers (Safari in particular)
+        // don't reliably transmit a File that was constructed from a
+        // canvas-generated Blob, silently sending an empty body. An
+        // ArrayBuffer has no such issue. contentType is passed
+        // explicitly too, rather than relying on it being inferred.
+        const bytes = await uploadFile.arrayBuffer()
+        const { error } = await supabase.storage.from('post-media').upload(path, bytes, {
+          contentType: uploadFile.type || 'application/octet-stream',
+        })
 
         if (!error) {
           const { data } = supabase.storage.from('post-media').getPublicUrl(path)
