@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
+import { compressImage } from '@/lib/compressImage'
 
 export default function PostComposer({
   isAdmin = false,
@@ -39,9 +40,12 @@ export default function PostComposer({
       } = await supabase.auth.getUser()
 
       if (user) {
-        const ext = file.name.split('.').pop()
+        // Images get resized/re-encoded before upload (see
+        // compressImage.ts); videos pass through untouched.
+        const uploadFile = file.type.startsWith('image/') ? await compressImage(file) : file
+        const ext = uploadFile.name.split('.').pop()
         const path = `${user.id}/${Date.now()}.${ext}`
-        const { error } = await supabase.storage.from('post-media').upload(path, file)
+        const { error } = await supabase.storage.from('post-media').upload(path, uploadFile)
 
         if (!error) {
           const { data } = supabase.storage.from('post-media').getPublicUrl(path)
