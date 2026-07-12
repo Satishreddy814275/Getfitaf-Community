@@ -14,11 +14,17 @@ export default function ExternalNavLink({
   className,
   loadingLabel,
   children,
+  onClick,
 }: {
   href: string
   className?: string
   loadingLabel: string
   children: React.ReactNode
+  // Optional extra side effect fired the moment a real (unmodified) click
+  // happens, before navigation starts — e.g. the workout builder prompt
+  // modal uses this to mark itself dismissed so it doesn't pop back up
+  // if someone clicks through, abandons the form, and returns to /feed.
+  onClick?: () => void
 }) {
   const [loading, setLoading] = useState(false)
 
@@ -44,6 +50,7 @@ export default function ExternalNavLink({
           // continuing, which is what actually makes the overlay
           // visible before we navigate away.
           e.preventDefault()
+          onClick?.()
           setLoading(true)
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
