@@ -14,22 +14,29 @@ interface SetRow {
 // separate routes per day - simpler state management, and nothing
 // here needs to be a shareable/bookmarkable URL. `activeDay` being set
 // switches from the day list into that day's logging form.
+//
+// Days are repeat-loggable - the template only ever describes one
+// week (the AI only generates one week per response), so "week" isn't
+// a fixed label on a day here at all. It's computed automatically at
+// save time from how many times this exact day's already been
+// completed (see logWorkoutSession) - sessionCountByDay is that same
+// count, used here just to show what week a day is on and to label
+// what logging it again would become.
 export default function WorkoutDayPicker({
   generationId,
   days,
-  completedDayKeys,
+  sessionCountByDay,
   lastByExercise,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
-  completedDayKeys: string[]
+  sessionCountByDay: Record<number, number>
   lastByExercise: Record<string, LastLoggedSet>
 }) {
   const [activeDay, setActiveDay] = useState<WorkoutPlanDay | null>(null)
   const [setsByExercise, setSetsByExercise] = useState<Record<string, SetRow[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
-  const completedSet = new Set(completedDayKeys)
 
   function startDay(day: WorkoutPlanDay) {
     // Pre-fill one row per target set (e.g. "3-5" -> 3 rows) - just a
@@ -81,7 +88,6 @@ export default function WorkoutDayPicker({
     startTransition(async () => {
       await logWorkoutSession({
         generationId,
-        week: activeDay.week,
         day: activeDay.day,
         dayLabel: activeDay.label,
         sets,
@@ -92,6 +98,7 @@ export default function WorkoutDayPicker({
   }
 
   if (activeDay) {
+    const nextWeek = (sessionCountByDay[activeDay.day] || 0) + 1
     return (
       <div>
         <button
@@ -100,9 +107,10 @@ export default function WorkoutDayPicker({
         >
           ← Back to all days
         </button>
-        <h2 className="text-white text-lg font-bold mb-4">
-          Week {activeDay.week}, Day {activeDay.day}: {activeDay.label}
+        <h2 className="text-white text-lg font-bold mb-1">
+          Day {activeDay.day}: {activeDay.label}
         </h2>
+        <p className="text-zinc-500 text-xs mb-4">This will be logged as Week {nextWeek}</p>
 
         <div className="space-y-4">
           {activeDay.exercises.map((ex) => {
@@ -179,18 +187,21 @@ export default function WorkoutDayPicker({
         <p className="text-sm text-orange-400 mb-2">Nice work - that session&apos;s logged.</p>
       )}
       {days.map((day) => {
-        const key = `${day.week}-${day.day}`
-        const isCompleted = completedSet.has(key)
+        const count = sessionCountByDay[day.day] || 0
         return (
           <button
-            key={key}
+            key={day.day}
             onClick={() => startDay(day)}
             className="w-full flex items-center justify-between glass rounded-xl px-4 py-3 text-left hover:bg-zinc-900/60 transition"
           >
             <span className="text-white text-sm font-medium">
-              Week {day.week}, Day {day.day}: {day.label}
+              Day {day.day}: {day.label}
             </span>
-            {isCompleted && <span className="text-orange-500 text-xs font-semibold">Done</span>}
+            {count > 0 && (
+              <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
+                Logged {count}x · next: Week {count + 1}
+              </span>
+            )}
           </button>
         )
       })}
