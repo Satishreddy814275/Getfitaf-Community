@@ -66,3 +66,30 @@ export interface LeaderboardRow {
   score: number
   streak: number
 }
+
+// Shape written by Getfitaf-workout-builder-main/api/generate.js into
+// workout_generations.structured_plan (verified/community visits only
+// - see project memory). One entry per training day in the plan (rest
+// days are skipped), in Week/Day order, not tied to calendar dates.
+export interface WorkoutExercise {
+  order: number
+  name: string
+  sets: string
+  reps: string
+}
+
+export interface WorkoutPlanDay {
+  week: number
+  day: number
+  label: string
+  exercises: WorkoutExercise[]
+}
+
+// What a member most recently logged for a given exercise, used to
+// show "last time" reference numbers while logging a new session.
+export interface LastLoggedSet {
+  exerciseName: string
+  weight: number | null
+  reps: number | null
+  loggedAt: string
+}
