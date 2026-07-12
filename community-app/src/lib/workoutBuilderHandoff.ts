@@ -16,7 +16,14 @@ import { createHmac, timingSafeEqual } from 'crypto'
 // in both this project's Vercel env vars AND the workout builder
 // project's Vercel env vars — it's how the two separate apps agree
 // the token is genuine without sharing a database call.
-const HANDOFF_TTL_MS = 5 * 60 * 1000 // 5 minutes — just long enough to click through
+// 60 minutes — long enough to actually read and fill out the intake
+// form (name, email, gender, level, goal, equipment, days, cardio,
+// injuries, notes) without the token quietly expiring mid-fill and
+// silently downgrading to an unverified/anonymous visit with no error
+// shown. This only identifies an email for cap-tracking purposes, not
+// anything sensitive like a payment, so there's no real security
+// reason to keep this as tight as the original 5 minutes.
+const HANDOFF_TTL_MS = 60 * 60 * 1000
 
 function getSecret() {
   const secret = process.env.WORKOUT_BUILDER_HANDOFF_SECRET
