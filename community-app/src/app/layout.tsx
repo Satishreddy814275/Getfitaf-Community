@@ -27,10 +27,11 @@ export default async function RootLayout({
   } = await supabase.auth.getUser();
 
   let isAdmin = false;
+  let isApproved = false;
   let notifications: Notification[] = [];
   if (user) {
     const [profileRes, notificationsRes] = await Promise.all([
-      supabase.from("profiles").select("is_admin").eq("id", user.id).single(),
+      supabase.from("profiles").select("is_admin, approved").eq("id", user.id).single(),
       supabase
         .from("notifications")
         .select(
@@ -41,6 +42,7 @@ export default async function RootLayout({
         .limit(20),
     ]);
     isAdmin = !!profileRes.data?.is_admin;
+    isApproved = !!profileRes.data?.approved;
     notifications = (notificationsRes.data as unknown as Notification[] | null) || [];
   }
 
@@ -83,13 +85,22 @@ export default async function RootLayout({
                     Admin
                   </Link>
                 )}
-                <ExternalNavLink
-                  href="https://learn.getfitaf.fitness/dashboard.html"
-                  className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-                  loadingLabel="Taking you to your lessons..."
-                >
-                  Go to your lessons
-                </ExternalNavLink>
+                {isAdmin || isApproved ? (
+                  <ExternalNavLink
+                    href="https://learn.getfitaf.fitness/dashboard.html"
+                    className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                    loadingLabel="Taking you to your lessons..."
+                  >
+                    Go to your lessons
+                  </ExternalNavLink>
+                ) : (
+                  // Daily lessons aren't open to the low-ticket space yet —
+                  // shown as plain text (not a link) so nobody clicks
+                  // through to a page that'll just look broken for them.
+                  <span className="text-sm font-medium text-zinc-600" title="Daily lessons for this membership are on the way">
+                    Daily lessons — coming soon
+                  </span>
+                )}
                 <form action={signOut}>
                   <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
                     Sign out
