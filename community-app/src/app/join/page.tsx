@@ -1,10 +1,12 @@
 import Link from 'next/link'
 
-// TODO(Satish): once you've created the Stripe Payment Link for the
-// ₹500/mo domestic subscription (Stripe Dashboard → Payment Links →
-// New), paste the URL here. Until this is set, the domestic button
-// below just links to nothing useful — swap this one line out and
-// the whole page is live.
+// TODO(Satish): paste your ₹499/mo Payment Link URL here. Before
+// going live, double-check in the Stripe Dashboard that this Price
+// has the 7-day free trial toggle turned on — the "Start Free 7-Day
+// Trial" copy below only holds true if it does. Also don't go live
+// with this until the Stripe webhook (src/app/api/stripe-webhook) is
+// deployed and its env vars are set — otherwise trials will start in
+// Stripe but access won't be granted automatically on this end.
 const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/REPLACE_ME'
 
 const CONTACT_EMAIL = 'satish@getfitaf.fitness'
@@ -21,7 +23,9 @@ export default function JoinPage() {
         </div>
 
         <div className="glass rounded-2xl p-8">
-          <p className="text-orange-500 text-sm font-semibold mb-1">₹500/month</p>
+          <p className="text-orange-500 text-sm font-semibold mb-1">
+            7-day free trial, then ₹499/month
+          </p>
           <h2 className="text-white text-xl font-bold mb-4">Join the GetFit AF Community</h2>
 
           <ul className="space-y-2.5 text-sm text-zinc-300 mb-6">
@@ -57,7 +61,7 @@ export default function JoinPage() {
 
               <div>
                 <p className="text-zinc-400 text-sm mb-2">
-                  <span className="text-white font-semibold">Step 2.</span> Pay for your membership
+                  <span className="text-white font-semibold">Step 2.</span> Start your free trial
                 </p>
 
                 <a
@@ -66,11 +70,12 @@ export default function JoinPage() {
                   rel="noopener noreferrer"
                   className="block w-full text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-xl transition text-sm mb-3"
                 >
-                  Pay ₹500/month (India)
+                  Start Free 7-Day Trial (India)
                 </a>
 
                 <p className="text-zinc-500 text-xs leading-relaxed">
-                  Paying from outside India? Email{' '}
+                  You won&apos;t be charged until your trial ends, and you can cancel anytime
+                  before then at no cost. Paying from outside India? Email{' '}
                   <a
                     href={`mailto:${CONTACT_EMAIL}?subject=Joining the GetFit AF Community`}
                     className="text-orange-400 hover:text-orange-300 transition"
@@ -80,11 +85,27 @@ export default function JoinPage() {
                   and we&apos;ll get you set up directly.
                 </p>
               </div>
+
+              <div>
+                <p className="text-zinc-400 text-sm mb-2">
+                  <span className="text-white font-semibold">Step 3.</span> Build your first
+                  workout
+                </p>
+                <a
+                  href="https://workoutbuilder.getfitaf.fitness"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full text-center border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 font-bold py-3 rounded-xl transition text-sm"
+                >
+                  Build My Workout →
+                </a>
+              </div>
             </div>
 
             <p className="text-zinc-600 text-xs mt-6 pt-6 border-t border-zinc-800">
-              Access is activated shortly after your payment is confirmed — you&apos;ll be able to
-              sign in and see the community as soon as it&apos;s turned on.
+              Your access is activated automatically as soon as your trial starts — no need to
+              wait on us. If you paid internationally by email instead, access is turned on
+              shortly after we confirm your payment.
             </p>
           </div>
         </div>
