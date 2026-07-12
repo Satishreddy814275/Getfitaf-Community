@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import LeaderboardList from '@/components/LeaderboardList'
+import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
 import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import type { Post, LeaderboardRow } from '@/types'
@@ -115,17 +116,22 @@ export default async function FeedPage({
         </div>
       )}
 
-      {/* Centered one-time-feeling popup - only for low-ticket members who
-          haven't built a workout yet. Dismissal (X, "Maybe later", or
-          clicking through) is remembered per-browser so it doesn't pop up
-          on every login, but "Build My Workout" in the top nav is always
-          present regardless, so dismissing it never removes the only way
-          back in. */}
+      {/* Two-tier reminder for low-ticket members who haven't built a
+          workout yet, both gated on the same condition. The card is
+          unconditional page content - no dismiss state, just quietly
+          sits above the feed on every visit. The popup only shows once,
+          ever (localStorage) - dismissing it slides it away to reveal
+          the card that was already there underneath. Once a workout's
+          actually built, both disappear for good and only the "Build My
+          Workout" nav link remains. */}
       {workoutBuilderUrl && hasLowTicket && !hasBuiltWorkout && (
-        <WorkoutBuilderPromptModal
-          href={workoutBuilderUrl}
-          storageKey={`workout-builder-prompt-dismissed-${user.id}`}
-        />
+        <>
+          <WorkoutBuilderCard href={workoutBuilderUrl} />
+          <WorkoutBuilderPromptModal
+            href={workoutBuilderUrl}
+            storageKey={`workout-builder-prompt-dismissed-${user.id}`}
+          />
+        </>
       )}
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
