@@ -79,10 +79,12 @@ export async function resetAvatar(userId: string) {
   revalidatePath('/admin')
 }
 
-// Manual assignment for the low-ticket (₹500/mo) space — this is the
-// bridge until an automated payment flow exists. Once someone's paid
-// (Stripe Payment Link for domestic, or the satish@getfitaf.fitness
-// contact path for international), grant it here.
+// Manual assignment for the low-ticket (₹499/mo) space. Domestic
+// signups are granted automatically by the Stripe webhook
+// (src/app/api/stripe-webhook) once that's deployed — this stays as
+// the fallback for international payments handled manually via the
+// satish@getfitaf.fitness contact path, and as a manual override for
+// anything the webhook doesn't catch.
 export async function grantLowTicketAccess(userId: string) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
