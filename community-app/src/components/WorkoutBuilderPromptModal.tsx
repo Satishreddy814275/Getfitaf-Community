@@ -3,19 +3,18 @@
 import { useEffect, useState } from 'react'
 import ExternalNavLink from './ExternalNavLink'
 
-// Nags-until-built popup for low-ticket members who haven't built a
-// workout yet. Rendered centered over the feed on load. The real gate
-// is server-side (this only ever renders while hasBuiltWorkout is
-// false), so once someone actually builds a plan, it stops appearing
-// permanently on its own — nothing here needs to track that.
+// Once-a-day popup for low-ticket members who haven't built a workout
+// yet — reappears on every calendar day (localStorage, scoped by
+// storageKey passed in by the caller, storing the last-dismissed date)
+// until they actually build one. WorkoutBuilderCard (rendered
+// unconditionally alongside this on the feed) is what's always sitting
+// there in the meantime, so dismissing the popup never leaves the
+// reminder completely gone — it's just quieter for the rest of today.
 //
-// Dismissing (X, "Maybe later", or clicking through) only snoozes it
-// for the rest of today — it reappears on the next calendar day if
-// they still haven't built a workout by then. That's intentionally
-// more persistent than a "seen once, gone forever" popup: the goal is
-// to actually get people to use the feature, not just to be polite
-// about asking once. "Build My Workout" in the top nav is always
-// present regardless of this popup's state either way.
+// The exit animation (fade + scale-down + slide up) is deliberately
+// styled to feel like this is retreating back up into that card at the
+// top of the page, even though it's a simple CSS transition rather
+// than a literal position-matched morph between the two elements.
 export default function WorkoutBuilderPromptModal({
   href,
   storageKey,
@@ -25,17 +24,18 @@ export default function WorkoutBuilderPromptModal({
 }) {
   // Two separate flags on purpose. `mounted` controls whether this is
   // in the DOM at all; `visible` controls the transition's end state.
-  // Mounting first at opacity-0/scale-95, then flipping to visible a
-  // frame later, is what makes the browser actually animate the
+  // Mounting first at the "hidden" transform, then flipping to visible
+  // a frame later, is what makes the browser actually animate the
   // entrance instead of just popping straight into place. Same idea in
   // reverse for dismissal — flip visible off, then only unmount once
-  // the fade/scale-out transition has had time to finish.
+  // the transition has had time to finish.
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
     // Stored value is a calendar-day string (e.g. "Sun Jul 12 2026"),
-    // not a boolean — snoozed only through the end of that local day.
+    // not a boolean — dismissing only snoozes it through the end of
+    // that local day, not forever.
     if (window.localStorage.getItem(storageKey) === new Date().toDateString()) return
     setMounted(true)
     requestAnimationFrame(() => {
@@ -48,18 +48,18 @@ export default function WorkoutBuilderPromptModal({
   const dismiss = () => {
     window.localStorage.setItem(storageKey, new Date().toDateString())
     setVisible(false)
-    setTimeout(() => setMounted(false), 200)
+    setTimeout(() => setMounted(false), 250)
   }
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 transition-opacity duration-200 ease-out ${
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 transition-opacity duration-[250ms] ease-out ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
     >
       <div
-        className={`relative w-full max-w-sm rounded-2xl border border-orange-500/30 bg-[#111111] p-6 text-center shadow-xl transition-all duration-200 ease-out ${
-          visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+        className={`relative w-full max-w-sm rounded-2xl border border-orange-500/30 bg-[#111111] p-6 text-center shadow-xl transition-all duration-[250ms] ease-out ${
+          visible ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-90 -translate-y-20'
         }`}
       >
         <button
