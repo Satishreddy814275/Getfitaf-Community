@@ -183,7 +183,7 @@ export default function FeedTabs({
             <p className="text-center text-sm text-zinc-500 py-12">
               {query
                 ? `No posts or members match "${search.trim()}".`
-                : 'No posts yet — be the first to share something with the group.'}
+                : 'No posts yet - be the first to share something with the group.'}
             </p>
           )}
         </div>
