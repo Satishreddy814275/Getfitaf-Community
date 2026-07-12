@@ -52,6 +52,36 @@ export async function getActiveWorkoutPlan(email: string): Promise<ActiveWorkout
   return { generationId: generation.id, days }
 }
 
+// Regenerating a plan (the free-text-feedback tweak, up to 3x per
+// intake) creates a new generation row, but it's still fundamentally
+// the same program - same days-per-week, same overall structure. So
+// when figuring out "how many times has this member done Day 1
+// before" for the multi-week auto-numbering, sessions logged against
+// an earlier regeneration of the same intake should still count,
+// rather than resetting to zero every time someone tweaks their plan.
+// Only starting a genuinely new plan (a new intake) is a real reset.
+// Falls back to just the one generation id if the lookup fails for
+// any reason - worst case, week numbering under-counts slightly
+// rather than breaking.
+export async function getSiblingGenerationIds(generationId: string): Promise<string[]> {
+  const admin = createAdminClient()
+
+  const { data: generation } = await admin
+    .from('workout_generations')
+    .select('intake_id')
+    .eq('id', generationId)
+    .maybeSingle()
+
+  if (!generation?.intake_id) return [generationId]
+
+  const { data: siblings } = await admin
+    .from('workout_generations')
+    .select('id')
+    .eq('intake_id', generation.intake_id)
+
+  return siblings && siblings.length > 0 ? siblings.map((s) => s.id) : [generationId]
+}
+
 // Parses a target-sets string like "3", "3-5", or "2-3 sets" down to a
 // single number of input rows to render when someone starts logging
 // this exercise - not exact (a range collapses to its lower bound),
