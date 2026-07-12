@@ -1,8 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import LeaderboardList from '@/components/LeaderboardList'
+import ExternalNavLink from '@/components/ExternalNavLink'
+import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import type { Post, LeaderboardRow } from '@/types'
 
 export default async function FeedPage({
@@ -32,34 +35,55 @@ export default async function FeedPage({
   // with comments still collapsed.
   const initialCommentId = params.comment || null
 
-  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes] = await Promise.all([
-    supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
-    supabase
-      .from('space_memberships')
-      .select('space')
-      .eq('profile_id', user.id)
-      .eq('space', 'low_ticket')
-      .maybeSingle(),
-    supabase
-      .from('posts')
-      .select(
-        `
+  // workout_intakes lives behind RLS with no policies (see
+  // migration-workout-builder.sql) — only the service-role key can
+  // read it, which is why this specific check goes through the admin
+  // client rather than the normal session-based one used everywhere
+  // else on this page.
+  const adminSupabase = createAdminClient()
+
+  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, workoutIntakeRes] =
+    await Promise.all([
+      supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
+      supabase
+        .from('space_memberships')
+        .select('space')
+        .eq('profile_id', user.id)
+        .eq('space', 'low_ticket')
+        .maybeSingle(),
+      supabase
+        .from('posts')
+        .select(
+          `
       id, content, media_url, media_type, is_announcement, pinned, space, created_at,
       profiles ( id, full_name, avatar_url ),
       comments ( id, content, created_at, parent_comment_id, profiles ( id, full_name, avatar_url ), comment_likes ( id, user_id, profiles ( id, full_name, avatar_url ) ) ),
       likes ( id, user_id, profiles ( id, full_name, avatar_url ) )
     `
-      )
-      .order('pinned', { ascending: false })
-      .order('is_announcement', { ascending: false })
-      .order('created_at', { ascending: false }),
-    supabase.rpc('get_user_streak', { uid: user.id }),
-    supabase.rpc('get_community_leaderboard'),
-  ])
+        )
+        .order('pinned', { ascending: false })
+        .order('is_announcement', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.rpc('get_user_streak', { uid: user.id }),
+      supabase.rpc('get_community_leaderboard'),
+      user.email
+        ? adminSupabase
+            .from('workout_intakes')
+            .select('id')
+            .ilike('email', user.email)
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
 
   const isAdmin = !!profileRes.data?.is_admin
   const isApproved = !!profileRes.data?.approved
   const hasLowTicket = !!membershipRes.data
+  const hasBuiltWorkout = !!workoutIntakeRes?.data
+  // Generated fresh on every load (5-minute expiry) - mirrors the same
+  // handoff pattern used for the persistent nav link in layout.tsx.
+  const workoutBuilderUrl =
+    user.email && (hasLowTicket || isAdmin) ? createWorkoutBuilderHandoffUrl(user.email) : null
 
   // Nobody should ever land on a blank, empty-looking feed with no
   // explanation — that's a dead end, not an experience. If someone's
@@ -88,6 +112,27 @@ export default async function FeedPage({
           <span>
             {streak} day{streak === 1 ? '' : 's'} active streak
           </span>
+        </div>
+      )}
+
+      {/* One-time-feeling welcome card - only shows for low-ticket members
+          who haven't built a workout yet. Once they've built one, this
+          disappears and "Build My Workout" in the top nav is the only way
+          back in, so it doesn't turn into a recurring nag. */}
+      {workoutBuilderUrl && hasLowTicket && !hasBuiltWorkout && (
+        <div className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-5 sm:p-6">
+          <p className="text-white font-semibold mb-1">Your workout plan is ready to build</p>
+          <p className="text-zinc-400 text-sm mb-4">
+            Answer a few quick questions about your goals and equipment, and get a full plan
+            built for you in minutes.
+          </p>
+          <ExternalNavLink
+            href={workoutBuilderUrl}
+            className="inline-block bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
+            loadingLabel="Taking you to the workout builder..."
+          >
+            Build My Workout
+          </ExternalNavLink>
         </div>
       )}
 
