@@ -122,3 +122,38 @@ export async function approveProfile(userId: string) {
 
   revalidatePath('/admin/members')
 }
+
+// Exercise video library - added incrementally by Satish/coaches over
+// time. Matching against AI-generated exercise names happens live in
+// /workouts (src/lib/exerciseVideos.ts), not at generation time, so a
+// video added here immediately becomes visible on every past plan
+// that references a matching exercise name, no regeneration needed.
+export async function addExerciseVideo(exerciseName: string, videoUrl: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const trimmedName = exerciseName.trim()
+  const trimmedUrl = videoUrl.trim()
+  if (!trimmedName || !trimmedUrl) return
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  await supabase.from('exercise_videos').insert({
+    exercise_name: trimmedName,
+    video_url: trimmedUrl,
+    added_by: user?.id || null,
+  })
+
+  revalidatePath('/admin/videos')
+}
+
+export async function deleteExerciseVideo(id: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase.from('exercise_videos').delete().eq('id', id)
+
+  revalidatePath('/admin/videos')
+}

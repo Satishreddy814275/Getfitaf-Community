@@ -57,12 +57,20 @@ export default async function AdminPage() {
           <h1 className="text-xl font-bold text-white">Community Moderation</h1>
           <p className="text-sm text-zinc-500 mt-1">Review and remove posts or comments from the feed.</p>
         </div>
-        <Link
-          href="/admin/members"
-          className="text-sm font-medium text-orange-500 hover:text-orange-400 transition shrink-0"
-        >
-          Members →
-        </Link>
+        <div className="flex items-center gap-4 shrink-0">
+          <Link
+            href="/admin/members"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Members →
+          </Link>
+          <Link
+            href="/admin/videos"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Videos →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-8">
