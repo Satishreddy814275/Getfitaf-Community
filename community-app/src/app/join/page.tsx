@@ -62,27 +62,34 @@ export default async function JoinPage() {
         </div>
 
         {isLoggedIn && hasNoAccess && (
-          <div className="mb-6 p-4 rounded-xl bg-orange-500/10 border border-orange-500/30 space-y-2">
+          <div className="mb-6 space-y-3">
             <p className="text-white text-sm font-semibold">
               Looks like you don&apos;t have an active membership yet
             </p>
-            <p className="text-zinc-300 text-sm leading-relaxed">
-              Waiting on approval for the 1-on-1 coaching program? Hang tight - approvals usually
-              go through within 12-24 hours.
-            </p>
-            <p className="text-zinc-300 text-sm leading-relaxed">
-              Looking for 1-on-1 coaching but haven&apos;t started yet? DM me on Instagram{' '}
-              <a
-                href={INSTAGRAM_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-orange-400 hover:text-orange-300 transition"
-              >
-                {INSTAGRAM_HANDLE}
-              </a>{' '}
-              and I&apos;ll get you sorted.
-            </p>
-            <p className="text-zinc-300 text-sm leading-relaxed">
+
+            <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
+              <p className="text-zinc-300 text-sm leading-relaxed">
+                Waiting on approval for the 1-on-1 coaching program? Hang tight - approvals
+                usually go through within 12-24 hours.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
+              <p className="text-zinc-300 text-sm leading-relaxed">
+                Looking for 1-on-1 coaching but haven&apos;t started yet? DM me on Instagram{' '}
+                <a
+                  href={INSTAGRAM_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-orange-400 hover:text-orange-300 transition"
+                >
+                  {INSTAGRAM_HANDLE}
+                </a>{' '}
+                and I&apos;ll get you sorted.
+              </p>
+            </div>
+
+            <p className="text-zinc-400 text-sm leading-relaxed">
               Just want the workout builder + community? Start your free trial below.
             </p>
           </div>
@@ -145,32 +152,23 @@ export default async function JoinPage() {
                   Start Free 7-Day Trial (India)
                 </a>
 
-                <p className="text-zinc-500 text-xs leading-relaxed">
+                <p className="text-zinc-500 text-xs leading-relaxed mb-3">
                   You won&apos;t be charged until your trial ends, and you can cancel anytime
-                  before then at no cost. Paying from outside India? Email{' '}
-                  <a
-                    href={`mailto:${CONTACT_EMAIL}?subject=Joining the GetFit AF Community`}
-                    className="text-orange-400 hover:text-orange-300 transition"
-                  >
-                    {CONTACT_EMAIL}
-                  </a>{' '}
-                  and we&apos;ll get you set up directly.
+                  before then at no cost.
                 </p>
-              </div>
 
-              <div>
-                <p className="text-zinc-400 text-sm mb-2">
-                  <span className="text-white font-semibold">Step {isLoggedIn ? 2 : 3}.</span>{' '}
-                  Build your first workout
-                </p>
-                <a
-                  href="https://workoutbuilder.getfitaf.fitness"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full text-center border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 font-bold py-3 rounded-xl transition text-sm"
-                >
-                  Build My Workout →
-                </a>
+                <div className="p-3 rounded-lg bg-zinc-900/50 border border-zinc-800">
+                  <p className="text-zinc-500 text-xs leading-relaxed">
+                    Paying from outside India? Email{' '}
+                    <a
+                      href={`mailto:${CONTACT_EMAIL}?subject=Joining the GetFit AF Community`}
+                      className="text-orange-400 hover:text-orange-300 transition"
+                    >
+                      {CONTACT_EMAIL}
+                    </a>{' '}
+                    and we&apos;ll get you set up directly.
+                  </p>
+                </div>
               </div>
             </div>
 
