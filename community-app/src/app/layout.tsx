@@ -124,6 +124,19 @@ export default async function RootLayout({
                     Build My Workout
                   </ExternalNavLink>
                 )}
+                {(hasLowTicket || isAdmin) && (
+                  // Internal route (next/link, not ExternalNavLink) -
+                  // /workouts itself handles the "no plan built yet"
+                  // case gracefully, so this is always shown rather
+                  // than needing the same existence check the feed's
+                  // card/popup do.
+                  <Link
+                    href="/workouts"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition"
+                  >
+                    Workouts
+                  </Link>
+                )}
                 <form action={signOut}>
                   <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
                     Sign out
