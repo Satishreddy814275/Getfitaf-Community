@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import LeaderboardList from '@/components/LeaderboardList'
-import ExternalNavLink from '@/components/ExternalNavLink'
+import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
 import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import type { Post, LeaderboardRow } from '@/types'
 
@@ -115,25 +115,17 @@ export default async function FeedPage({
         </div>
       )}
 
-      {/* One-time-feeling welcome card - only shows for low-ticket members
-          who haven't built a workout yet. Once they've built one, this
-          disappears and "Build My Workout" in the top nav is the only way
-          back in, so it doesn't turn into a recurring nag. */}
+      {/* Centered one-time-feeling popup - only for low-ticket members who
+          haven't built a workout yet. Dismissal (X, "Maybe later", or
+          clicking through) is remembered per-browser so it doesn't pop up
+          on every login, but "Build My Workout" in the top nav is always
+          present regardless, so dismissing it never removes the only way
+          back in. */}
       {workoutBuilderUrl && hasLowTicket && !hasBuiltWorkout && (
-        <div className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-5 sm:p-6">
-          <p className="text-white font-semibold mb-1">Your workout plan is ready to build</p>
-          <p className="text-zinc-400 text-sm mb-4">
-            Answer a few quick questions about your goals and equipment, and get a full plan
-            built for you in minutes.
-          </p>
-          <ExternalNavLink
-            href={workoutBuilderUrl}
-            className="inline-block bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
-            loadingLabel="Taking you to the workout builder..."
-          >
-            Build My Workout
-          </ExternalNavLink>
-        </div>
+        <WorkoutBuilderPromptModal
+          href={workoutBuilderUrl}
+          storageKey={`workout-builder-prompt-dismissed-${user.id}`}
+        />
       )}
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
