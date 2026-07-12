@@ -32,8 +32,14 @@ export default async function FeedPage({
   // with comments still collapsed.
   const initialCommentId = params.comment || null
 
-  const [profileRes, postsRes, streakRes, leaderboardRes] = await Promise.all([
-    supabase.from('profiles').select('is_admin').eq('id', user.id).single(),
+  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes] = await Promise.all([
+    supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
+    supabase
+      .from('space_memberships')
+      .select('space')
+      .eq('profile_id', user.id)
+      .eq('space', 'low_ticket')
+      .maybeSingle(),
     supabase
       .from('posts')
       .select(
@@ -52,6 +58,20 @@ export default async function FeedPage({
   ])
 
   const isAdmin = !!profileRes.data?.is_admin
+  const isApproved = !!profileRes.data?.approved
+  const hasLowTicket = !!membershipRes.data
+
+  // Nobody should ever land on a blank, empty-looking feed with no
+  // explanation — that's a dead end, not an experience. If someone's
+  // logged in but has no active membership in either space (most
+  // commonly: signed up but never actually paid), send them to /join
+  // instead, which explains the situation and gives them a way to
+  // pay. /join itself detects that they're already logged in and
+  // adjusts its messaging accordingly (see src/app/join/page.tsx).
+  if (!isAdmin && !isApproved && !hasLowTicket) {
+    redirect('/join')
+  }
+
   const posts = (postsRes.data as unknown as Post[] | null) || []
   const streak = typeof streakRes.data === 'number' ? streakRes.data : 0
   const allRankings = (leaderboardRes.data as LeaderboardRow[] | null) || []
