@@ -3,13 +3,19 @@
 import { useEffect, useState } from 'react'
 import ExternalNavLink from './ExternalNavLink'
 
-// One-time-feeling popup for low-ticket members who haven't built a
-// workout yet. Rendered centered over the feed on load. Dismissal is
-// remembered per-browser via localStorage (scoped by storageKey, which
-// the caller derives from the user's id) so it doesn't nag on every
-// login — but the "Build My Workout" nav link in the header is always
-// present regardless of this popup's state, so closing it without
-// building a workout never removes the only way back in.
+// Nags-until-built popup for low-ticket members who haven't built a
+// workout yet. Rendered centered over the feed on load. The real gate
+// is server-side (this only ever renders while hasBuiltWorkout is
+// false), so once someone actually builds a plan, it stops appearing
+// permanently on its own — nothing here needs to track that.
+//
+// Dismissing (X, "Maybe later", or clicking through) only snoozes it
+// for the rest of today — it reappears on the next calendar day if
+// they still haven't built a workout by then. That's intentionally
+// more persistent than a "seen once, gone forever" popup: the goal is
+// to actually get people to use the feature, not just to be polite
+// about asking once. "Build My Workout" in the top nav is always
+// present regardless of this popup's state either way.
 export default function WorkoutBuilderPromptModal({
   href,
   storageKey,
@@ -28,7 +34,9 @@ export default function WorkoutBuilderPromptModal({
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (window.localStorage.getItem(storageKey) === '1') return
+    // Stored value is a calendar-day string (e.g. "Sun Jul 12 2026"),
+    // not a boolean — snoozed only through the end of that local day.
+    if (window.localStorage.getItem(storageKey) === new Date().toDateString()) return
     setMounted(true)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setVisible(true))
@@ -38,7 +46,7 @@ export default function WorkoutBuilderPromptModal({
   if (!mounted) return null
 
   const dismiss = () => {
-    window.localStorage.setItem(storageKey, '1')
+    window.localStorage.setItem(storageKey, new Date().toDateString())
     setVisible(false)
     setTimeout(() => setMounted(false), 200)
   }
