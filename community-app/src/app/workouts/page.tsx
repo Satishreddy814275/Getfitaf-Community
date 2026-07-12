@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
+import { getActiveWorkoutPlan, getSiblingGenerationIds } from '@/lib/workoutPlan'
 import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import ExternalNavLink from '@/components/ExternalNavLink'
 import WorkoutDayPicker from '@/components/WorkoutDayPicker'
@@ -57,16 +57,25 @@ export default async function WorkoutsPage() {
     )
   }
 
-  // Which week/day combos this member has already completed, so the
-  // picker can show that at a glance. Flexible rotation, not
-  // calendar-locked - they can do these in any order, any pace.
+  // How many times this member has completed each day, aggregated
+  // across any regeneration of this same program (not just this exact
+  // generation - see getSiblingGenerationIds), since that's the same
+  // count logWorkoutSession uses to auto-number the next session's
+  // week. Flexible rotation, not calendar-locked - they can do these
+  // in any order, any pace, and repeat a day for its next "week"
+  // whenever they get to it.
+  const siblingGenerationIds = await getSiblingGenerationIds(plan.generationId)
   const { data: sessionsData } = await supabase
     .from('workout_sessions')
-    .select('week_number, day_number')
+    .select('day_number')
     .eq('profile_id', user.id)
+    .in('generation_id', siblingGenerationIds)
     .not('completed_at', 'is', null)
 
-  const completedDayKeys = (sessionsData || []).map((s) => `${s.week_number}-${s.day_number}`)
+  const sessionCountByDay: Record<number, number> = {}
+  for (const row of sessionsData || []) {
+    sessionCountByDay[row.day_number] = (sessionCountByDay[row.day_number] || 0) + 1
+  }
 
   // Most recent logged set per exercise, across all past sessions -
   // shown as a "last time" reference while logging a new one.
@@ -97,7 +106,7 @@ export default async function WorkoutsPage() {
       <WorkoutDayPicker
         generationId={plan.generationId}
         days={plan.days}
-        completedDayKeys={completedDayKeys}
+        sessionCountByDay={sessionCountByDay}
         lastByExercise={lastByExercise}
       />
     </div>
