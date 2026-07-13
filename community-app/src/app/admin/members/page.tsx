@@ -4,6 +4,9 @@ import Link from 'next/link'
 import AdminMembersList from '@/components/AdminMembersList'
 import AdminNewRequestsList from '@/components/AdminNewRequestsList'
 
+// See admin/page.tsx for why this is forced dynamic.
+export const dynamic = 'force-dynamic'
+
 export default async function AdminMembersPage() {
   const supabase = await createClient()
   const {
