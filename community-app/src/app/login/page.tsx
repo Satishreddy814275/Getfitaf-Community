@@ -11,6 +11,20 @@ import { createClient } from '@/lib/supabase/client'
 // separately rather than just adding a useState in LoginForm. This is
 // what was missing before: the button just said "Sign in" the whole
 // time, with nothing to show a submission was actually happening.
+// Client-side equivalent of clearStaleAuthCookies() in login/actions.ts
+// - magic link and Google sign-in run entirely in the browser and
+// never touch that server action, so without this they'd skip the
+// same stale-cookie-chunk cleanup and could reintroduce the exact
+// "AuthSessionMissingError" corruption that fix was for.
+function clearStaleAuthCookies() {
+  document.cookie.split(';').forEach((c) => {
+    const name = c.split('=')[0].trim()
+    if (name.startsWith('sb-') && name.includes('auth-token')) {
+      document.cookie = `${name}=; domain=.getfitaf.fitness; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+    }
+  })
+}
+
 function SubmitButton({ mode }: { mode: 'signin' | 'signup' }) {
   const { pending } = useFormStatus()
   return (
@@ -55,6 +69,7 @@ function LoginForm() {
       return
     }
     setMagicLinkStatus('sending')
+    clearStaleAuthCookies()
     const supabase = createClient()
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
@@ -70,6 +85,7 @@ function LoginForm() {
 
   async function handleGoogleSignIn() {
     setGoogleLoading(true)
+    clearStaleAuthCookies()
     const supabase = createClient()
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
