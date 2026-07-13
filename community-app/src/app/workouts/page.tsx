@@ -6,7 +6,7 @@ import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import ExternalNavLink from '@/components/ExternalNavLink'
 import WorkoutsTabs from '@/components/WorkoutsTabs'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
-import type { LastLoggedSet, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
+import type { LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
 
 export default async function WorkoutsPage() {
   const supabase = await createClient()
@@ -108,6 +108,24 @@ export default async function WorkoutsPage() {
     videoUrl: v.video_url,
   }))
 
+  // Scoped to the current generation only, same as completedCells
+  // above - a regenerated plan starts fresh, so swaps from an older
+  // version of the plan shouldn't bleed into a different one.
+  const { data: swapsData } = await supabase
+    .from('workout_exercise_swaps')
+    .select('week_number, day_number, original_exercise_name, new_exercise_name, sets, reps')
+    .eq('profile_id', user.id)
+    .eq('generation_id', plan.generationId)
+
+  const swaps: WorkoutExerciseSwap[] = (swapsData || []).map((s) => ({
+    weekNumber: s.week_number,
+    dayNumber: s.day_number,
+    originalExerciseName: s.original_exercise_name,
+    newExerciseName: s.new_exercise_name,
+    sets: s.sets,
+    reps: s.reps,
+  }))
+
   const lastByExercise: Record<string, LastLoggedSet> = {}
   for (const row of loggedSetsData || []) {
     if (!lastByExercise[row.exercise_name]) {
@@ -197,6 +215,7 @@ export default async function WorkoutsPage() {
         lastByExercise={lastByExercise}
         history={history}
         videos={videos}
+        swaps={swaps}
       />
     </div>
   )

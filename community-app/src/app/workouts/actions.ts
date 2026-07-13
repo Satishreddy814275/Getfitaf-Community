@@ -108,3 +108,45 @@ export async function requestExerciseVideo(exerciseName: string) {
 
   revalidatePath('/feed')
 }
+
+// Records a swap (see migration-exercise-swaps.sql) - never touches
+// workout_generations.structured_plan itself, just an overlay row
+// that /workouts merges in at render time. weekNumber 0 means "every
+// week"; upserted on (generation, profile, day, week, original name)
+// so swapping the same slot again updates this row instead of
+// stacking duplicates, and typing the true original name back in is
+// how a member reverts - no separate "undo" path needed.
+export async function swapExercise(input: {
+  generationId: string
+  day: number
+  weekNumber: number
+  originalExerciseName: string
+  newExerciseName: string
+  sets: string
+  reps: string
+}) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const trimmedName = input.newExerciseName.trim()
+  if (!trimmedName) return
+
+  await supabase.from('workout_exercise_swaps').upsert(
+    {
+      profile_id: user.id,
+      generation_id: input.generationId,
+      day_number: input.day,
+      week_number: input.weekNumber,
+      original_exercise_name: input.originalExerciseName,
+      new_exercise_name: trimmedName,
+      sets: input.sets,
+      reps: input.reps,
+    },
+    { onConflict: 'generation_id,profile_id,day_number,week_number,original_exercise_name' }
+  )
+
+  revalidatePath('/workouts')
+}
