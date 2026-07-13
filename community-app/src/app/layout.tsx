@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
-import Link from "next/link";
 import "./globals.css";
 
 // Applied once here at the root layout - cascades to every page in the
@@ -15,9 +14,7 @@ const manrope = Manrope({
   variable: "--font-manrope",
 });
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "@/app/login/actions";
-import NotificationBell from "@/components/NotificationBell";
-import ExternalNavLink from "@/components/ExternalNavLink";
+import AppNav from "@/components/AppNav";
 import { createWorkoutBuilderHandoffUrl } from "@/lib/workoutBuilderHandoff";
 import type { Notification } from "@/types";
 
@@ -77,89 +74,19 @@ export default async function RootLayout({
     <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
         {user && (
-          <header className="border-b border-zinc-800 bg-[#0a0a0a]">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-              <Link
-                href="/feed"
-                className="font-black text-base tracking-tight text-white hover:opacity-80 transition"
-              >
-                GET<span className="text-orange-500">FIT</span> AF
-                <span className="ml-1.5 font-medium text-zinc-400">Community</span>
-              </Link>
-              <div className="flex items-center gap-4">
-                <NotificationBell initialNotifications={notifications} />
-                {/* next/link, not a plain <a> — a plain anchor here
-                    triggers a full browser reload instead of Next's
-                    client-side transition, which is exactly why
-                    loading.tsx never got a chance to show for these. */}
-                <Link
-                  href="/leaderboard"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                >
-                  Leaderboard
-                </Link>
-                <Link
-                  href="/profile"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                >
-                  Edit Profile
-                </Link>
-                {isAdmin && (
-                  <Link
-                    href="/admin"
-                    className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                  >
-                    Admin
-                  </Link>
-                )}
-                {isAdmin || isApproved ? (
-                  <ExternalNavLink
-                    href="https://learn.getfitaf.fitness/dashboard.html"
-                    className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-                    loadingLabel="Taking you to your lessons..."
-                  >
-                    Go to your lessons
-                  </ExternalNavLink>
-                ) : (
-                  // Daily lessons aren't open to the low-ticket space yet -
-                  // shown as plain text (not a link) so nobody clicks
-                  // through to a page that'll just look broken for them.
-                  <span className="text-sm font-medium text-zinc-600" title="Daily lessons for this membership are on the way">
-                    Daily lessons - coming soon
-                  </span>
-                )}
-                {workoutBuilderUrl && (
-                  <ExternalNavLink
-                    href={workoutBuilderUrl}
-                    className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-                    loadingLabel="Taking you to the workout builder..."
-                  >
-                    Build My Workout
-                  </ExternalNavLink>
-                )}
-                {(hasLowTicket || isAdmin) && (
-                  // Internal route (next/link, not ExternalNavLink) -
-                  // /workouts itself handles the "no plan built yet"
-                  // case gracefully, so this is always shown rather
-                  // than needing the same existence check the feed's
-                  // card/popup do.
-                  <Link
-                    href="/workouts"
-                    className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                  >
-                    Workouts
-                  </Link>
-                )}
-                <form action={signOut}>
-                  <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
-                    Sign out
-                  </button>
-                </form>
-              </div>
-            </div>
-          </header>
+          <AppNav
+            isAdmin={isAdmin}
+            isApproved={isApproved}
+            hasLowTicket={hasLowTicket}
+            workoutBuilderUrl={workoutBuilderUrl}
+            notifications={notifications}
+          />
         )}
-        {children}
+        {/* Bottom padding on mobile only, clearing the fixed bottom tab
+            bar in AppNav (~64px + safe-area inset) so page content
+            never sits underneath it. Not needed on desktop, where
+            there's no fixed bottom bar. */}
+        <div className={user ? 'pb-16 sm:pb-0' : ''}>{children}</div>
       </body>
     </html>
   );
