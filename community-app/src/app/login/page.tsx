@@ -40,6 +40,7 @@ function LoginForm() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const params = useSearchParams()
   const error = params.get('error')
+  const next = params.get('next')
 
   // Despite the "forgot password" framing, this is a magic-link sign
   // in (signInWithOtp) rather than an actual password reset — it lets
@@ -104,6 +105,7 @@ function LoginForm() {
         )}
 
         <form action={mode === 'signin' ? signIn : signUp} className="space-y-4">
+          {next && <input type="hidden" name="next" value={next} />}
           {mode === 'signup' && (
             <div>
               <label className="text-zinc-400 text-sm block mb-1.5">Full name</label>
