@@ -42,6 +42,7 @@ export default function AdminExerciseVideosList({
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const [showBulkImport, setShowBulkImport] = useState(false)
+  const [showNeedsVideo, setShowNeedsVideo] = useState(true)
   const [bulkText, setBulkText] = useState('')
   const [isBulkImporting, setIsBulkImporting] = useState(false)
 
@@ -198,9 +199,18 @@ export default function AdminExerciseVideosList({
 
       {needsVideo.length > 0 && (
         <div className="mb-6">
-          <p className="text-xs font-medium text-zinc-500 mb-2">
-            Needs a video - ranked by how often it&apos;s actually been prescribed
-          </p>
+          <button
+            type="button"
+            onClick={() => setShowNeedsVideo((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-white transition mb-2"
+          >
+            <span>{showNeedsVideo ? '▾' : '▸'}</span>
+            <span>
+              Needs a video ({needsVideo.length}) - ranked by how often it&apos;s actually been
+              prescribed
+            </span>
+          </button>
+          {showNeedsVideo && (
           <div className="flex flex-wrap gap-2">
             {needsVideo.map((item) => (
               <button
@@ -214,6 +224,7 @@ export default function AdminExerciseVideosList({
               </button>
             ))}
           </div>
+          )}
         </div>
       )}
 
