@@ -21,13 +21,21 @@ export default async function AdminVideosPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  const { data: videos } = await supabase
+  const { data: videosData } = await supabase
     .from('exercise_videos')
-    .select('id, exercise_name, video_url, created_at')
+    .select('id, exercise_name, video_url, created_at, added_by, profiles ( full_name )')
     .order('exercise_name')
 
+  const videos = (videosData || []).map((v) => ({
+    id: v.id,
+    exercise_name: v.exercise_name,
+    video_url: v.video_url,
+    created_at: v.created_at,
+    added_by_name: (v.profiles as unknown as { full_name: string | null } | null)?.full_name || null,
+  }))
+
   return (
-    <div className="max-w-2xl mx-auto w-full py-8 px-4 sm:px-6">
+    <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
         href="/admin"
         className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
