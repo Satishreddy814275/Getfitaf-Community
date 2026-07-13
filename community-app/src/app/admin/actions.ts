@@ -1,7 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
+import type { WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -201,4 +204,77 @@ export async function addExerciseVideosBulk(rows: { exerciseName: string; videoU
   await supabase.from('exercise_videos').insert(cleaned)
 
   revalidatePath('/admin/videos')
+}
+
+// Full workout history for one member, fetched on-demand (only when
+// an admin actually expands that member's row on /admin/members, not
+// eagerly for everyone in the list) - mirrors the exact grouping logic
+// in workouts/page.tsx, just parameterized by an arbitrary member
+// instead of always the signed-in user, and going through the
+// admin/service-role client since workout_sessions/workout_logged_sets
+// are owner-scoped by RLS (profile_id = auth.uid()) and this needs to
+// read another member's rows. Returns the same WorkoutHistoryGroup[]
+// shape the member-facing WorkoutHistoryList component already
+// renders, so no new display component was needed here.
+export async function getMemberWorkoutHistory(
+  memberId: string,
+  memberEmail: string | null
+): Promise<WorkoutHistoryGroup[]> {
+  const { isAdmin } = await requireAdmin()
+  if (!isAdmin) return []
+
+  const admin = createAdminClient()
+
+  const activePlan = memberEmail ? await getActiveWorkoutPlan(memberEmail) : null
+
+  const { data: allSessions } = await admin
+    .from('workout_sessions')
+    .select('id, generation_id, week_number, day_number, day_label, completed_at')
+    .eq('profile_id', memberId)
+    .not('completed_at', 'is', null)
+    .order('completed_at', { ascending: false })
+
+  const sessionIds = (allSessions || []).map((s) => s.id)
+  const { data: allSetsData } =
+    sessionIds.length > 0
+      ? await admin
+          .from('workout_logged_sets')
+          .select('session_id, exercise_name, set_number, weight, reps')
+          .in('session_id', sessionIds)
+      : { data: [] as { session_id: string; exercise_name: string; set_number: number; weight: number | null; reps: number | null }[] }
+
+  const setsBySession: Record<string, WorkoutHistorySet[]> = {}
+  for (const row of allSetsData || []) {
+    if (!setsBySession[row.session_id]) setsBySession[row.session_id] = []
+    setsBySession[row.session_id].push({
+      exerciseName: row.exercise_name,
+      setNumber: row.set_number,
+      weight: row.weight,
+      reps: row.reps,
+    })
+  }
+
+  const groupsByGeneration = new Map<string, WorkoutHistoryGroup>()
+  for (const s of allSessions || []) {
+    const group: WorkoutHistoryGroup = groupsByGeneration.get(s.generation_id) || {
+      generationId: s.generation_id,
+      isCurrent: s.generation_id === activePlan?.generationId,
+      sessions: [],
+    }
+    group.sessions.push({
+      id: s.id,
+      week: s.week_number,
+      day: s.day_number,
+      label: s.day_label,
+      completedAt: s.completed_at,
+      sets: setsBySession[s.id] || [],
+    })
+    groupsByGeneration.set(s.generation_id, group)
+  }
+
+  return Array.from(groupsByGeneration.values()).sort((a, b) => {
+    if (a.isCurrent) return -1
+    if (b.isCurrent) return 1
+    return (b.sessions[0]?.completedAt || '').localeCompare(a.sessions[0]?.completedAt || '')
+  })
 }
