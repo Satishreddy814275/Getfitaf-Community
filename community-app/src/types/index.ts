@@ -119,3 +119,22 @@ export interface WorkoutHistoryGroup {
   isCurrent: boolean
   sessions: WorkoutHistorySession[]
 }
+
+// A member-initiated exercise substitution (see
+// migration-exercise-swaps.sql). weekNumber 0 means "every week" -
+// the plan template only ever describes one week's worth of days,
+// replayed 4x by WorkoutDayPicker, so a swap that should apply
+// everywhere is just the same row without a specific week attached.
+// A week-specific swap (1-4) overrides an all-weeks swap for the same
+// day/exercise if both happen to exist. Keyed by originalExerciseName
+// (the untouched template name, not whatever's currently displayed)
+// so swapping twice in a row updates the same row instead of stacking,
+// and swapping back to the original name is just a normal swap.
+export interface WorkoutExerciseSwap {
+  weekNumber: number
+  dayNumber: number
+  originalExerciseName: string
+  newExerciseName: string
+  sets: string
+  reps: string
+}
