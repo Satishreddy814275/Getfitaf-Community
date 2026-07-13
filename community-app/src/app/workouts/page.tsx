@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import ExternalNavLink from '@/components/ExternalNavLink'
@@ -40,6 +41,12 @@ export default async function WorkoutsPage() {
     const workoutBuilderUrl = user.email ? createWorkoutBuilderHandoffUrl(user.email) : null
     return (
       <div className="max-w-xl mx-auto w-full py-16 px-4 text-center">
+        <Link
+          href="/feed"
+          className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-8"
+        >
+          ← Back to Community
+        </Link>
         <p className="text-white text-lg font-bold mb-2">No workout to log yet</p>
         <p className="text-zinc-400 text-sm mb-6">
           Build your workout first, then come back here to log your sessions.
@@ -157,6 +164,12 @@ export default async function WorkoutsPage() {
 
   return (
     <div className="max-w-3xl mx-auto w-full py-8 px-4 sm:px-6">
+      <Link
+        href="/feed"
+        className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
+      >
+        ← Back to Community
+      </Link>
       <h1 className="text-white text-xl font-bold mb-1">Your Workouts</h1>
       <p className="text-zinc-400 text-sm mb-6">
         Your 4-week program. Same split each week - tap whatever's next, or pick any session
