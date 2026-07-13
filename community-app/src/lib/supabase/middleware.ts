@@ -31,6 +31,7 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
 
   const isPublicRoute =
@@ -41,6 +42,20 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/join')
 
   if (!user && !isPublicRoute) {
+    // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
+    // Logs. The two previous fixes here (force-dynamic, then memoizing
+    // createClient) didn't resolve the "signed out on every click"
+    // report, so guessing a third time isn't the right move - this
+    // gives real evidence of WHY getUser() is failing (an actual
+    // Supabase error vs. simply no session cookie present at all) the
+    // next time it happens.
+    console.error('[middleware] blocked, no valid session', {
+      path: request.nextUrl.pathname,
+      errorName: error?.name,
+      errorMessage: error?.message,
+      errorStatus: error?.status,
+      cookieNames: request.cookies.getAll().map((c) => c.name),
+    })
     // Preserve where they were headed so login can send them back
     // there instead of always dumping them on /feed - e.g. bounced off
     // /admin should return to /admin after signing back in, not the
