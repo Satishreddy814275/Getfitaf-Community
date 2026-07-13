@@ -7,49 +7,45 @@ export interface ActiveWorkoutPlan {
 }
 
 // Finds the plan a member should be logging against: their most
-// recent workout_intakes row (by email), then the most recent
-// generation on that intake that actually has structured_plan data
-// (only ever set for verified/community visits - see
-// Getfitaf-workout-builder-main/api/generate.js). Returns null if
-// they've never built a plan while logged in, or only have older
-// plans built before this feature existed (those only have markdown,
-// no structured_plan to log against).
+// recent program_enrollments row, then that enrollment's template's
+// structured_plan. Returns null if they haven't picked a program yet.
 //
-// Goes through the admin/service-role client because workout_intakes
-// and workout_generations have zero RLS policies - the workout
-// builder itself has no login of its own, so only service-role can
-// read these tables at all (see migration-workout-builder.sql).
-export async function getActiveWorkoutPlan(email: string): Promise<ActiveWorkoutPlan | null> {
-  const trimmed = email.trim()
-  if (!trimmed) return null
+// Replaces the old email -> workout_intakes -> workout_generations
+// lookup (AI builder era) now that community members pick from a
+// curated program_templates library instead - see
+// migration-program-templates.sql. The AI builder's own tables are
+// untouched; this only changes what community-app logging resolves
+// against. Kept on the admin/service-role client for the same reason
+// as before: this is called for both "my own plan" and "an admin
+// looking at another member's plan" (see admin/actions.ts), and
+// program_enrollments/program_templates RLS already allows both cases
+// individually, but going through one client keeps this function's
+// behavior identical regardless of caller context.
+export async function getActiveWorkoutPlan(profileId: string): Promise<ActiveWorkoutPlan | null> {
+  if (!profileId) return null
 
   const admin = createAdminClient()
 
-  const { data: intake } = await admin
-    .from('workout_intakes')
-    .select('id')
-    .ilike('email', trimmed)
+  const { data: enrollment } = await admin
+    .from('program_enrollments')
+    .select('id, program_template_id')
+    .eq('profile_id', profileId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
-  if (!intake) return null
+  if (!enrollment) return null
 
-  const { data: generation } = await admin
-    .from('workout_generations')
-    .select('id, structured_plan')
-    .eq('intake_id', intake.id)
-    .not('structured_plan', 'is', null)
-    .order('generation_number', { ascending: false })
-    .limit(1)
+  const { data: template } = await admin
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', enrollment.program_template_id)
     .maybeSingle()
 
-  if (!generation?.structured_plan) return null
-
-  const days = (generation.structured_plan as { days?: WorkoutPlanDay[] })?.days
+  const days = (template?.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days
   if (!Array.isArray(days) || days.length === 0) return null
 
-  return { generationId: generation.id, days }
+  return { generationId: enrollment.id, days }
 }
 
 // Regenerating a plan (the free-text-feedback tweak, up to 3x per
