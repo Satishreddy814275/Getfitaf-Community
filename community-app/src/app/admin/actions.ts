@@ -149,11 +149,56 @@ export async function addExerciseVideo(exerciseName: string, videoUrl: string) {
   revalidatePath('/admin/videos')
 }
 
+export async function updateExerciseVideo(id: string, exerciseName: string, videoUrl: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const trimmedName = exerciseName.trim()
+  const trimmedUrl = videoUrl.trim()
+  if (!trimmedName || !trimmedUrl) return
+
+  await supabase
+    .from('exercise_videos')
+    .update({ exercise_name: trimmedName, video_url: trimmedUrl })
+    .eq('id', id)
+
+  revalidatePath('/admin/videos')
+}
+
 export async function deleteExerciseVideo(id: string) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
   await supabase.from('exercise_videos').delete().eq('id', id)
+
+  revalidatePath('/admin/videos')
+}
+
+// Bulk paste import - one row per line, "Exercise name, video url".
+// Rows whose (normalized) exercise name already exists in the library,
+// or that repeat earlier in the same paste, are silently skipped by
+// the caller before this is invoked (see AdminExerciseVideosList's
+// parsedBulkRows) rather than here, so the UI can show an accurate
+// "N skipped as duplicates" count before the insert happens.
+export async function addExerciseVideosBulk(rows: { exerciseName: string; videoUrl: string }[]) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const cleaned = rows
+    .map((r) => ({
+      exercise_name: r.exerciseName.trim(),
+      video_url: r.videoUrl.trim(),
+      added_by: user?.id || null,
+    }))
+    .filter((r) => r.exercise_name && r.video_url)
+
+  if (cleaned.length === 0) return
+
+  await supabase.from('exercise_videos').insert(cleaned)
 
   revalidatePath('/admin/videos')
 }
