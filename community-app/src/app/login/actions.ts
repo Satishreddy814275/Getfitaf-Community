@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 
 // Only ever redirect to a relative in-app path ("/admin", not
 // "https://evil.example.com") - formData is client-controlled, so this
@@ -13,7 +14,32 @@ function safeNextPath(formData: FormData): string {
   return '/feed'
 }
 
+// Supabase splits the session into numbered "sb-<ref>-auth-token.0",
+// ".1" etc. cookies when it's too large for one, and its own
+// signOut() only clears whatever chunk count the CURRENT session
+// happens to have. If a previous session was chunked differently, a
+// leftover chunk can survive a sign-out and then sit alongside the
+// next sign-in's cookies - Supabase tries to reassemble all of them
+// into one token, gets a corrupted mix of two different sessions, and
+// rejects it outright ("AuthSessionMissingError", confirmed via the
+// Vercel log on 2026-07-13: a bare auth-token cookie sitting next to
+// .0/.1 chunks from a different session). Sweeping every matching
+// cookie name - not just the ones the current client thinks exist -
+// guarantees a genuinely clean slate. Run before signing in (so anyone
+// already stuck in a corrupted state self-heals on their next login,
+// no manual cookie-clearing needed) and after signing out (so it never
+// happens in the first place).
+async function clearStaleAuthCookies() {
+  const cookieStore = await cookies()
+  for (const cookie of cookieStore.getAll()) {
+    if (cookie.name.startsWith('sb-') && cookie.name.includes('auth-token')) {
+      cookieStore.set(cookie.name, '', { domain: '.getfitaf.fitness', path: '/', maxAge: 0 })
+    }
+  }
+}
+
 export async function signIn(formData: FormData) {
+  await clearStaleAuthCookies()
   const supabase = await createClient()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -43,6 +69,7 @@ export async function signIn(formData: FormData) {
 }
 
 export async function signUp(formData: FormData) {
+  await clearStaleAuthCookies()
   const supabase = await createClient()
   const email = formData.get('email') as string
   const password = formData.get('password') as string
@@ -80,6 +107,7 @@ export async function signUp(formData: FormData) {
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
+  await clearStaleAuthCookies()
   // Same reasoning as signIn/signUp above - clears cached, session-
   // dependent renders so the next person to sign in on this browser
   // (or the same person switching accounts) never sees a stale view
