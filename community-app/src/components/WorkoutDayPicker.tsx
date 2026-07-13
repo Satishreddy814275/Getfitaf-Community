@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { logWorkoutSession } from '@/app/workouts/actions'
+import { logWorkoutSession, requestExerciseVideo } from '@/app/workouts/actions'
 import { parseTargetSetCount } from '@/lib/workoutPlan'
+import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import type { WorkoutPlanDay, LastLoggedSet } from '@/types'
 
 interface SetRow {
@@ -36,16 +37,31 @@ export default function WorkoutDayPicker({
   days,
   completedCells,
   lastByExercise,
+  videos,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
   completedCells: string[]
   lastByExercise: Record<string, LastLoggedSet>
+  videos: ExerciseVideo[]
 }) {
   const [activeCell, setActiveCell] = useState<Cell | null>(null)
   const [setsByExercise, setSetsByExercise] = useState<Record<string, SetRow[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
+  // Which exercise names have had a video request sent this page
+  // visit - purely local feedback so the button can say "Requested"
+  // right away, not a persisted "don't ask again" flag. A fresh visit
+  // showing the request option again is fine; the community post
+  // itself is the record that matters, not this bit of UI state.
+  const [requestedVideos, setRequestedVideos] = useState<Set<string>>(new Set())
+
+  function handleRequestVideo(exerciseName: string) {
+    setRequestedVideos((prev) => new Set(prev).add(exerciseName))
+    startTransition(() => {
+      requestExerciseVideo(exerciseName)
+    })
+  }
 
   const completedSet = new Set(completedCells)
 
@@ -141,6 +157,8 @@ export default function WorkoutDayPicker({
         <div className="space-y-4">
           {activeCell.exercises.map((ex) => {
             const last = lastByExercise[ex.name]
+            const video = findExerciseVideo(ex.name, videos)
+            const alreadyRequested = requestedVideos.has(ex.name)
             return (
               <div key={ex.name} className="glass rounded-2xl p-4">
                 <div className="flex items-baseline justify-between mb-1 gap-2">
@@ -150,10 +168,40 @@ export default function WorkoutDayPicker({
                   </p>
                 </div>
                 {last && (
-                  <p className="text-zinc-500 text-xs mb-3">
+                  <p className="text-zinc-500 text-xs mb-2">
                     Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
                   </p>
                 )}
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  {video ? (
+                    <a
+                      href={video.videoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                    >
+                      ▶ Watch video
+                    </a>
+                  ) : (
+                    <>
+                      <a
+                        href={youtubeSearchUrl(ex.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                      >
+                        Search on YouTube ↗
+                      </a>
+                      <button
+                        onClick={() => handleRequestVideo(ex.name)}
+                        disabled={alreadyRequested}
+                        className="text-xs font-medium text-zinc-500 hover:text-white disabled:hover:text-zinc-500 transition"
+                      >
+                        {alreadyRequested ? 'Requested ✓' : 'No video yet - request one'}
+                      </button>
+                    </>
+                  )}
+                </div>
 
                 <div className="space-y-2">
                   {(setsByExercise[ex.name] || []).map((row, i) => (
