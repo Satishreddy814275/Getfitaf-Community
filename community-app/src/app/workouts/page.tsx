@@ -5,6 +5,7 @@ import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import ExternalNavLink from '@/components/ExternalNavLink'
 import WorkoutsTabs from '@/components/WorkoutsTabs'
+import type { ExerciseVideo } from '@/lib/exerciseVideos'
 import type { LastLoggedSet, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
 
 export default async function WorkoutsPage() {
@@ -92,6 +93,20 @@ export default async function WorkoutsPage() {
     .select('exercise_name, weight, reps, logged_at')
     .eq('profile_id', user.id)
     .order('logged_at', { ascending: false })
+
+  // Whole library, not filtered to this plan's exercise names - it's a
+  // small, shared reference table (see migration-exercise-videos.sql),
+  // and matching happens client-side in WorkoutDayPicker so a video
+  // added later lights up immediately without needing this query
+  // shape to change.
+  const { data: videosData } = await supabase
+    .from('exercise_videos')
+    .select('exercise_name, video_url')
+
+  const videos: ExerciseVideo[] = (videosData || []).map((v) => ({
+    exerciseName: v.exercise_name,
+    videoUrl: v.video_url,
+  }))
 
   const lastByExercise: Record<string, LastLoggedSet> = {}
   for (const row of loggedSetsData || []) {
@@ -181,6 +196,7 @@ export default async function WorkoutsPage() {
         completedCells={completedCells}
         lastByExercise={lastByExercise}
         history={history}
+        videos={videos}
       />
     </div>
   )

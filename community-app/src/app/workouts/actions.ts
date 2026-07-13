@@ -76,3 +76,35 @@ export async function logWorkoutSession(input: {
 
   revalidatePath('/workouts')
 }
+
+// "No video yet" fallback action - posts a request into the member's
+// own community space (public, not a private admin queue - Satish's
+// explicit choice, so any coach or member can jump in and help) so
+// coverage grows from real demand rather than Satish guessing what to
+// film next. Once he (or anyone) actually adds a matching video via
+// /admin/videos, findExerciseVideo() picks it up automatically on
+// every plan referencing that exercise name - no extra step needed to
+// "resolve" the request.
+export async function requestExerciseVideo(exerciseName: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  const { data: membership } = await supabase
+    .from('space_memberships')
+    .select('space')
+    .eq('profile_id', user.id)
+    .limit(1)
+    .maybeSingle()
+  const space = membership?.space || 'premium'
+
+  await supabase.from('posts').insert({
+    author_id: user.id,
+    content: `Does anyone have a good video for "${exerciseName}"? Would love a quick demo if you've got one to share.`,
+    space,
+  })
+
+  revalidatePath('/feed')
+}
