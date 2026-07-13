@@ -1,6 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import { Manrope } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
+
+// Applied once here at the root layout - cascades to every page in the
+// app (feed, workouts, premium/low_ticket community spaces, admin
+// dashboard) since they all share this one layout. Self-hosted by
+// Next.js (no external request at runtime, no layout shift). Replaces
+// the plain Arial/Helvetica fallback that was in globals.css before -
+// this was never a deliberate font choice, just the browser default.
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-manrope",
+});
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/login/actions";
 import NotificationBell from "@/components/NotificationBell";
@@ -61,7 +74,7 @@ export default async function RootLayout({
     user?.email && (hasLowTicket || isAdmin) ? createWorkoutBuilderHandoffUrl(user.email) : null;
 
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
         {user && (
           <header className="border-b border-zinc-800 bg-[#0a0a0a]">
