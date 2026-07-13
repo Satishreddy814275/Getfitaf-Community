@@ -138,6 +138,9 @@ export default function WorkoutDayPicker({
   // originalName - and what's currently typed into it.
   const [swapPanelFor, setSwapPanelFor] = useState<string | null>(null)
   const [swapInput, setSwapInput] = useState('')
+  // Which exercise's "..." overflow menu (Request video / Swap
+  // exercise) is open, also keyed by originalName.
+  const [overflowOpenFor, setOverflowOpenFor] = useState<string | null>(null)
   const restoredRef = useRef(false)
 
   function handleRequestVideo(exerciseName: string) {
@@ -205,17 +208,30 @@ export default function WorkoutDayPicker({
     setJustFinished(false)
     setSwapPanelFor(null)
     setSwapInput('')
+    setOverflowOpenFor(null)
   }
 
-  function handleBackClick() {
+  // Single close action for the session - replaces what used to be
+  // two separate controls ("Back to your program" + "Discard
+  // workout") that said almost the same thing in two places. Silent
+  // if nothing's been typed yet (nothing to lose), otherwise confirms
+  // with the same explicit wording every time - one unambiguous way
+  // out instead of several half-redundant ones.
+  function handleCloseSession() {
     const hasAnyInput = Object.values(setsByExercise).some((rows) =>
       rows.some((r) => r.weight.trim() !== '' || r.reps.trim() !== '')
     )
-    if (hasAnyInput && !confirm('This will close your workout without saving. Continue?')) {
+    if (
+      hasAnyInput &&
+      !confirm('This is going to erase all progress in the workout. Would you like to continue?')
+    ) {
       return
     }
     clearDraft(generationId)
     setActiveCell(null)
+    setSwapPanelFor(null)
+    setSwapInput('')
+    setOverflowOpenFor(null)
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -323,22 +339,34 @@ export default function WorkoutDayPicker({
             <option key={name} value={name} />
           ))}
         </datalist>
-        <button
-          onClick={handleBackClick}
-          className="text-sm text-zinc-400 hover:text-white transition mb-4"
-        >
-          ← Back to your program
-        </button>
-        <h2 className="text-white text-lg font-bold mb-4">
-          Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
-        </h2>
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h2 className="text-white text-lg font-bold">
+              Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
+            </h2>
+            <p className="text-zinc-500 text-xs mt-0.5">
+              {activeCell.exercises.length} exercise{activeCell.exercises.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <button
+            onClick={handleCloseSession}
+            aria-label="Close workout"
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <line x1="3" y1="3" x2="13" y2="13" strokeLinecap="round" />
+              <line x1="13" y1="3" x2="3" y2="13" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 mt-4">
           {activeCell.exercises.map((ex) => {
             const last = lastByExercise[ex.name]
             const video = findExerciseVideo(ex.name, videos)
             const alreadyRequested = requestedVideos.has(ex.name)
             const swapOpen = swapPanelFor === ex.originalName
+            const overflowOpen = overflowOpenFor === ex.originalName
             return (
               <div key={ex.originalName} className="glass rounded-2xl p-4">
                 <div className="flex items-baseline justify-between mb-1 gap-2">
@@ -355,7 +383,7 @@ export default function WorkoutDayPicker({
                     Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
                   </p>
                 )}
-                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                <div className="flex items-center justify-between gap-2 mb-1">
                   {video ? (
                     <a
                       href={video.videoUrl}
@@ -366,45 +394,82 @@ export default function WorkoutDayPicker({
                       ▶ Watch video
                     </a>
                   ) : (
-                    <>
-                      <a
-                        href={youtubeSearchUrl(ex.name)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                      >
-                        Search on YouTube ↗
-                      </a>
-                      <button
-                        onClick={() => handleRequestVideo(ex.name)}
-                        disabled={alreadyRequested}
-                        className="text-xs font-medium text-zinc-500 hover:text-white disabled:hover:text-zinc-500 transition"
-                      >
-                        {alreadyRequested ? 'Requested ✓' : 'No video yet - request one'}
-                      </button>
-                    </>
+                    <a
+                      href={youtubeSearchUrl(ex.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                    >
+                      Search on YouTube ↗
+                    </a>
                   )}
-                  <button
-                    onClick={() => {
-                      setSwapPanelFor(swapOpen ? null : ex.originalName)
-                      setSwapInput('')
-                    }}
-                    className="text-xs font-medium text-zinc-500 hover:text-white transition"
-                  >
-                    {swapOpen ? 'Cancel swap' : '⇄ Swap exercise'}
-                  </button>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
+                      aria-label="More options"
+                      className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+                    >
+                      ⋯
+                    </button>
+                    {overflowOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setOverflowOpenFor(null)}
+                        />
+                        <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                          {!video && (
+                            <button
+                              onClick={() => {
+                                handleRequestVideo(ex.name)
+                                setOverflowOpenFor(null)
+                              }}
+                              disabled={alreadyRequested}
+                              className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                            >
+                              {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setSwapPanelFor(ex.originalName)
+                              setSwapInput('')
+                              setOverflowOpenFor(null)
+                            }}
+                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                          >
+                            ⇄ Swap exercise
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
 
                 {swapOpen && (
                   <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg space-y-2">
-                    <input
-                      type="text"
-                      list="exercise-swap-suggestions"
-                      value={swapInput}
-                      onChange={(e) => setSwapInput(e.target.value)}
-                      placeholder="Swap in which exercise?"
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                    />
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="text"
+                        list="exercise-swap-suggestions"
+                        value={swapInput}
+                        onChange={(e) => setSwapInput(e.target.value)}
+                        placeholder="Swap in which exercise?"
+                        autoFocus
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                      />
+                      <button
+                        onClick={() => {
+                          setSwapPanelFor(null)
+                          setSwapInput('')
+                        }}
+                        aria-label="Cancel swap"
+                        className="shrink-0 text-zinc-500 hover:text-white transition px-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => handleSwap(ex, activeCell.week, false)}
@@ -424,7 +489,7 @@ export default function WorkoutDayPicker({
                   </div>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-2 mt-3 pt-3 border-t border-zinc-800">
                   {(setsByExercise[ex.name] || []).map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
@@ -465,13 +530,20 @@ export default function WorkoutDayPicker({
           })}
         </div>
 
-        <button
-          onClick={finishWorkout}
-          disabled={isPending}
-          className="mt-6 w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition"
-        >
-          {isPending ? 'Saving...' : 'Finish Workout'}
-        </button>
+        {/* Pinned above the mobile bottom tab bar (bottom-16 matches
+            the pb-16 clearance layout.tsx already gives page content)
+            so the primary action never requires scrolling back down
+            through a long session to reach - normal, non-sticky flow
+            on desktop (sm:static) where that isn't a concern. */}
+        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+          <button
+            onClick={finishWorkout}
+            disabled={isPending}
+            className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition"
+          >
+            {isPending ? 'Saving...' : 'Finish Workout'}
+          </button>
+        </div>
       </div>
     )
   }
