@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminMembersList from '@/components/AdminMembersList'
@@ -6,6 +8,8 @@ import AdminNewRequestsList from '@/components/AdminNewRequestsList'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
+
+const TOTAL_WEEKS = 4
 
 export default async function AdminMembersPage() {
   const supabase = await createClient()
@@ -25,7 +29,7 @@ export default async function AdminMembersPage() {
   const [{ data: members }, { data: memberships }] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, full_name, avatar_url, approved, created_at')
+      .select('id, full_name, avatar_url, approved, created_at, email')
       .order('full_name'),
     supabase.from('space_memberships').select('profile_id, space').eq('space', 'low_ticket'),
   ])
@@ -35,6 +39,64 @@ export default async function AdminMembersPage() {
     ...m,
     hasLowTicket: lowTicketIds.has(m.id),
   }))
+
+  // Workout-logging summary - low-ticket members only, since that's
+  // the only population that builds/logs workouts at all. Each
+  // member's active-plan lookup goes through getActiveWorkoutPlan
+  // (its own email-based intake query) run in parallel rather than
+  // batched into one query - there's no clean way to batch that
+  // lookup without duplicating its logic, and at current member counts
+  // the parallel round-trips are cheap. Revisit if this list grows
+  // into the hundreds. The sessions themselves ARE batched into one
+  // query across all low-ticket members instead of one-per-member.
+  const lowTicketMembers = membersWithSpace.filter((m) => m.hasLowTicket)
+  const memberIds = lowTicketMembers.map((m) => m.id)
+  const adminSupabase = createAdminClient()
+
+  const [plans, sessionsRes] = await Promise.all([
+    Promise.all(
+      lowTicketMembers.map(async (m) => ({
+        memberId: m.id,
+        plan: m.email ? await getActiveWorkoutPlan(m.email) : null,
+      }))
+    ),
+    memberIds.length > 0
+      ? adminSupabase
+          .from('workout_sessions')
+          .select('profile_id, generation_id, week_number, day_number, completed_at')
+          .in('profile_id', memberIds)
+          .not('completed_at', 'is', null)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const planByMember = new Map(plans.map((p) => [p.memberId, p.plan]))
+  const sessionsByMember = new Map<string, { generation_id: string; week_number: number; day_number: number; completed_at: string }[]>()
+  for (const s of sessionsRes.data || []) {
+    const list = sessionsByMember.get(s.profile_id) || []
+    list.push(s)
+    sessionsByMember.set(s.profile_id, list)
+  }
+
+  const workoutSummaries: Record<
+    string,
+    { hasPlan: boolean; completedCount: number; totalCount: number; lastLoggedAt: string | null }
+  > = {}
+  for (const m of lowTicketMembers) {
+    const plan = planByMember.get(m.id) || null
+    const sessions = sessionsByMember.get(m.id) || []
+    const currentGenSessions = plan
+      ? sessions.filter((s) => s.generation_id === plan.generationId)
+      : []
+    const completedCount = new Set(
+      currentGenSessions.map((s) => `${s.week_number}-${s.day_number}`)
+    ).size
+    const totalCount = plan ? plan.days.length * TOTAL_WEEKS : 0
+    const lastLoggedAt = sessions.reduce<string | null>(
+      (latest, s) => (!latest || s.completed_at > latest ? s.completed_at : latest),
+      null
+    )
+    workoutSummaries[m.id] = { hasPlan: !!plan, completedCount, totalCount, lastLoggedAt }
+  }
 
   // Not approved yet AND not already granted low-ticket — i.e. nobody's
   // done anything with this signup yet. Once either action happens, it
@@ -71,7 +133,7 @@ export default async function AdminMembersPage() {
         </p>
       </div>
 
-      <AdminMembersList members={membersWithSpace} />
+      <AdminMembersList members={membersWithSpace} workoutSummaries={workoutSummaries} />
     </div>
   )
 }
