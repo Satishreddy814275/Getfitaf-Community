@@ -184,7 +184,7 @@ export default function AppNav({
             {workoutBuilderUrl && (
               <ExternalNavLink
                 href={workoutBuilderUrl}
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                className="text-sm font-medium text-zinc-400 hover:text-white transition"
                 loadingLabel="Taking you to the workout builder..."
               >
                 Build My Workout
@@ -253,7 +253,7 @@ export default function AppNav({
             {workoutBuilderUrl && (
               <ExternalNavLink
                 href={workoutBuilderUrl}
-                className="block w-full text-left text-sm font-semibold text-orange-500 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+                className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
                 loadingLabel="Taking you to the workout builder..."
                 onClick={() => setMoreOpen(false)}
               >
