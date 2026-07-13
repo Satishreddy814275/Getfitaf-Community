@@ -216,16 +216,13 @@ export async function addExerciseVideosBulk(rows: { exerciseName: string; videoU
 // read another member's rows. Returns the same WorkoutHistoryGroup[]
 // shape the member-facing WorkoutHistoryList component already
 // renders, so no new display component was needed here.
-export async function getMemberWorkoutHistory(
-  memberId: string,
-  memberEmail: string | null
-): Promise<WorkoutHistoryGroup[]> {
+export async function getMemberWorkoutHistory(memberId: string): Promise<WorkoutHistoryGroup[]> {
   const { isAdmin } = await requireAdmin()
   if (!isAdmin) return []
 
   const admin = createAdminClient()
 
-  const activePlan = memberEmail ? await getActiveWorkoutPlan(memberEmail) : null
+  const activePlan = await getActiveWorkoutPlan(memberId)
 
   const { data: allSessions } = await admin
     .from('workout_sessions')
