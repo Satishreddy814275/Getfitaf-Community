@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminExerciseVideosList from '@/components/AdminExerciseVideosList'
@@ -45,7 +46,13 @@ export default async function AdminVideosPage() {
   // current scale (a few hundred generations at most) - see
   // project memory for the scaling plan if this ever needs to move to
   // a precomputed/cached table.
-  const { data: generationsData } = await supabase
+  //
+  // Admin (service-role) client required here - workout_generations
+  // has no RLS policies at all (the workout builder has no login of
+  // its own, see project memory), so the regular authenticated client
+  // silently gets zero rows back instead of an error, which is exactly
+  // why this looked like "no data" rather than "wrong client."
+  const { data: generationsData } = await createAdminClient()
     .from('workout_generations')
     .select('structured_plan')
     .not('structured_plan', 'is', null)
