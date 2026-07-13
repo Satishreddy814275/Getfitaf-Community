@@ -57,7 +57,7 @@ export default async function AdminMembersPage() {
     Promise.all(
       lowTicketMembers.map(async (m) => ({
         memberId: m.id,
-        plan: m.email ? await getActiveWorkoutPlan(m.email) : null,
+        plan: await getActiveWorkoutPlan(m.id),
       }))
     ),
     memberIds.length > 0
