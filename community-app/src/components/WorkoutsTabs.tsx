@@ -4,7 +4,7 @@ import { useState } from 'react'
 import WorkoutDayPicker from './WorkoutDayPicker'
 import WorkoutHistoryList from './WorkoutHistoryList'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
-import type { WorkoutPlanDay, LastLoggedSet, WorkoutHistoryGroup } from '@/types'
+import type { WorkoutPlanDay, LastLoggedSet, WorkoutHistoryGroup, WorkoutExerciseSwap } from '@/types'
 
 type Tab = 'current' | 'history'
 
@@ -15,6 +15,7 @@ export default function WorkoutsTabs({
   lastByExercise,
   history,
   videos,
+  swaps,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
@@ -22,6 +23,7 @@ export default function WorkoutsTabs({
   lastByExercise: Record<string, LastLoggedSet>
   history: WorkoutHistoryGroup[]
   videos: ExerciseVideo[]
+  swaps: WorkoutExerciseSwap[]
 }) {
   const [tab, setTab] = useState<Tab>('current')
 
@@ -57,6 +59,7 @@ export default function WorkoutsTabs({
           completedCells={completedCells}
           lastByExercise={lastByExercise}
           videos={videos}
+          swaps={swaps}
         />
       ) : (
         <WorkoutHistoryList groups={history} />
