@@ -41,8 +41,15 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/join')
 
   if (!user && !isPublicRoute) {
+    // Preserve where they were headed so login can send them back
+    // there instead of always dumping them on /feed - e.g. bounced off
+    // /admin should return to /admin after signing back in, not the
+    // community feed.
+    const originalPath = request.nextUrl.pathname + request.nextUrl.search
     const url = request.nextUrl.clone()
     url.pathname = '/login'
+    url.search = ''
+    url.searchParams.set('next', originalPath)
     return NextResponse.redirect(url)
   }
 
