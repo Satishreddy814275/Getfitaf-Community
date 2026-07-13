@@ -64,7 +64,7 @@ export default function AdminMembersList({
     setExpandedMemberId(member.id)
     if (!historyByMember[member.id]) {
       setLoadingHistoryId(member.id)
-      const history = await getMemberWorkoutHistory(member.id, member.email)
+      const history = await getMemberWorkoutHistory(member.id)
       setHistoryByMember((h) => ({ ...h, [member.id]: history }))
       setLoadingHistoryId(null)
     }
