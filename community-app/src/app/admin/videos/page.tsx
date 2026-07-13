@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminExerciseVideosList from '@/components/AdminExerciseVideosList'
+import { findExerciseVideo } from '@/lib/exerciseVideos'
+import type { WorkoutPlanDay } from '@/types'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
@@ -34,6 +36,38 @@ export default async function AdminVideosPage() {
     added_by_name: (v.profiles as unknown as { full_name: string | null } | null)?.full_name || null,
   }))
 
+  // Computed fresh on every page load, not cached - counts how often
+  // each exercise name has actually shown up across every generated
+  // plan, then filters to the ones with no matching video yet, ranked
+  // most-common first. Same matching logic as the member-facing
+  // /workouts view, so "needs a video" here always agrees with what
+  // members actually see as missing. Fine to recompute live at the
+  // current scale (a few hundred generations at most) - see
+  // project memory for the scaling plan if this ever needs to move to
+  // a precomputed/cached table.
+  const { data: generationsData } = await supabase
+    .from('workout_generations')
+    .select('structured_plan')
+    .not('structured_plan', 'is', null)
+
+  const frequency = new Map<string, number>()
+  for (const gen of generationsData || []) {
+    const days = ((gen.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[]
+    for (const day of days) {
+      for (const ex of day.exercises || []) {
+        if (!ex?.name) continue
+        frequency.set(ex.name, (frequency.get(ex.name) || 0) + 1)
+      }
+    }
+  }
+
+  const matchableVideos = videos.map((v) => ({ exerciseName: v.exercise_name, videoUrl: v.video_url }))
+  const needsVideo = Array.from(frequency.entries())
+    .filter(([name]) => !findExerciseVideo(name, matchableVideos))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([name, count]) => ({ name, count }))
+
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
@@ -51,7 +85,7 @@ export default async function AdminVideosPage() {
         </p>
       </div>
 
-      <AdminExerciseVideosList videos={videos || []} />
+      <AdminExerciseVideosList videos={videos || []} needsVideo={needsVideo} />
     </div>
   )
 }
