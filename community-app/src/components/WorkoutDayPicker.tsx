@@ -253,7 +253,7 @@ export default function WorkoutDayPicker({
             className={`rounded-2xl p-4 transition ${
               isCurrentWeek
                 ? 'bg-orange-500/[0.06] border border-orange-500/30'
-                : 'bg-zinc-950/60 border border-zinc-900 opacity-80'
+                : 'bg-zinc-950/60 border border-zinc-700/60'
             }`}
           >
             <div className="flex items-center justify-between mb-3">
