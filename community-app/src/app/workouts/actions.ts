@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 
 interface LoggedSetInput {
   exerciseName: string
@@ -107,6 +108,30 @@ export async function requestExerciseVideo(exerciseName: string) {
   })
 
   revalidatePath('/feed')
+}
+
+// Picking a program from the library (see migration-program-templates.sql)
+// creates the enrollment row getActiveWorkoutPlan resolves against -
+// replaces what used to be a trip through the external AI builder.
+// Goes through the normal authenticated client, not admin - RLS on
+// program_enrollments already scopes inserts to profile_id = auth.uid(),
+// no need to bypass it here.
+export async function selectProgram(programTemplateId: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { error } = await supabase.from('program_enrollments').insert({
+    profile_id: user.id,
+    program_template_id: programTemplateId,
+  })
+  if (error) throw new Error(error.message)
+
+  revalidatePath('/workouts')
+  revalidatePath('/programs')
+  redirect('/workouts')
 }
 
 // Records a swap (see migration-exercise-swaps.sql) - never touches

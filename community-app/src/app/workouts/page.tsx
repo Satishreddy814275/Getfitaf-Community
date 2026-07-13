@@ -2,8 +2,6 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
-import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
-import ExternalNavLink from '@/components/ExternalNavLink'
 import WorkoutsTabs from '@/components/WorkoutsTabs'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
 import type { LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
@@ -32,14 +30,13 @@ export default async function WorkoutsPage() {
     redirect('/join')
   }
 
-  const plan = user.email ? await getActiveWorkoutPlan(user.email) : null
+  const plan = await getActiveWorkoutPlan(user.id)
 
-  // No plan built yet (or their only plans predate this feature, so
-  // they have no structured_plan to log against) - point them at the
-  // builder instead of showing an empty page. Same handoff mechanism
-  // as the feed's card/popup.
+  // No program picked yet - point them at the picker instead of
+  // showing an empty page. Same two-tier reminder mechanism as the
+  // feed's card/popup, just here as a direct link since they've
+  // already navigated to /workouts specifically.
   if (!plan) {
-    const workoutBuilderUrl = user.email ? createWorkoutBuilderHandoffUrl(user.email) : null
     return (
       <div className="max-w-xl mx-auto w-full py-16 px-4 text-center">
         <Link
@@ -48,19 +45,16 @@ export default async function WorkoutsPage() {
         >
           ← Back to Community
         </Link>
-        <p className="text-white text-lg font-bold mb-2">No workout to log yet</p>
+        <p className="text-white text-lg font-bold mb-2">No program picked yet</p>
         <p className="text-zinc-400 text-sm mb-6">
-          Build your workout first, then come back here to log your sessions.
+          Choose a program first, then come back here to log your sessions.
         </p>
-        {workoutBuilderUrl && (
-          <ExternalNavLink
-            href={workoutBuilderUrl}
-            className="inline-block bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-5 py-3 rounded-xl transition"
-            loadingLabel="Taking you to the workout builder..."
-          >
-            Build My Workout
-          </ExternalNavLink>
-        )}
+        <Link
+          href="/programs"
+          className="inline-block bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-5 py-3 rounded-xl transition"
+        >
+          Choose Your Program
+        </Link>
       </div>
     )
   }
