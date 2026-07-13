@@ -207,8 +207,18 @@ export default function WorkoutDayPicker({
     )
   }
 
+  // Which week the highlighted "up next" cell falls in - used to give
+  // that one week card a slightly brighter treatment than the rest, so
+  // the eye lands on the right place first without anything loud.
+  const currentWeek = nextDueKey
+    ? allCells.find((c) => c.key === nextDueKey)!.week
+    : TOTAL_WEEKS
+
+  const totalCells = allCells.length
+  const doneCells = completedSet.size
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {justFinished && (
         <p className="text-sm text-orange-400">Nice work - that session&apos;s logged.</p>
       )}
@@ -220,43 +230,82 @@ export default function WorkoutDayPicker({
         </div>
       )}
 
-      {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((week) => (
-        <div key={week}>
-          <h3 className="text-white text-sm font-bold mb-2">Week {week}</h3>
-          <div className="space-y-2">
-            {allCells
-              .filter((c) => c.week === week)
-              .map((cell) => {
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-orange-500 rounded-full transition-all"
+            style={{ width: `${totalCells > 0 ? (doneCells / totalCells) * 100 : 0}%` }}
+          />
+        </div>
+        <span className="text-zinc-400 text-xs whitespace-nowrap">
+          {doneCells} / {totalCells}
+        </span>
+      </div>
+
+      {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((week) => {
+        const weekCells = allCells.filter((c) => c.week === week)
+        const weekDone = weekCells.filter((c) => completedSet.has(c.key)).length
+        const isCurrentWeek = week === currentWeek && !programComplete
+
+        return (
+          <div
+            key={week}
+            className={`rounded-2xl p-4 transition ${
+              isCurrentWeek
+                ? 'bg-orange-500/[0.06] border border-orange-500/30'
+                : 'bg-zinc-950/60 border border-zinc-900 opacity-80'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-white text-sm font-medium">Week {week}</span>
+              <span
+                className={`text-xs whitespace-nowrap ${
+                  isCurrentWeek ? 'text-orange-400 font-medium' : 'text-zinc-500'
+                }`}
+              >
+                {weekDone} / {weekCells.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {weekCells.map((cell) => {
                 const isDone = completedSet.has(cell.key)
                 const isNextDue = cell.key === nextDueKey
                 return (
                   <button
                     key={cell.key}
                     onClick={() => startCell(cell)}
-                    className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-left transition ${
+                    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                       isNextDue
                         ? 'bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15'
-                        : 'glass hover:bg-zinc-900/60'
+                        : 'hover:bg-zinc-900/60'
                     }`}
                   >
                     <span
-                      className={`text-sm font-medium ${isDone ? 'text-zinc-500' : 'text-white'}`}
+                      className={`w-4 h-4 rounded-full shrink-0 ${
+                        isDone
+                          ? 'bg-orange-500'
+                          : isNextDue
+                            ? 'border-2 border-orange-500'
+                            : 'border-2 border-zinc-700'
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-medium flex-1 ${isDone ? 'text-zinc-500' : 'text-white'}`}
                     >
                       Day {cell.day}: {cell.label}
                     </span>
-                    {isDone ? (
-                      <span className="text-zinc-500 text-xs whitespace-nowrap">✓ Done</span>
-                    ) : isNextDue ? (
+                    {isNextDue && (
                       <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
                         Up next
                       </span>
-                    ) : null}
+                    )}
                   </button>
                 )
               })}
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
