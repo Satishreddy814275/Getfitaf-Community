@@ -93,3 +93,29 @@ export interface LastLoggedSet {
   reps: number | null
   loggedAt: string
 }
+
+export interface WorkoutHistorySet {
+  exerciseName: string
+  setNumber: number
+  weight: number | null
+  reps: number | null
+}
+
+export interface WorkoutHistorySession {
+  id: string
+  week: number
+  day: number
+  label: string | null
+  completedAt: string
+  sets: WorkoutHistorySet[]
+}
+
+// One group per generation - each regeneration is treated as its own
+// distinct plan for history purposes (consistent with the live grid
+// starting fresh after a regenerate), not merged into one continuous
+// timeline.
+export interface WorkoutHistoryGroup {
+  generationId: string
+  isCurrent: boolean
+  sessions: WorkoutHistorySession[]
+}
