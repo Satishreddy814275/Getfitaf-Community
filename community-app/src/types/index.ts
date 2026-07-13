@@ -82,6 +82,12 @@ export interface WorkoutPlanDay {
   week: number
   day: number
   label: string
+  // Explicit, author-set tag - not inferred from exercise text. Only
+  // present on program-template-authored days going forward; absent
+  // (treated as false) on older AI-generated plans. Not yet read
+  // anywhere in the logging UI - captured now so it's available once
+  // cardio-specific logging is actually built.
+  isCardio?: boolean
   exercises: WorkoutExercise[]
 }
 
