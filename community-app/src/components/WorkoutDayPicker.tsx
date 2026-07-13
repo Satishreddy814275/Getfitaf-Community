@@ -10,44 +10,71 @@ interface SetRow {
   reps: string
 }
 
-// The actual logging UI. Two views in one component rather than
-// separate routes per day - simpler state management, and nothing
-// here needs to be a shareable/bookmarkable URL. `activeDay` being set
-// switches from the day list into that day's logging form.
-//
-// Days are repeat-loggable - the template only ever describes one
-// week (the AI only generates one week per response), so "week" isn't
-// a fixed label on a day here at all. It's computed automatically at
-// save time from how many times this exact day's already been
-// completed (see logWorkoutSession) - sessionCountByDay is that same
-// count, used here just to show what week a day is on and to label
-// what logging it again would become.
+interface Cell {
+  key: string
+  week: number
+  day: number
+  label: string
+  exercises: WorkoutPlanDay['exercises']
+}
+
+// Same weekly split repeated across a fixed 4-week program - the AI
+// only ever generates one week's worth of days per response, so this
+// is what lays that out into the full program length. Matches the
+// methodology's own guidance that a program runs 3-4 weeks before
+// changing things up.
+const TOTAL_WEEKS = 4
+
+// The actual logging UI. Shows the whole 4-week program up front as a
+// grid (grouped by week), not just an abstract "logged Nx" counter -
+// completed cells are marked done, and the first not-yet-completed
+// cell in program order is highlighted as "up next." That highlight
+// is just a recommendation, not a gate - every cell stays clickable,
+// so someone can still log any session out of order if they want to.
 export default function WorkoutDayPicker({
   generationId,
   days,
-  sessionCountByDay,
+  completedCells,
   lastByExercise,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
-  sessionCountByDay: Record<number, number>
+  completedCells: string[]
   lastByExercise: Record<string, LastLoggedSet>
 }) {
-  const [activeDay, setActiveDay] = useState<WorkoutPlanDay | null>(null)
+  const [activeCell, setActiveCell] = useState<Cell | null>(null)
   const [setsByExercise, setSetsByExercise] = useState<Record<string, SetRow[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
 
-  function startDay(day: WorkoutPlanDay) {
+  const completedSet = new Set(completedCells)
+
+  const allCells: Cell[] = []
+  for (let week = 1; week <= TOTAL_WEEKS; week++) {
+    for (const day of days) {
+      allCells.push({
+        key: `${week}-${day.day}`,
+        week,
+        day: day.day,
+        label: day.label,
+        exercises: day.exercises,
+      })
+    }
+  }
+
+  const nextDueKey = allCells.find((c) => !completedSet.has(c.key))?.key
+  const programComplete = !nextDueKey
+
+  function startCell(cell: Cell) {
     // Pre-fill one row per target set (e.g. "3-5" -> 3 rows) - just a
     // starting point, the +/- controls below let them adjust freely.
     const initial: Record<string, SetRow[]> = {}
-    for (const ex of day.exercises) {
+    for (const ex of cell.exercises) {
       const count = parseTargetSetCount(ex.sets)
       initial[ex.name] = Array.from({ length: count }, () => ({ weight: '', reps: '' }))
     }
     setSetsByExercise(initial)
-    setActiveDay(day)
+    setActiveCell(cell)
     setJustFinished(false)
   }
 
@@ -75,8 +102,8 @@ export default function WorkoutDayPicker({
   }
 
   function finishWorkout() {
-    if (!activeDay) return
-    const sets = activeDay.exercises.flatMap((ex) =>
+    if (!activeCell) return
+    const sets = activeCell.exercises.flatMap((ex) =>
       (setsByExercise[ex.name] || []).map((row, i) => ({
         exerciseName: ex.name,
         setNumber: i + 1,
@@ -88,32 +115,31 @@ export default function WorkoutDayPicker({
     startTransition(async () => {
       await logWorkoutSession({
         generationId,
-        day: activeDay.day,
-        dayLabel: activeDay.label,
+        week: activeCell.week,
+        day: activeCell.day,
+        dayLabel: activeCell.label,
         sets,
       })
-      setActiveDay(null)
+      setActiveCell(null)
       setJustFinished(true)
     })
   }
 
-  if (activeDay) {
-    const nextWeek = (sessionCountByDay[activeDay.day] || 0) + 1
+  if (activeCell) {
     return (
       <div>
         <button
-          onClick={() => setActiveDay(null)}
+          onClick={() => setActiveCell(null)}
           className="text-sm text-zinc-400 hover:text-white transition mb-4"
         >
-          ← Back to all days
+          ← Back to your program
         </button>
-        <h2 className="text-white text-lg font-bold mb-1">
-          Day {activeDay.day}: {activeDay.label}
+        <h2 className="text-white text-lg font-bold mb-4">
+          Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
         </h2>
-        <p className="text-zinc-500 text-xs mb-4">This will be logged as Week {nextWeek}</p>
 
         <div className="space-y-4">
-          {activeDay.exercises.map((ex) => {
+          {activeCell.exercises.map((ex) => {
             const last = lastByExercise[ex.name]
             return (
               <div key={ex.name} className="glass rounded-2xl p-4">
@@ -182,29 +208,55 @@ export default function WorkoutDayPicker({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-6">
       {justFinished && (
-        <p className="text-sm text-orange-400 mb-2">Nice work - that session&apos;s logged.</p>
+        <p className="text-sm text-orange-400">Nice work - that session&apos;s logged.</p>
       )}
-      {days.map((day) => {
-        const count = sessionCountByDay[day.day] || 0
-        return (
-          <button
-            key={day.day}
-            onClick={() => startDay(day)}
-            className="w-full flex items-center justify-between glass rounded-xl px-4 py-3 text-left hover:bg-zinc-900/60 transition"
-          >
-            <span className="text-white text-sm font-medium">
-              Day {day.day}: {day.label}
-            </span>
-            {count > 0 && (
-              <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
-                Logged {count}x · next: Week {count + 1}
-              </span>
-            )}
-          </button>
-        )
-      })}
+
+      {programComplete && (
+        <div className="glass rounded-2xl p-5 text-center">
+          <p className="text-white font-semibold mb-1">You&apos;ve completed your 4-week program 🎉</p>
+          <p className="text-zinc-400 text-sm">Build a fresh plan whenever you&apos;re ready for what&apos;s next.</p>
+        </div>
+      )}
+
+      {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((week) => (
+        <div key={week}>
+          <h3 className="text-white text-sm font-bold mb-2">Week {week}</h3>
+          <div className="space-y-2">
+            {allCells
+              .filter((c) => c.week === week)
+              .map((cell) => {
+                const isDone = completedSet.has(cell.key)
+                const isNextDue = cell.key === nextDueKey
+                return (
+                  <button
+                    key={cell.key}
+                    onClick={() => startCell(cell)}
+                    className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-left transition ${
+                      isNextDue
+                        ? 'bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15'
+                        : 'glass hover:bg-zinc-900/60'
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-medium ${isDone ? 'text-zinc-500' : 'text-white'}`}
+                    >
+                      Day {cell.day}: {cell.label}
+                    </span>
+                    {isDone ? (
+                      <span className="text-zinc-500 text-xs whitespace-nowrap">✓ Done</span>
+                    ) : isNextDue ? (
+                      <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
+                        Up next
+                      </span>
+                    ) : null}
+                  </button>
+                )
+              })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
