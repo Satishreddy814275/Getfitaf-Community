@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   addExerciseVideo,
   addExerciseVideosBulk,
@@ -17,7 +17,19 @@ interface ExerciseVideoRow {
   added_by_name: string | null
 }
 
-export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVideoRow[] }) {
+interface NeedsVideoRow {
+  name: string
+  count: number
+}
+
+export default function AdminExerciseVideosList({
+  videos,
+  needsVideo,
+}: {
+  videos: ExerciseVideoRow[]
+  needsVideo: NeedsVideoRow[]
+}) {
+  const exerciseNameInputRef = useRef<HTMLInputElement>(null)
   const [exerciseName, setExerciseName] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -121,6 +133,12 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
     setEditingId(null)
   }
 
+  function prefillFromSuggestion(name: string) {
+    setExerciseName(name)
+    exerciseNameInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    exerciseNameInputRef.current?.focus()
+  }
+
   async function handleBulkImport() {
     if (parsedBulkImport.rows.length === 0) return
     setIsBulkImporting(true)
@@ -136,6 +154,7 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
         <div>
           <label className="text-xs text-zinc-500 mb-1 block">Exercise name</label>
           <input
+            ref={exerciseNameInputRef}
             type="text"
             value={exerciseName}
             onChange={(e) => setExerciseName(e.target.value)}
@@ -176,6 +195,27 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
           </button>
         </div>
       </form>
+
+      {needsVideo.length > 0 && (
+        <div className="mb-6">
+          <p className="text-xs font-medium text-zinc-500 mb-2">
+            Needs a video - ranked by how often it&apos;s actually been prescribed
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {needsVideo.map((item) => (
+              <button
+                key={item.name}
+                onClick={() => prefillFromSuggestion(item.name)}
+                className="flex items-center gap-1.5 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-full pl-3 pr-2.5 py-1.5 text-xs transition"
+              >
+                <span className="text-zinc-300">{item.name}</span>
+                <span className="text-zinc-600">{item.count}x</span>
+                <span className="text-orange-400 font-medium">+ Add</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showBulkImport && (
         <div className="glass rounded-2xl p-4 mb-6 space-y-3">
