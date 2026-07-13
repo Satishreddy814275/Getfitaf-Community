@@ -15,7 +15,6 @@ const manrope = Manrope({
 });
 import { createClient } from "@/lib/supabase/server";
 import AppNav from "@/components/AppNav";
-import { createWorkoutBuilderHandoffUrl } from "@/lib/workoutBuilderHandoff";
 import type { Notification } from "@/types";
 
 export const metadata: Metadata = {
@@ -65,10 +64,10 @@ export default async function RootLayout({
     notifications = (notificationsRes.data as unknown as Notification[] | null) || [];
   }
 
-  // Generated fresh on every page load so it's never stale by the
-  // time someone clicks it (5-minute expiry, see workoutBuilderHandoff.ts).
-  const workoutBuilderUrl =
-    user?.email && (hasLowTicket || isAdmin) ? createWorkoutBuilderHandoffUrl(user.email) : null;
+  // Program picker is an internal route now (see /programs and
+  // migration-program-templates.sql) - no signed handoff token needed,
+  // just the same access gate the external builder link used to have.
+  const showPrograms = hasLowTicket || isAdmin;
 
   return (
     <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
@@ -78,7 +77,7 @@ export default async function RootLayout({
             isAdmin={isAdmin}
             isApproved={isApproved}
             hasLowTicket={hasLowTicket}
-            workoutBuilderUrl={workoutBuilderUrl}
+            showPrograms={showPrograms}
             notifications={notifications}
           />
         )}
