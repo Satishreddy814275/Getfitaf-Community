@@ -8,7 +8,7 @@ export interface ExerciseVideo {
 // press", and "Barbell Bench Press." all compare equal, without
 // pulling in a real fuzzy-matching library for what's still a fairly
 // small, manually-curated set of videos.
-function normalize(name: string): string {
+export function normalize(name: string): string {
   return name
     .toLowerCase()
     .replace(/[^\w\s]/g, '')
