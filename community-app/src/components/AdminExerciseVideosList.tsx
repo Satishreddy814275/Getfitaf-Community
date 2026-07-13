@@ -14,6 +14,7 @@ interface ExerciseVideoRow {
   exercise_name: string
   video_url: string
   created_at: string
+  added_by_name: string | null
 }
 
 export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVideoRow[] }) {
@@ -230,8 +231,8 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
           No exercises match &quot;{search}&quot;.
         </p>
       ) : (
-        <div className="glass rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="glass rounded-2xl overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-zinc-800">
                 <th className="text-left text-xs font-medium text-zinc-500 px-4 py-2.5">
@@ -239,6 +240,9 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
                 </th>
                 <th className="text-left text-xs font-medium text-zinc-500 px-4 py-2.5">
                   Video link
+                </th>
+                <th className="text-left text-xs font-medium text-zinc-500 px-4 py-2.5 whitespace-nowrap">
+                  Added by
                 </th>
                 <th className="text-left text-xs font-medium text-zinc-500 px-4 py-2.5 whitespace-nowrap">
                   Added
@@ -268,6 +272,9 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
                             onChange={(e) => setEditUrl(e.target.value)}
                             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
                           />
+                        </td>
+                        <td className="px-4 py-3 text-zinc-500 text-xs align-top whitespace-nowrap">
+                          {video.added_by_name || '-'}
                         </td>
                         <td className="px-4 py-3 text-zinc-500 text-xs align-top whitespace-nowrap">
                           {new Date(video.created_at).toLocaleDateString()}
@@ -303,6 +310,9 @@ export default function AdminExerciseVideosList({ videos }: { videos: ExerciseVi
                           >
                             {video.video_url}
                           </a>
+                        </td>
+                        <td className="px-4 py-3 text-zinc-500 text-xs align-top whitespace-nowrap">
+                          {video.added_by_name || '-'}
                         </td>
                         <td className="px-4 py-3 text-zinc-500 text-xs align-top whitespace-nowrap">
                           {new Date(video.created_at).toLocaleDateString()}
