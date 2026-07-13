@@ -4,6 +4,16 @@ import Link from 'next/link'
 import AdminFeedList from '@/components/AdminFeedList'
 import type { Post } from '@/types'
 
+// Forces this route to always render fresh per-request rather than
+// risk being served as a cached/prerendered response — this page's
+// whole job is checking a live session and is_admin flag, so a stale
+// cached version (e.g. one that happened to render at a moment with no
+// session, like a build step) could otherwise get stuck serving a
+// "no user, redirect to /login" response to everyone until the next
+// deploy busts the cache. Cheap insurance with no real downside since
+// this page always does live DB queries anyway.
+export const dynamic = 'force-dynamic'
+
 export default async function AdminPage() {
   const supabase = await createClient()
   const {
