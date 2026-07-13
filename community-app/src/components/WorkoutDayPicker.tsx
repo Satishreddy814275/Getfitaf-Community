@@ -103,6 +103,42 @@ function clearDraft(generationId: string) {
   }
 }
 
+function formatRestTime(totalSeconds: number): string {
+  const m = Math.floor(totalSeconds / 60)
+  const s = totalSeconds % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
+// Plain stopwatch, deliberately not tied to any exercise's actual
+// recommended work/rest duration (that data isn't reliably structured
+// today - see the reps-hint discussion) - just a generic rest timer
+// with a beep in the final 3 seconds so it's useful without staring at
+// the screen. Built with the Web Audio API directly rather than an
+// audio file asset - no extra network request, and firing it only
+// from a button tap (never automatically on load) keeps it inside the
+// user-gesture requirement every mobile browser enforces for audio.
+function playRestBeep() {
+  if (typeof window === 'undefined') return
+  try {
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const ctx = new AudioContextClass()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.frequency.value = 880
+    gain.gain.setValueAtTime(0.15, ctx.currentTime)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.15)
+    osc.onended = () => ctx.close()
+  } catch {
+    // Audio unavailable for some reason - the visual countdown still
+    // works fine without it.
+  }
+}
+
 // The actual logging UI. Shows the whole 4-week program up front as a
 // grid (grouped by week), not just an abstract "logged Nx" counter -
 // completed cells are marked done, and the first not-yet-completed
@@ -141,7 +177,43 @@ export default function WorkoutDayPicker({
   // Which exercise's "..." overflow menu (Request video / Swap
   // exercise) is open, also keyed by originalName.
   const [overflowOpenFor, setOverflowOpenFor] = useState<string | null>(null)
+  // Which exercise's rest-timer preset picker is open (per-card
+  // trigger), vs. the timer itself, which is global - only one rest
+  // period happens at a time regardless of which card started it, so
+  // it's shown once as a sticky bar rather than duplicated per card.
+  const [restPickerFor, setRestPickerFor] = useState<string | null>(null)
+  const [restTimer, setRestTimer] = useState<{ remaining: number; total: number } | null>(null)
   const restoredRef = useRef(false)
+
+  // One interval for the whole lifetime of a running timer, not
+  // recreated every tick - keyed on the null/non-null transition
+  // rather than the timer object itself (which changes every second),
+  // so starting a new preset mid-countdown just keeps using the same
+  // interval instead of restarting it.
+  useEffect(() => {
+    if (!restTimer) return
+    const id = setInterval(() => {
+      setRestTimer((prev) => {
+        if (!prev) return prev
+        const next = prev.remaining - 1
+        if (next === 3 || next === 2 || next === 1) {
+          playRestBeep()
+        }
+        return next <= 0 ? null : { ...prev, remaining: next }
+      })
+    }, 1000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restTimer === null])
+
+  function startRestTimer(minutes: number) {
+    setRestTimer({ remaining: minutes * 60, total: minutes * 60 })
+    setRestPickerFor(null)
+  }
+
+  function adjustRestTimer(deltaSeconds: number) {
+    setRestTimer((prev) => (prev ? { ...prev, remaining: Math.max(0, prev.remaining + deltaSeconds) } : prev))
+  }
 
   function handleRequestVideo(exerciseName: string) {
     setRequestedVideos((prev) => new Set(prev).add(exerciseName))
@@ -209,6 +281,8 @@ export default function WorkoutDayPicker({
     setSwapPanelFor(null)
     setSwapInput('')
     setOverflowOpenFor(null)
+    setRestPickerFor(null)
+    setRestTimer(null)
   }
 
   // Single close action for the session - replaces what used to be
@@ -232,6 +306,8 @@ export default function WorkoutDayPicker({
     setSwapPanelFor(null)
     setSwapInput('')
     setOverflowOpenFor(null)
+    setRestPickerFor(null)
+    setRestTimer(null)
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -322,6 +398,7 @@ export default function WorkoutDayPicker({
       clearDraft(generationId)
       setActiveCell(null)
       setJustFinished(true)
+      setRestTimer(null)
     })
   }
 
@@ -367,6 +444,7 @@ export default function WorkoutDayPicker({
             const alreadyRequested = requestedVideos.has(ex.name)
             const swapOpen = swapPanelFor === ex.originalName
             const overflowOpen = overflowOpenFor === ex.originalName
+            const restPickerOpen = restPickerFor === ex.originalName
             return (
               <div key={ex.originalName} className="glass rounded-2xl p-4">
                 <div className="flex items-baseline justify-between mb-1 gap-2">
@@ -384,25 +462,33 @@ export default function WorkoutDayPicker({
                   </p>
                 )}
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  {video ? (
-                    <a
-                      href={video.videoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-                    >
-                      ▶ Watch video
-                    </a>
-                  ) : (
-                    <a
-                      href={youtubeSearchUrl(ex.name)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  <div className="flex items-center gap-3">
+                    {video ? (
+                      <a
+                        href={video.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                      >
+                        ▶ Watch video
+                      </a>
+                    ) : (
+                      <a
+                        href={youtubeSearchUrl(ex.name)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                      >
+                        Search on YouTube ↗
+                      </a>
+                    )}
+                    <button
+                      onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
                       className="text-xs font-medium text-zinc-400 hover:text-white transition"
                     >
-                      Search on YouTube ↗
-                    </a>
-                  )}
+                      ⏱ Rest timer
+                    </button>
+                  </div>
 
                   <div className="relative">
                     <button
@@ -446,6 +532,20 @@ export default function WorkoutDayPicker({
                     )}
                   </div>
                 </div>
+
+                {restPickerOpen && (
+                  <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
+                    {[1, 2, 3, 4, 5].map((min) => (
+                      <button
+                        key={min}
+                        onClick={() => startRestTimer(min)}
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-orange-500/40 transition"
+                      >
+                        {min} min
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {swapOpen && (
                   <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg space-y-2">
@@ -496,18 +596,18 @@ export default function WorkoutDayPicker({
                       <input
                         type="number"
                         inputMode="decimal"
-                        placeholder="weight"
+                        placeholder={last?.weight != null ? String(last.weight) : 'weight'}
                         value={row.weight}
                         onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
                       />
                       <input
                         type="number"
                         inputMode="numeric"
-                        placeholder="reps"
+                        placeholder={ex.reps || 'reps'}
                         value={row.reps}
                         onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
                       />
                       <button
                         onClick={() => removeSetRow(ex.name, i)}
@@ -535,7 +635,33 @@ export default function WorkoutDayPicker({
             so the primary action never requires scrolling back down
             through a long session to reach - normal, non-sticky flow
             on desktop (sm:static) where that isn't a concern. */}
-        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0 space-y-2">
+          {restTimer && (
+            <div className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2">
+              <button
+                onClick={() => adjustRestTimer(-15)}
+                className="text-zinc-400 hover:text-white text-xs font-medium px-2 py-1"
+              >
+                −15s
+              </button>
+              <span className="text-white text-lg font-bold tabular-nums">
+                {formatRestTime(restTimer.remaining)}
+              </span>
+              <button
+                onClick={() => adjustRestTimer(15)}
+                className="text-zinc-400 hover:text-white text-xs font-medium px-2 py-1"
+              >
+                +15s
+              </button>
+              <button
+                onClick={() => setRestTimer(null)}
+                aria-label="Dismiss timer"
+                className="text-zinc-500 hover:text-red-400 transition ml-1 px-1"
+              >
+                ✕
+              </button>
+            </div>
+          )}
           <button
             onClick={finishWorkout}
             disabled={isPending}
