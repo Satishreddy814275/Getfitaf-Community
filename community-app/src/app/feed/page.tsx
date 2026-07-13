@@ -1,12 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
-import { createWorkoutBuilderHandoffUrl } from '@/lib/workoutBuilderHandoff'
 import type { Post, LeaderboardRow } from '@/types'
 
 export default async function FeedPage({
@@ -36,14 +34,7 @@ export default async function FeedPage({
   // with comments still collapsed.
   const initialCommentId = params.comment || null
 
-  // workout_intakes lives behind RLS with no policies (see
-  // migration-workout-builder.sql) — only the service-role key can
-  // read it, which is why this specific check goes through the admin
-  // client rather than the normal session-based one used everywhere
-  // else on this page.
-  const adminSupabase = createAdminClient()
-
-  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, workoutIntakeRes] =
+  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, enrollmentRes] =
     await Promise.all([
       supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
       supabase
@@ -67,24 +58,16 @@ export default async function FeedPage({
         .order('created_at', { ascending: false }),
       supabase.rpc('get_user_streak', { uid: user.id }),
       supabase.rpc('get_community_leaderboard'),
-      user.email
-        ? adminSupabase
-            .from('workout_intakes')
-            .select('id')
-            .ilike('email', user.email)
-            .limit(1)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+      // program_enrollments has proper RLS (owner-scoped), unlike the
+      // old workout_intakes check this replaced - no admin client
+      // needed here anymore.
+      supabase.from('program_enrollments').select('id').eq('profile_id', user.id).limit(1).maybeSingle(),
     ])
 
   const isAdmin = !!profileRes.data?.is_admin
   const isApproved = !!profileRes.data?.approved
   const hasLowTicket = !!membershipRes.data
-  const hasBuiltWorkout = !!workoutIntakeRes?.data
-  // Generated fresh on every load (5-minute expiry) - mirrors the same
-  // handoff pattern used for the persistent nav link in layout.tsx.
-  const workoutBuilderUrl =
-    user.email && (hasLowTicket || isAdmin) ? createWorkoutBuilderHandoffUrl(user.email) : null
+  const hasSelectedProgram = !!enrollmentRes.data
 
   // Nobody should ever land on a blank, empty-looking feed with no
   // explanation — that's a dead end, not an experience. If someone's
@@ -116,20 +99,20 @@ export default async function FeedPage({
         </div>
       )}
 
-      {/* Two-tier reminder for low-ticket members who haven't built a
-          workout yet, both gated on the same condition. The card is
+      {/* Two-tier reminder for low-ticket members who haven't picked a
+          program yet, both gated on the same condition. The card is
           unconditional page content - no dismiss state, just quietly
-          sits above the feed on every visit. The popup only shows once,
-          ever (localStorage) - dismissing it slides it away to reveal
-          the card that was already there underneath. Once a workout's
-          actually built, both disappear for good and only the "Build My
-          Workout" nav link remains. */}
-      {workoutBuilderUrl && hasLowTicket && !hasBuiltWorkout && (
+          sits above the feed on every visit. The popup only shows once
+          a day (localStorage) - dismissing it slides it away to reveal
+          the card that was already there underneath. Once a program's
+          actually picked, both disappear for good and only the "Choose
+          Your Program" nav link remains. */}
+      {hasLowTicket && !hasSelectedProgram && (
         <>
-          <WorkoutBuilderCard href={workoutBuilderUrl} />
+          <WorkoutBuilderCard href="/programs" />
           <WorkoutBuilderPromptModal
-            href={workoutBuilderUrl}
-            storageKey={`workout-builder-prompt-dismissed-${user.id}`}
+            href="/programs"
+            storageKey={`program-prompt-dismissed-${user.id}`}
           />
         </>
       )}
