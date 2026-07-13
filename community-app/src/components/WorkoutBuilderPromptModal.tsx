@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import ExternalNavLink from './ExternalNavLink'
+import Link from 'next/link'
 
-// Once-a-day popup for low-ticket members who haven't built a workout
+// Once-a-day popup for low-ticket members who haven't picked a program
 // yet — reappears on every calendar day (localStorage, scoped by
 // storageKey passed in by the caller, storing the last-dismissed date)
-// until they actually build one. WorkoutBuilderCard (rendered
+// until they actually pick one. WorkoutBuilderCard (rendered
 // unconditionally alongside this on the feed) is what's always sitting
 // there in the meantime, so dismissing the popup never leaves the
 // reminder completely gone — it's just quieter for the rest of today.
@@ -70,20 +70,19 @@ export default function WorkoutBuilderPromptModal({
           ✕
         </button>
 
-        <p className="text-white text-lg font-bold mb-2">Build Your Workout</p>
+        <p className="text-white text-lg font-bold mb-2">Choose Your Program</p>
         <p className="text-zinc-400 text-sm mb-5">
-          Answer a few quick questions about your goals and equipment, and get a full plan
-          built for you in minutes.
+          Pick the program that matches your level and equipment access - you can swap
+          individual exercises later if something doesn&apos;t fit.
         </p>
 
-        <ExternalNavLink
+        <Link
           href={href}
-          className="block w-full text-center bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-3 rounded-xl transition"
-          loadingLabel="Taking you to the workout builder..."
           onClick={dismiss}
+          className="block w-full text-center bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-3 rounded-xl transition"
         >
-          Build My Workout
-        </ExternalNavLink>
+          Choose Your Program
+        </Link>
 
         <button
           onClick={dismiss}
