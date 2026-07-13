@@ -133,13 +133,13 @@ export default function AppNav({
   isAdmin,
   isApproved,
   hasLowTicket,
-  workoutBuilderUrl,
+  showPrograms,
   notifications,
 }: {
   isAdmin: boolean
   isApproved: boolean
   hasLowTicket: boolean
-  workoutBuilderUrl: string | null
+  showPrograms: boolean
   notifications: Notification[]
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
@@ -181,15 +181,7 @@ export default function AppNav({
                 Daily lessons - coming soon
               </span>
             )}
-            {workoutBuilderUrl && (
-              <ExternalNavLink
-                href={workoutBuilderUrl}
-                className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                loadingLabel="Taking you to the workout builder..."
-              >
-                Build My Workout
-              </ExternalNavLink>
-            )}
+            {showPrograms && <NavLink href="/programs">Choose Your Program</NavLink>}
             {showWorkouts && <NavLink href="/workouts">Workouts</NavLink>}
             <form action={signOut}>
               <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
@@ -250,15 +242,14 @@ export default function AppNav({
           />
           <div className="relative bg-[#0a0a0a] border-t border-zinc-800 rounded-t-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-1">
             <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-3" />
-            {workoutBuilderUrl && (
-              <ExternalNavLink
-                href={workoutBuilderUrl}
-                className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
-                loadingLabel="Taking you to the workout builder..."
+            {showPrograms && (
+              <Link
+                href="/programs"
                 onClick={() => setMoreOpen(false)}
+                className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
               >
-                Build My Workout
-              </ExternalNavLink>
+                Choose Your Program
+              </Link>
             )}
             {!showLessons && (
               <p className="text-xs text-zinc-600 px-3 py-2">
