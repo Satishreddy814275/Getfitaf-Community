@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 
 // Only ever redirect to a relative in-app path ("/admin", not
 // "https://evil.example.com") - formData is client-controlled, so this
@@ -28,6 +29,15 @@ export async function signIn(formData: FormData) {
     const message = error.message?.trim() || `Sign in failed (${error.status ?? 'unknown error'}).`
     redirect(`/login?error=${encodeURIComponent(message)}&next=${encodeURIComponent(next)}`)
   }
+
+  // Purges Next's client-side Router Cache for every route under the
+  // root layout - without this, switching accounts in the same
+  // browser tab (sign out, sign in as someone else) can leave stale,
+  // previous-session renders cached for routes you haven't hard-
+  // reloaded yet, e.g. clicking Admin right after logging back in as
+  // the real admin serving a cached "not admin, redirect to /feed"
+  // result from the account you were just testing with.
+  revalidatePath('/', 'layout')
 
   redirect(next)
 }
@@ -63,11 +73,17 @@ export async function signUp(formData: FormData) {
     )
   }
 
+  revalidatePath('/', 'layout')
   redirect(next)
 }
 
 export async function signOut() {
   const supabase = await createClient()
   await supabase.auth.signOut()
+  // Same reasoning as signIn/signUp above - clears cached, session-
+  // dependent renders so the next person to sign in on this browser
+  // (or the same person switching accounts) never sees a stale view
+  // left over from whoever was signed in before.
+  revalidatePath('/', 'layout')
   redirect('/login')
 }
