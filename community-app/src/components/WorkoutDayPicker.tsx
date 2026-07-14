@@ -947,9 +947,9 @@ export default function WorkoutDayPicker({
                 </div>
                 <button
                   onClick={() => setRestTimer(null)}
-                  className="text-xs font-medium text-zinc-500 hover:text-white transition"
+                  className="text-sm font-semibold px-5 py-2 rounded-lg border border-zinc-600 text-zinc-200 hover:border-zinc-400 hover:text-white transition"
                 >
-                  Skip rest
+                  Skip rest ⏭
                 </button>
               </div>
             )}
@@ -983,8 +983,16 @@ export default function WorkoutDayPicker({
             the pb-16 clearance layout.tsx already gives page content)
             so the primary action never requires scrolling back down
             through a long session to reach - normal, non-sticky flow
-            on desktop (sm:static) where that isn't a concern. */}
-        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+            on desktop (sm:static) where that isn't a concern. Extra
+            top margin (mt-10 vs the rest of the page's mt-4/mt-6) and
+            the caption right above it are both there so this doesn't
+            read as "the next step" of the guided player's rest/exercise
+            screens sitting right above it - it's a separate, rarer
+            action, not part of that flow. */}
+        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-10 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+          <p className="text-zinc-500 text-[11px] text-center mb-2">
+            Only tap this once every exercise is logged
+          </p>
           <button
             onClick={finishWorkout}
             disabled={isPending}
