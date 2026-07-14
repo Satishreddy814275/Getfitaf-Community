@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { selectProgram } from '@/app/workouts/actions'
-import { renderRichText } from '@/lib/richText'
+import ProgramPickerCard from '@/components/ProgramPickerCard'
 
 // See admin/page.tsx for why pages that read admin-conditional data
 // are forced dynamic.
@@ -72,28 +71,15 @@ export default async function ProgramsPage() {
       ) : (
         <div className="space-y-3">
           {templates.map((t) => (
-            <div key={t.id} className="glass rounded-2xl p-5 flex items-start justify-between gap-4 flex-wrap">
-              <div>
-                <p className="text-white font-semibold">{t.name}</p>
-                <p className="text-zinc-500 text-xs mt-1 mb-2">
-                  {t.level} &middot; {t.equipment_tier} &middot; {t.duration_weeks} week
-                  {t.duration_weeks === 1 ? '' : 's'}
-                </p>
-                {t.description && (
-                  <div className="text-zinc-300 text-sm space-y-1.5 max-w-md">
-                    {renderRichText(t.description)}
-                  </div>
-                )}
-              </div>
-              <form action={selectProgram.bind(null, t.id)}>
-                <button
-                  type="submit"
-                  className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
-                >
-                  Choose this program
-                </button>
-              </form>
-            </div>
+            <ProgramPickerCard
+              key={t.id}
+              id={t.id}
+              name={t.name}
+              level={t.level}
+              equipmentTier={t.equipment_tier}
+              durationWeeks={t.duration_weeks}
+              description={t.description}
+            />
           ))}
         </div>
       )}
