@@ -96,6 +96,15 @@ export interface WorkoutExercise {
   // this exact duration, alongside the regular custom picker for
   // anyone who wants a different one.
   timerSeconds?: number
+  // Which circuit round this exercise belongs to (1, 2, 3, ...) -
+  // explicit rather than parsed from the name (which may still say
+  // "(Round 1)" for display/uniqueness reasons - see WorkoutDayPicker).
+  // Absent on exercises that aren't part of a repeating circuit (a
+  // warm-up/cool-down walk, a stretch, or any older non-round content).
+  // A day with any exercise carrying a round number is treated as a
+  // round-based/circuit day and gets the guided one-at-a-time player
+  // instead of the plain list view.
+  round?: number
 }
 
 export interface WorkoutPlanDay {
