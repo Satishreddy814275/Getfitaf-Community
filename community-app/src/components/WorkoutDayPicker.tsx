@@ -128,32 +128,6 @@ function clearDraft(generationId: string) {
   }
 }
 
-// Whether someone prefers the guided one-at-a-time player or the
-// plain scrollable list, for round-based days (non-round days only
-// ever show the list, so this preference is moot for them). A single
-// global preference rather than per-program/per-day - simpler, and
-// matches "I just like one or the other" more than "I want different
-// modes for different programs."
-const VIEW_PREFERENCE_KEY = 'workout-view-preference'
-
-function loadViewPreference(): 'guided' | 'list' {
-  if (typeof window === 'undefined') return 'guided'
-  try {
-    return window.localStorage.getItem(VIEW_PREFERENCE_KEY) === 'list' ? 'list' : 'guided'
-  } catch {
-    return 'guided'
-  }
-}
-
-function saveViewPreference(mode: 'guided' | 'list') {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(VIEW_PREFERENCE_KEY, mode)
-  } catch {
-    // no-op
-  }
-}
-
 // True when this index is the first exercise of its round - i.e. the
 // round number here differs from the previous exercise's. Derived
 // straight from the array position rather than tracked through
@@ -266,11 +240,14 @@ export default function WorkoutDayPicker({
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
   // days (see hasRounds below) - list-only days ignore all of this.
-  // viewMode is a lasting preference (localStorage); guidedIndex/Phase
-  // are per-session. 'roundIntro' is the "Round N starts" interstitial
-  // shown on the first exercise of each round; 'done' is reached after
-  // the last exercise (rest or not) with nothing left to advance to.
-  const [viewMode, setViewMode] = useState<'guided' | 'list'>(loadViewPreference)
+  // Every day always lands on the list first (an overview of what's
+  // coming, not the player) - guided mode is only ever entered by
+  // explicitly tapping "Start Now"/"Continue", never the default on
+  // arrival. guidedIndex/Phase are per-session. 'roundIntro' is the
+  // "Round N starts" interstitial shown on the first exercise of each
+  // round; 'done' is reached after the last exercise (rest or not)
+  // with nothing left to advance to.
+  const [viewMode, setViewMode] = useState<'guided' | 'list'>('list')
   const [guidedIndex, setGuidedIndex] = useState(0)
   const [guidedPhase, setGuidedPhase] = useState<'roundIntro' | 'exercise' | 'rest' | 'done'>('exercise')
   // Tracks the previous render's restTimer so the effect below can
@@ -346,11 +323,7 @@ export default function WorkoutDayPicker({
   }
 
   function toggleViewMode() {
-    setViewMode((prev) => {
-      const next = prev === 'guided' ? 'list' : 'guided'
-      saveViewPreference(next)
-      return next
-    })
+    setViewMode((prev) => (prev === 'guided' ? 'list' : 'guided'))
   }
 
   // Auto-advances the guided player the moment a rest countdown it
@@ -403,6 +376,7 @@ export default function WorkoutDayPicker({
       const index = draft.guidedIndex ?? 0
       setGuidedIndex(index)
       setGuidedPhase(isFirstOfRound(draft.cell.exercises, index) ? 'roundIntro' : 'exercise')
+      setViewMode('list')
     } else {
       // Stale draft (plan regenerated since, cell no longer exists) -
       // discard rather than resuming into something that's gone.
@@ -436,6 +410,7 @@ export default function WorkoutDayPicker({
     setRestTimer(null)
     setGuidedIndex(0)
     setGuidedPhase(isFirstOfRound(cell.exercises, 0) ? 'roundIntro' : 'exercise')
+    setViewMode('list')
   }
 
   // Single close action for the session - replaces what used to be
@@ -463,6 +438,7 @@ export default function WorkoutDayPicker({
     setRestTimer(null)
     setGuidedIndex(0)
     setGuidedPhase('exercise')
+    setViewMode('list')
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -581,9 +557,13 @@ export default function WorkoutDayPicker({
     // The interactive body of a single exercise - video/timer/overflow
     // row, swap panel, rest picker, and the set-logging inputs. Shared
     // between the list view (one per card, all shown at once) and the
-    // guided view (just the current one) so neither mode duplicates
-    // this logic.
-    function renderExerciseCard(ex: CellExercise) {
+    // guided view (just the current one, rendered larger since it's
+    // the sole focus of the screen there) so neither mode duplicates
+    // this logic. Rest is deliberately not shown inline here anymore -
+    // list view surfaces it as a strip between cards instead (see
+    // below), and guided view's "Done" button already states it.
+    function renderExerciseCard(ex: CellExercise, options?: { large?: boolean }) {
+      const large = options?.large ?? false
       const last = lastByExercise[ex.name]
       const video = findExerciseVideo(ex.name, videos)
       const alreadyRequested = requestedVideos.has(ex.name)
@@ -591,23 +571,19 @@ export default function WorkoutDayPicker({
       const overflowOpen = overflowOpenFor === ex.originalName
       const restPickerOpen = restPickerFor === ex.originalName
       return (
-        <div className="glass rounded-2xl p-4">
-          <div className="flex items-baseline justify-between mb-1 gap-2">
-            <p className="text-white font-semibold">{ex.name}</p>
-            <p className="text-zinc-500 text-xs whitespace-nowrap flex items-center gap-1">
-              <span>Target: {ex.sets} x {ex.reps}</span>
-              {ex.restSeconds != null && (
-                <>
-                  <span>&middot; Rest: {formatDurationLabel(ex.restSeconds)}</span>
-                  <button
-                    onClick={() => startRestTimer(ex.restSeconds!)}
-                    aria-label="Start rest timer"
-                    className="text-orange-400 hover:text-orange-300 transition"
-                  >
-                    ▶
-                  </button>
-                </>
-              )}
+        <div className={large ? 'glass rounded-2xl p-6 text-center' : 'glass rounded-2xl p-4'}>
+          <div
+            className={
+              large
+                ? 'mb-3'
+                : 'flex items-baseline justify-between mb-1 gap-2'
+            }
+          >
+            <p className={large ? 'text-white text-2xl font-bold mb-1' : 'text-white font-semibold'}>
+              {ex.name}
+            </p>
+            <p className={large ? 'text-zinc-400 text-sm' : 'text-zinc-500 text-xs whitespace-nowrap'}>
+              Target: {ex.sets} x {ex.reps}
             </p>
           </div>
           {ex.name !== ex.originalName && (
@@ -861,14 +837,6 @@ export default function WorkoutDayPicker({
             {activeCell.notes && (
               <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
             )}
-            {hasRounds && (
-              <button
-                onClick={toggleViewMode}
-                className="text-xs font-medium text-orange-400 hover:text-orange-300 transition mt-1"
-              >
-                Switch to {viewMode === 'guided' ? 'list' : 'guided'} view
-              </button>
-            )}
           </div>
           <button
             onClick={handleCloseSession}
@@ -883,20 +851,59 @@ export default function WorkoutDayPicker({
         </div>
 
         {effectiveMode === 'list' ? (
-          <div className="space-y-4 mt-4">
-            {exercises.map((ex, i) => (
-              <Fragment key={ex.originalName}>
-                {isFirstOfRound(exercises, i) && (
-                  <p className="text-orange-400 text-[11px] font-semibold uppercase tracking-wide">
-                    Round {ex.round}
-                  </p>
-                )}
-                {renderExerciseCard(ex)}
-              </Fragment>
-            ))}
+          <div className="mt-4">
+            {/* The primary way into the guided player - always shown as
+                an overview first (per how this reads best: see what's
+                coming, then commit to running through it) rather than
+                defaulting straight into the player on arrival. Label
+                reflects whether this is a fresh start or picking back
+                up partway through. */}
+            {hasRounds && (
+              <button
+                onClick={toggleViewMode}
+                className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition mb-4"
+              >
+                ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue' : 'Start Now'}
+              </button>
+            )}
+            <div className="space-y-4">
+              {exercises.map((ex, i) => (
+                <Fragment key={ex.originalName}>
+                  {isFirstOfRound(exercises, i) && (
+                    <p
+                      className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${
+                        i === 0 ? '' : 'pt-3 border-t border-zinc-800'
+                      }`}
+                    >
+                      Round {ex.round}
+                    </p>
+                  )}
+                  {renderExerciseCard(ex)}
+                  {ex.restSeconds != null && i < exercises.length - 1 && (
+                    <div className="flex items-center gap-2 -mt-2">
+                      <div className="flex-1 h-px bg-zinc-800" />
+                      <button
+                        onClick={() => startRestTimer(ex.restSeconds!)}
+                        className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
+                      >
+                        ▶ Rest {formatDurationLabel(ex.restSeconds)}
+                      </button>
+                      <div className="flex-1 h-px bg-zinc-800" />
+                    </div>
+                  )}
+                </Fragment>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            <button
+              onClick={toggleViewMode}
+              className="text-xs font-medium text-zinc-400 hover:text-white transition"
+            >
+              ← Switch to list view
+            </button>
+
             {currentRound != null && guidedPhase !== 'done' && (
               <p className="text-zinc-500 text-xs text-center">
                 Round {currentRound} of {totalRounds} &middot; Exercise {posInRound} of {roundExercises.length}
@@ -949,7 +956,7 @@ export default function WorkoutDayPicker({
 
             {guidedPhase === 'exercise' && currentEx && (
               <>
-                {renderExerciseCard(currentEx)}
+                {renderExerciseCard(currentEx, { large: true })}
                 <button
                   onClick={() => handleGuidedDone(currentEx)}
                   className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
