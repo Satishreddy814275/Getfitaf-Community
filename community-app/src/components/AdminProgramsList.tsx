@@ -1,8 +1,10 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { toggleProgramPublished, updateProgramMetadata } from '@/app/admin/actions'
+import { useRouter } from 'next/navigation'
+import { toggleProgramPublished, updateProgramExercise, updateProgramMetadata } from '@/app/admin/actions'
 import { renderRichText } from '@/lib/richText'
+import type { WorkoutPlanDay } from '@/types'
 
 interface ProgramRow {
   id: string
@@ -12,6 +14,261 @@ interface ProgramRow {
   duration_weeks: number
   description: string | null
   is_published: boolean
+  // Read-only here - the actual day-by-day content is still
+  // authored/edited via Claude + SQL (see admin/programs/page.tsx
+  // header note), this is just so Satish can sanity-check what's in
+  // a program before flipping it published, without needing to ask
+  // Claude or open Supabase directly.
+  structured_plan: { days: WorkoutPlanDay[] } | null
+}
+
+// One exercise row. Read mode is compact (name + sets×reps + rest,
+// round shown as a small tag when present); clicking "Edit" swaps in
+// number/text inputs for sets, reps, restSeconds, timerSeconds, and a
+// trackWeight checkbox - the "Tier 1" edit surface. Name, round, and
+// phase are NOT editable here on purpose: changing those needs to stay
+// in sync with the rest of the day (round counts, phase-transition
+// screens, the "(1)/(2)/(3)" naming on unrolled straight sets), which
+// is exactly the harder "Tier 2" restructuring work called out in
+// updateProgramExercise's comment - safer to leave those alone for now
+// than let a quick number edit silently break something else.
+function ExerciseRow({
+  programId,
+  week,
+  day,
+  e,
+}: {
+  programId: string
+  week: number
+  day: number
+  e: WorkoutPlanDay['exercises'][number]
+}) {
+  const router = useRouter()
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [current, setCurrent] = useState(e)
+  const [sets, setSets] = useState(e.sets)
+  const [reps, setReps] = useState(e.reps)
+  const [restSeconds, setRestSeconds] = useState(e.restSeconds != null ? String(e.restSeconds) : '')
+  const [timerSeconds, setTimerSeconds] = useState(e.timerSeconds != null ? String(e.timerSeconds) : '')
+  const [trackWeight, setTrackWeight] = useState(e.trackWeight !== false)
+
+  function startEdit() {
+    setSets(current.sets)
+    setReps(current.reps)
+    setRestSeconds(current.restSeconds != null ? String(current.restSeconds) : '')
+    setTimerSeconds(current.timerSeconds != null ? String(current.timerSeconds) : '')
+    setTrackWeight(current.trackWeight !== false)
+    setIsEditing(true)
+  }
+
+  async function handleSave() {
+    setIsSaving(true)
+    const parsedRest = restSeconds.trim() === '' ? null : Number(restSeconds)
+    const parsedTimer = timerSeconds.trim() === '' ? null : Number(timerSeconds)
+    await updateProgramExercise(programId, week, day, current.order, {
+      sets: sets.trim() || current.sets,
+      reps: reps.trim() || current.reps,
+      restSeconds: parsedRest !== null && !Number.isNaN(parsedRest) ? parsedRest : null,
+      timerSeconds: parsedTimer !== null && !Number.isNaN(parsedTimer) ? parsedTimer : null,
+      trackWeight,
+    })
+    setCurrent({
+      ...current,
+      sets: sets.trim() || current.sets,
+      reps: reps.trim() || current.reps,
+      restSeconds: parsedRest !== null && !Number.isNaN(parsedRest) ? parsedRest : undefined,
+      timerSeconds: parsedTimer !== null && !Number.isNaN(parsedTimer) ? parsedTimer : undefined,
+      trackWeight,
+    })
+    setIsSaving(false)
+    setIsEditing(false)
+    router.refresh()
+  }
+
+  if (!isEditing) {
+    return (
+      <div className="flex items-start justify-between gap-3 py-1 text-xs border-b border-zinc-900 last:border-b-0">
+        <span className="text-zinc-300">
+          {current.name}
+          {current.round ? <span className="text-zinc-600"> · Round {current.round}</span> : null}
+        </span>
+        <span className="flex items-center gap-2 shrink-0">
+          <span className="text-zinc-500 text-right">
+            {current.sets}×{current.reps}
+            {current.restSeconds ? <span className="text-zinc-600"> · rest {current.restSeconds}s</span> : null}
+          </span>
+          <button
+            type="button"
+            onClick={startEdit}
+            className="text-zinc-600 hover:text-orange-400 transition text-[11px] font-medium"
+          >
+            Edit
+          </button>
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-2 border-b border-zinc-900 last:border-b-0 bg-zinc-900/40 rounded-lg px-2 my-1">
+      <p className="text-xs text-zinc-300 mb-1.5">{current.name}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Sets
+          <input
+            value={sets}
+            onChange={(e2) => setSets(e2.target.value)}
+            className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Reps
+          <input
+            value={reps}
+            onChange={(e2) => setReps(e2.target.value)}
+            className="w-20 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Rest (s)
+          <input
+            value={restSeconds}
+            onChange={(e2) => setRestSeconds(e2.target.value)}
+            placeholder="—"
+            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Timer (s)
+          <input
+            value={timerSeconds}
+            onChange={(e2) => setTimerSeconds(e2.target.value)}
+            placeholder="—"
+            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <input
+            type="checkbox"
+            checked={trackWeight}
+            onChange={(e2) => setTrackWeight(e2.target.checked)}
+            className="accent-orange-500"
+          />
+          Track weight
+        </label>
+      </div>
+      <div className="flex items-center gap-3 mt-2">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1 rounded-lg transition"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsEditing(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function DayPreview({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+  const [open, setOpen] = useState(false)
+  const isRestDay = day.exercises.length === 0
+
+  return (
+    <div className="border-t border-zinc-800 first:border-t-0 py-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={isRestDay}
+        className="w-full flex items-center justify-between text-left disabled:cursor-default"
+      >
+        <span className="text-sm text-zinc-300">
+          Day {day.day} — {day.label}
+          {day.isCardio && (
+            <span className="ml-2 text-[10px] uppercase tracking-wide text-orange-400">Cardio</span>
+          )}
+        </span>
+        <span className="text-xs text-zinc-600">
+          {isRestDay ? 'Rest' : `${day.exercises.length} exercises ${open ? '▲' : '▼'}`}
+        </span>
+      </button>
+      {open && !isRestDay && (
+        <div className="mt-2 pl-2">
+          {day.notes && <p className="text-xs text-zinc-500 italic mb-1.5">{day.notes}</p>}
+          {day.exercises.map((e, i) => (
+            <ExerciseRow key={i} programId={programId} week={day.week} day={day.day} e={e} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function WeekPreview({
+  programId,
+  week,
+  days,
+}: {
+  programId: string
+  week: number
+  days: WorkoutPlanDay[]
+}) {
+  const [open, setOpen] = useState(false)
+  const sorted = [...days].sort((a, b) => a.day - b.day)
+
+  return (
+    <div className="glass rounded-xl p-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <span className="text-sm font-medium text-white">Week {week}</span>
+        <span className="text-xs text-zinc-500">
+          {days.length} day{days.length === 1 ? '' : 's'} {open ? '▲' : '▼'}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1">
+          {sorted.map((d) => (
+            <DayPreview key={d.day} programId={programId} day={d} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Week-by-week / day-by-day breakdown of a program's actual content,
+// so Satish can check what's in a program before publishing it, and
+// now also tweak an existing exercise's sets/reps/rest/timer/
+// trackWeight directly (see ExerciseRow) - without asking Claude or
+// opening Supabase for that kind of numeric tweak. Collapsed by
+// default at every level (weeks, then days) since a 4-week program can
+// easily run 20-40+ exercises per day.
+function WorkoutPreview({ programId, days }: { programId: string; days: WorkoutPlanDay[] }) {
+  if (days.length === 0) {
+    return <p className="text-xs text-zinc-600 italic mt-3">No workout content yet.</p>
+  }
+  const weeks = Array.from(new Set(days.map((d) => d.week))).sort((a, b) => a - b)
+
+  return (
+    <div className="mt-3 space-y-2">
+      {weeks.map((w) => (
+        <WeekPreview key={w} programId={programId} week={w} days={days.filter((d) => d.week === w)} />
+      ))}
+    </div>
+  )
 }
 
 // Wraps (or unwraps) the current textarea selection with a marker pair
@@ -106,6 +363,7 @@ function ProgramCard({ program }: { program: ProgramRow }) {
   const [isSaving, setIsSaving] = useState(false)
   const [isPublished, setIsPublished] = useState(program.is_published)
   const [isTogglePending, setIsTogglePending] = useState(false)
+  const [showWorkouts, setShowWorkouts] = useState(false)
 
   const [name, setName] = useState(program.name)
   const [level, setLevel] = useState(program.level)
@@ -162,12 +420,23 @@ function ProgramCard({ program }: { program: ProgramRow }) {
         ) : (
           <p className="text-zinc-600 text-sm italic">No description yet.</p>
         )}
-        <button
-          onClick={startEdit}
-          className="mt-3 text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-        >
-          Edit program
-        </button>
+        <div className="mt-3 flex items-center gap-4">
+          <button
+            onClick={startEdit}
+            className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+          >
+            Edit program
+          </button>
+          <button
+            onClick={() => setShowWorkouts((v) => !v)}
+            className="text-xs font-medium text-zinc-400 hover:text-white transition"
+          >
+            {showWorkouts ? 'Hide workouts' : 'View workouts'}
+          </button>
+        </div>
+        {showWorkouts && (
+          <WorkoutPreview programId={program.id} days={program.structured_plan?.days ?? []} />
+        )}
       </div>
     )
   }
