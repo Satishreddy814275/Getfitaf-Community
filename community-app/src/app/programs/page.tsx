@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { selectProgram } from '@/app/workouts/actions'
+import { renderRichText } from '@/lib/richText'
 
 // See admin/page.tsx for why pages that read admin-conditional data
 // are forced dynamic.
@@ -24,7 +25,7 @@ export default async function ProgramsPage() {
       .maybeSingle(),
     supabase
       .from('program_templates')
-      .select('id, name, level, equipment_tier, duration_weeks')
+      .select('id, name, level, equipment_tier, duration_weeks, description')
       .eq('is_published', true)
       .order('created_at'),
     supabase
@@ -71,13 +72,18 @@ export default async function ProgramsPage() {
       ) : (
         <div className="space-y-3">
           {templates.map((t) => (
-            <div key={t.id} className="glass rounded-2xl p-5 flex items-center justify-between gap-4 flex-wrap">
+            <div key={t.id} className="glass rounded-2xl p-5 flex items-start justify-between gap-4 flex-wrap">
               <div>
                 <p className="text-white font-semibold">{t.name}</p>
-                <p className="text-zinc-500 text-xs mt-1">
+                <p className="text-zinc-500 text-xs mt-1 mb-2">
                   {t.level} &middot; {t.equipment_tier} &middot; {t.duration_weeks} week
                   {t.duration_weeks === 1 ? '' : 's'}
                 </p>
+                {t.description && (
+                  <div className="text-zinc-300 text-sm space-y-1.5 max-w-md">
+                    {renderRichText(t.description)}
+                  </div>
+                )}
               </div>
               <form action={selectProgram.bind(null, t.id)}>
                 <button
