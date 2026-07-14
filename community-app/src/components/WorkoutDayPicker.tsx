@@ -22,7 +22,8 @@ interface CellExercise {
   sets: string
   reps: string
   trackWeight?: boolean
-  rest?: string
+  restSeconds?: number
+  timerSeconds?: number
 }
 
 interface Cell {
@@ -33,13 +34,6 @@ interface Cell {
   notes?: string
   exercises: CellExercise[]
 }
-
-// Same weekly split repeated across a fixed 4-week program - the AI
-// only ever generates one week's worth of days per response, so this
-// is what lays that out into the full program length. Matches the
-// methodology's own guidance that a program runs 3-4 weeks before
-// changing things up.
-const TOTAL_WEEKS = 4
 
 // Applies any swaps for this day/week on top of the template's
 // exercises. A week-specific swap (weekNumber === week) wins over an
@@ -58,10 +52,11 @@ function resolveExercises(
       swaps.find(
         (s) => s.dayNumber === day.day && s.weekNumber === 0 && s.originalExerciseName === ex.name
       )
-    // trackWeight/rest aren't swap-diffable fields (the swap row only
-    // stores name/sets/reps) - a swapped-in exercise keeps the original
-    // slot's weight/rest treatment rather than defaulting back to
-    // "needs weight, no rest reference".
+    // trackWeight/restSeconds/timerSeconds aren't swap-diffable fields
+    // (the swap row only stores name/sets/reps) - a swapped-in
+    // exercise keeps the original slot's weight/rest/timer treatment
+    // rather than defaulting back to "needs weight, no rest
+    // reference, no prescribed timer".
     return swap
       ? {
           originalName: ex.name,
@@ -69,7 +64,8 @@ function resolveExercises(
           sets: swap.sets,
           reps: swap.reps,
           trackWeight: ex.trackWeight,
-          rest: ex.rest,
+          restSeconds: ex.restSeconds,
+          timerSeconds: ex.timerSeconds,
         }
       : {
           originalName: ex.name,
@@ -77,7 +73,8 @@ function resolveExercises(
           sets: ex.sets,
           reps: ex.reps,
           trackWeight: ex.trackWeight,
-          rest: ex.rest,
+          restSeconds: ex.restSeconds,
+          timerSeconds: ex.timerSeconds,
         }
   })
 }
@@ -130,13 +127,25 @@ function formatRestTime(totalSeconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-// Plain stopwatch, deliberately not tied to any exercise's actual
-// recommended work/rest duration (that data isn't reliably structured
-// today - see the reps-hint discussion) - just a generic rest timer
-// with a beep in the final 3 seconds so it's useful without staring at
-// the screen. Built with the Web Audio API directly rather than an
-// audio file asset - no extra network request, and firing it only
-// from a button tap (never automatically on load) keeps it inside the
+// Short label for a preset/prescribed duration button - "10 min" for
+// whole minutes, "30s" otherwise (covers holds like a 20s plank).
+function formatDurationLabel(seconds: number): string {
+  return seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds}s`
+}
+
+// Fixed manual presets, in seconds - used by the "custom" picker on
+// every exercise. Deliberately not tied to any exercise's actual
+// recommended duration by default (that data isn't reliably structured
+// on AI-generated plans) - this is just a generic timer. Authored
+// program-template content can opt in to a prescribed duration via
+// timerSeconds instead, which shows its own dedicated one-tap button
+// alongside this same picker for anyone who wants a different length.
+const REST_PRESETS_SECONDS = [30, 60, 120, 180, 240, 300, 600]
+
+// Beep in the final 3 seconds so it's useful without staring at the
+// screen. Built with the Web Audio API directly rather than an audio
+// file asset - no extra network request, and firing it only from a
+// button tap (never automatically on load) keeps it inside the
 // user-gesture requirement every mobile browser enforces for audio.
 function playRestBeep() {
   if (typeof window === 'undefined') return
@@ -160,12 +169,18 @@ function playRestBeep() {
   }
 }
 
-// The actual logging UI. Shows the whole 4-week program up front as a
-// grid (grouped by week), not just an abstract "logged Nx" counter -
+// The actual logging UI. Shows the whole program up front as a grid
+// (grouped by week), not just an abstract "logged Nx" counter -
 // completed cells are marked done, and the first not-yet-completed
 // cell in program order is highlighted as "up next." That highlight
 // is just a recommendation, not a gate - every cell stays clickable,
 // so someone can still log any session out of order if they want to.
+// Weeks are read directly from each day's own week number - a program
+// can have any number of weeks, each with genuinely different days
+// (a progression), rather than one week's template replayed across a
+// fixed length. (Old AI-generated plans used to always say week 1 and
+// get synthetically replayed 4x - that no longer happens now that
+// this only ever reads from program_templates.)
 export default function WorkoutDayPicker({
   generationId,
   days,
@@ -227,8 +242,8 @@ export default function WorkoutDayPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restTimer === null])
 
-  function startRestTimer(minutes: number) {
-    setRestTimer({ remaining: minutes * 60, total: minutes * 60 })
+  function startRestTimer(seconds: number) {
+    setRestTimer({ remaining: seconds, total: seconds })
     setRestPickerFor(null)
   }
 
@@ -245,19 +260,21 @@ export default function WorkoutDayPicker({
 
   const completedSet = new Set(completedCells)
 
-  const allCells: Cell[] = []
-  for (let week = 1; week <= TOTAL_WEEKS; week++) {
-    for (const day of days) {
-      allCells.push({
-        key: `${week}-${day.day}`,
-        week,
-        day: day.day,
-        label: day.label,
-        notes: day.notes,
-        exercises: resolveExercises(day, week, swaps),
-      })
-    }
-  }
+  // Each authored day is its own real week/day slot, shown exactly
+  // once - sorted so program order (and therefore "up next") is
+  // correct regardless of the order rows happened to be inserted in.
+  const allCells: Cell[] = [...days]
+    .sort((a, b) => a.week - b.week || a.day - b.day)
+    .map((day) => ({
+      key: `${day.week}-${day.day}`,
+      week: day.week,
+      day: day.day,
+      label: day.label,
+      notes: day.notes,
+      exercises: resolveExercises(day, day.week, swaps),
+    }))
+
+  const weekNumbers = Array.from(new Set(allCells.map((c) => c.week))).sort((a, b) => a - b)
 
   const nextDueKey = allCells.find((c) => !completedSet.has(c.key))?.key
   const programComplete = !nextDueKey
@@ -479,9 +496,11 @@ export default function WorkoutDayPicker({
             <h2 className="text-white text-lg font-bold">
               Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
             </h2>
-            <p className="text-zinc-500 text-xs mt-0.5">
-              {activeCell.exercises.length} exercise{activeCell.exercises.length === 1 ? '' : 's'}
-            </p>
+            {activeCell.exercises.length > 0 && (
+              <p className="text-zinc-500 text-xs mt-0.5">
+                {activeCell.exercises.length} exercise{activeCell.exercises.length === 1 ? '' : 's'}
+              </p>
+            )}
             {activeCell.notes && (
               <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
             )}
@@ -510,9 +529,20 @@ export default function WorkoutDayPicker({
               <div key={ex.originalName} className="glass rounded-2xl p-4">
                 <div className="flex items-baseline justify-between mb-1 gap-2">
                   <p className="text-white font-semibold">{ex.name}</p>
-                  <p className="text-zinc-500 text-xs whitespace-nowrap">
-                    Target: {ex.sets} x {ex.reps}
-                    {ex.rest && <> &middot; Rest: {ex.rest}</>}
+                  <p className="text-zinc-500 text-xs whitespace-nowrap flex items-center gap-1">
+                    <span>Target: {ex.sets} x {ex.reps}</span>
+                    {ex.restSeconds != null && (
+                      <>
+                        <span>&middot; Rest: {formatDurationLabel(ex.restSeconds)}</span>
+                        <button
+                          onClick={() => startRestTimer(ex.restSeconds!)}
+                          aria-label="Start rest timer"
+                          className="text-orange-400 hover:text-orange-300 transition"
+                        >
+                          ▶
+                        </button>
+                      </>
+                    )}
                   </p>
                 </div>
                 {ex.name !== ex.originalName && (
@@ -544,12 +574,29 @@ export default function WorkoutDayPicker({
                         Search on YouTube ↗
                       </a>
                     )}
-                    <button
-                      onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                      className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                    >
-                      ⏱ Regular timer
-                    </button>
+                    {ex.timerSeconds ? (
+                      <>
+                        <button
+                          onClick={() => startRestTimer(ex.timerSeconds!)}
+                          className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                        >
+                          ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                        </button>
+                        <button
+                          onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
+                          className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                        >
+                          ⏱ custom
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
+                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                      >
+                        ⏱ Regular timer
+                      </button>
+                    )}
                   </div>
 
                   <div className="relative">
@@ -597,13 +644,13 @@ export default function WorkoutDayPicker({
 
                 {restPickerOpen && (
                   <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
-                    {[1, 2, 3, 4, 5].map((min) => (
+                    {REST_PRESETS_SECONDS.map((sec) => (
                       <button
-                        key={min}
-                        onClick={() => startRestTimer(min)}
+                        key={sec}
+                        onClick={() => startRestTimer(sec)}
                         className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-orange-500/40 transition"
                       >
-                        {min} min
+                        {formatDurationLabel(sec)}
                       </button>
                     ))}
                   </div>
@@ -645,7 +692,7 @@ export default function WorkoutDayPicker({
                         disabled={!swapInput.trim() || isPending}
                         className="text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition disabled:opacity-30"
                       >
-                        All 4 weeks
+                        All weeks
                       </button>
                     </div>
                   </div>
@@ -717,7 +764,7 @@ export default function WorkoutDayPicker({
   // the eye lands on the right place first without anything loud.
   const currentWeek = nextDueKey
     ? allCells.find((c) => c.key === nextDueKey)!.week
-    : TOTAL_WEEKS
+    : weekNumbers[weekNumbers.length - 1]
 
   const totalCells = allCells.length
   const doneCells = completedSet.size
@@ -730,8 +777,8 @@ export default function WorkoutDayPicker({
 
       {programComplete && (
         <div className="glass rounded-2xl p-5 text-center">
-          <p className="text-white font-semibold mb-1">You&apos;ve completed your 4-week program 🎉</p>
-          <p className="text-zinc-400 text-sm">Build a fresh plan whenever you&apos;re ready for what&apos;s next.</p>
+          <p className="text-white font-semibold mb-1">You&apos;ve completed this program 🎉</p>
+          <p className="text-zinc-400 text-sm">Pick a fresh program whenever you&apos;re ready for what&apos;s next.</p>
         </div>
       )}
 
@@ -747,7 +794,7 @@ export default function WorkoutDayPicker({
         </span>
       </div>
 
-      {Array.from({ length: TOTAL_WEEKS }, (_, i) => i + 1).map((week) => {
+      {weekNumbers.map((week) => {
         const weekCells = allCells.filter((c) => c.week === week)
         const weekDone = weekCells.filter((c) => completedSet.has(c.key)).length
         const isCurrentWeek = week === currentWeek && !programComplete
