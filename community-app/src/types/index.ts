@@ -88,6 +88,11 @@ export interface WorkoutPlanDay {
   // anywhere in the logging UI - captured now so it's available once
   // cardio-specific logging is actually built.
   isCardio?: boolean
+  // Free-text session-level instruction shown above the exercise list
+  // (e.g. "Circuit format - 40s rest between exercises") - for things
+  // that apply to the whole day rather than any one exercise. Optional,
+  // absent on older AI-generated plans.
+  notes?: string
   exercises: WorkoutExercise[]
 }
 
