@@ -21,6 +21,8 @@ interface CellExercise {
   name: string
   sets: string
   reps: string
+  trackWeight?: boolean
+  rest?: string
 }
 
 interface Cell {
@@ -56,9 +58,27 @@ function resolveExercises(
       swaps.find(
         (s) => s.dayNumber === day.day && s.weekNumber === 0 && s.originalExerciseName === ex.name
       )
+    // trackWeight/rest aren't swap-diffable fields (the swap row only
+    // stores name/sets/reps) - a swapped-in exercise keeps the original
+    // slot's weight/rest treatment rather than defaulting back to
+    // "needs weight, no rest reference".
     return swap
-      ? { originalName: ex.name, name: swap.newExerciseName, sets: swap.sets, reps: swap.reps }
-      : { originalName: ex.name, name: ex.name, sets: ex.sets, reps: ex.reps }
+      ? {
+          originalName: ex.name,
+          name: swap.newExerciseName,
+          sets: swap.sets,
+          reps: swap.reps,
+          trackWeight: ex.trackWeight,
+          rest: ex.rest,
+        }
+      : {
+          originalName: ex.name,
+          name: ex.name,
+          sets: ex.sets,
+          reps: ex.reps,
+          trackWeight: ex.trackWeight,
+          rest: ex.rest,
+        }
   })
 }
 
@@ -492,6 +512,7 @@ export default function WorkoutDayPicker({
                   <p className="text-white font-semibold">{ex.name}</p>
                   <p className="text-zinc-500 text-xs whitespace-nowrap">
                     Target: {ex.sets} x {ex.reps}
+                    {ex.rest && <> &middot; Rest: {ex.rest}</>}
                   </p>
                 </div>
                 {ex.name !== ex.originalName && (
@@ -634,14 +655,16 @@ export default function WorkoutDayPicker({
                   {(setsByExercise[ex.name] || []).map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder={last?.weight != null ? String(last.weight) : 'weight'}
-                        value={row.weight}
-                        onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                      />
+                      {ex.trackWeight !== false && (
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                          value={row.weight}
+                          onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                        />
+                      )}
                       <input
                         type="number"
                         inputMode="numeric"
