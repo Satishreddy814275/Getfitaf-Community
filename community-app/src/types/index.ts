@@ -105,6 +105,15 @@ export interface WorkoutExercise {
   // round-based/circuit day and gets the guided one-at-a-time player
   // instead of the plain list view.
   round?: number
+  // Which part of the session this exercise belongs to - explicit,
+  // author-set, not inferred from the name. Used purely to show a
+  // one-tap phase-transition screen ("Let's warm up" / "Time for the
+  // main workout" / "Nice work, let's cool down.") the moment the
+  // guided player crosses from one phase into the next - at most 2-3
+  // extra taps across a whole day, regardless of how many rounds or
+  // sets are inside "main". Absent on older content, which just never
+  // shows a phase screen (see isFirstOfPhase in WorkoutDayPicker).
+  phase?: 'warmup' | 'main' | 'cooldown'
 }
 
 export interface WorkoutPlanDay {
