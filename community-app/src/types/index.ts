@@ -76,6 +76,15 @@ export interface WorkoutExercise {
   name: string
   sets: string
   reps: string
+  // false for bodyweight-only moves (planks, marches, bridges, etc.) -
+  // hides the weight input entirely instead of asking someone to log a
+  // weight that doesn't apply. Absent/true on older AI-generated plans,
+  // where every exercise still shows a weight field same as before.
+  trackWeight?: boolean
+  // Free-text rest reference shown next to Target (e.g. "40s") - a
+  // number to look at and optionally punch into the regular timer,
+  // not something the app enforces or counts down automatically.
+  rest?: string
 }
 
 export interface WorkoutPlanDay {
