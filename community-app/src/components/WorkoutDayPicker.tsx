@@ -933,12 +933,14 @@ export default function WorkoutDayPicker({
                     exactly when someone would want to see them: right
                     as they start resting, before the next card
                     replaces this screen. */}
-                <p className="text-zinc-500 text-xs mb-3">
-                  Finished {currentEx.name}.
-                  {exercises[guidedIndex + 1]
-                    ? ` Up next: ${exercises[guidedIndex + 1].name}.`
-                    : " That's the last exercise."}
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-3 text-left">
+                  <span className="text-zinc-500 text-xs">Finished {currentEx.name}</span>
+                  {exercises[guidedIndex + 1] && (
+                    <span className="text-zinc-500 text-xs text-right">
+                      Up next: {exercises[guidedIndex + 1].name}
+                    </span>
+                  )}
+                </div>
                 <p className="text-zinc-400 text-sm mb-2">Rest</p>
                 <p className="text-white text-5xl font-bold tabular-nums mb-4">
                   {formatRestTime(restTimer.remaining)}
