@@ -80,6 +80,12 @@ export default async function AdminPage() {
           >
             Videos →
           </Link>
+          <Link
+            href="/admin/programs"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Programs →
+          </Link>
         </div>
       </div>
 

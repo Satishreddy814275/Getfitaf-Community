@@ -206,6 +206,65 @@ export async function addExerciseVideosBulk(rows: { exerciseName: string; videoU
   revalidatePath('/admin/videos')
 }
 
+// Editable metadata + description for an existing program, from
+// /admin/programs - self-service so Satish can update a program's
+// title, level, equipment tier, duration, or description whenever,
+// without going through a SQL insert. Deliberately does NOT touch
+// structured_plan (the actual day-by-day exercise content) - that
+// stays authored conversationally/via SQL, since it's the genuinely
+// complex piece (rounds, phases, rest timing) that benefits from
+// going through Claude rather than a free-form editor. Description is
+// stored as plain text with the small markdown-like syntax the
+// formatting toolbar produces (see src/lib/richText.tsx); null/empty
+// just means the program card shows no description yet.
+export async function updateProgramMetadata(
+  id: string,
+  fields: {
+    name: string
+    level: string
+    equipmentTier: string
+    durationWeeks: number
+    description: string
+  }
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const name = fields.name.trim()
+  const level = fields.level.trim()
+  const equipmentTier = fields.equipmentTier.trim()
+  const description = fields.description.trim()
+  if (!name || !level || !equipmentTier) return
+
+  await supabase
+    .from('program_templates')
+    .update({
+      name,
+      level,
+      equipment_tier: equipmentTier,
+      duration_weeks: Math.max(1, Math.round(fields.durationWeeks) || 1),
+      description: description || null,
+    })
+    .eq('id', id)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/programs')
+}
+
+// Publish/unpublish toggle - previously only settable via a manual SQL
+// update after seeding a program's content. Unpublished programs stay
+// admin-visible (see program_templates_select policy) but drop out of
+// the member-facing /programs picker.
+export async function toggleProgramPublished(id: string, isPublished: boolean) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase.from('program_templates').update({ is_published: isPublished }).eq('id', id)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/programs')
+}
+
 // Full workout history for one member, fetched on-demand (only when
 // an admin actually expands that member's row on /admin/members, not
 // eagerly for everyone in the list) - mirrors the exact grouping logic
