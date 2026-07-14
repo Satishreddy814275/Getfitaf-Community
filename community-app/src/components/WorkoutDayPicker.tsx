@@ -25,6 +25,7 @@ interface CellExercise {
   restSeconds?: number
   timerSeconds?: number
   round?: number
+  phase?: 'warmup' | 'main' | 'cooldown'
 }
 
 interface Cell {
@@ -53,11 +54,12 @@ function resolveExercises(
       swaps.find(
         (s) => s.dayNumber === day.day && s.weekNumber === 0 && s.originalExerciseName === ex.name
       )
-    // trackWeight/restSeconds/timerSeconds/round aren't swap-diffable
-    // fields (the swap row only stores name/sets/reps) - a swapped-in
-    // exercise keeps the original slot's weight/rest/timer/round
-    // treatment rather than defaulting back to "needs weight, no rest
-    // reference, no prescribed timer, not part of a round".
+    // trackWeight/restSeconds/timerSeconds/round/phase aren't
+    // swap-diffable fields (the swap row only stores name/sets/reps) -
+    // a swapped-in exercise keeps the original slot's weight/rest/
+    // timer/round/phase treatment rather than defaulting back to
+    // "needs weight, no rest reference, no prescribed timer, not part
+    // of a round or phase".
     return swap
       ? {
           originalName: ex.name,
@@ -68,6 +70,7 @@ function resolveExercises(
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
           round: ex.round,
+          phase: ex.phase,
         }
       : {
           originalName: ex.name,
@@ -78,6 +81,7 @@ function resolveExercises(
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
           round: ex.round,
+          phase: ex.phase,
         }
   })
 }
@@ -137,6 +141,32 @@ function isFirstOfRound(exercises: CellExercise[], index: number): boolean {
   const round = exercises[index]?.round
   if (round == null) return false
   return exercises[index - 1]?.round !== round
+}
+
+// Same idea as isFirstOfRound, one level up - true the moment the
+// phase changes (warmup -> main -> cooldown), so a phase screen shows
+// at most 2-3 times across a whole day no matter how many rounds or
+// sets "main" contains. Content that never sets phase never triggers
+// this.
+function isFirstOfPhase(exercises: CellExercise[], index: number): boolean {
+  const phase = exercises[index]?.phase
+  if (phase == null) return false
+  return exercises[index - 1]?.phase !== phase
+}
+
+function phaseIntroText(phase: 'warmup' | 'main' | 'cooldown'): string {
+  if (phase === 'warmup') return "Let's warm up"
+  if (phase === 'main') return 'Time for the main workout'
+  return "Nice work, let's cool down."
+}
+
+// Strips a trailing "(N)" set-number suffix - "Squats (2)" -> "Squats".
+// Deliberately only matches a bare number in parens, not "(Round 2)"
+// or "(Warm-Up)" etc., so round-tagged and one-off exercises are
+// never accidentally grouped - only the straight-set unrolling
+// convention (see seed content) uses this exact "(N)" shape.
+function baseName(name: string): string {
+  return name.replace(/\s\(\d+\)$/, '')
 }
 
 function formatRestTime(totalSeconds: number): string {
@@ -239,7 +269,7 @@ export default function WorkoutDayPicker({
   const [restTimer, setRestTimer] = useState<{ remaining: number; total: number } | null>(null)
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
-  // days (see hasRounds below) - list-only days ignore all of this.
+  // days (see hasGuidedFlow below) - single-exercise days ignore all of this.
   // Every day always lands on the list first (an overview of what's
   // coming, not the player) - guided mode is only ever entered by
   // explicitly tapping "Start Now"/"Continue", never the default on
@@ -307,7 +337,11 @@ export default function WorkoutDayPicker({
       return
     }
     setGuidedIndex(nextIndex)
-    setGuidedPhase(isFirstOfRound(activeCell.exercises, nextIndex) ? 'roundIntro' : 'exercise')
+    setGuidedPhase(
+      isFirstOfRound(activeCell.exercises, nextIndex) || isFirstOfPhase(activeCell.exercises, nextIndex)
+        ? 'roundIntro'
+        : 'exercise'
+    )
   }
 
   // Tapping "Done" on the current exercise either starts its rest
@@ -375,7 +409,11 @@ export default function WorkoutDayPicker({
       setSetsByExercise(draft.sets)
       const index = draft.guidedIndex ?? 0
       setGuidedIndex(index)
-      setGuidedPhase(isFirstOfRound(draft.cell.exercises, index) ? 'roundIntro' : 'exercise')
+      setGuidedPhase(
+        isFirstOfRound(draft.cell.exercises, index) || isFirstOfPhase(draft.cell.exercises, index)
+          ? 'roundIntro'
+          : 'exercise'
+      )
       setViewMode('list')
     } else {
       // Stale draft (plan regenerated since, cell no longer exists) -
@@ -409,7 +447,9 @@ export default function WorkoutDayPicker({
     setRestPickerFor(null)
     setRestTimer(null)
     setGuidedIndex(0)
-    setGuidedPhase(isFirstOfRound(cell.exercises, 0) ? 'roundIntro' : 'exercise')
+    setGuidedPhase(
+      isFirstOfRound(cell.exercises, 0) || isFirstOfPhase(cell.exercises, 0) ? 'roundIntro' : 'exercise'
+    )
     setViewMode('list')
   }
 
@@ -541,11 +581,19 @@ export default function WorkoutDayPicker({
     const exerciseSuggestions = Array.from(new Set(videos.map((v) => v.exerciseName))).sort()
 
     const exercises = activeCell.exercises
-    // A day counts as "round-based" the moment any exercise carries a
-    // round number - non-round days (or a rest day with none at all)
-    // only ever get the plain list, no toggle shown.
-    const hasRounds = exercises.some((ex) => ex.round != null)
-    const effectiveMode: 'guided' | 'list' = hasRounds ? viewMode : 'list'
+    // The guided player isn't circuit-specific - stepping through one
+    // thing at a time with a rest screen in between works just as
+    // well for straight sets (unrolled the same way rounds are - see
+    // seed content) as it does for circuits. It's only offered when
+    // there's more than one step to move through; a single-exercise
+    // day (or a rest day with none at all) only ever shows the plain
+    // list, no "Start Now" button, since there's nothing to step
+    // through. round is still used separately, purely to decide
+    // whether a "Round N starts" interstitial appears - most straight-
+    // set content won't set it at all, and that's fine, it just skips
+    // straight from rest into the next set with no announcement.
+    const hasGuidedFlow = exercises.length > 1
+    const effectiveMode: 'guided' | 'list' = hasGuidedFlow ? viewMode : 'list'
     const totalRounds = new Set(
       exercises.map((ex) => ex.round).filter((r): r is number => r != null)
     ).size
@@ -553,6 +601,31 @@ export default function WorkoutDayPicker({
     const currentRound = currentEx?.round ?? null
     const roundExercises = currentRound != null ? exercises.filter((ex) => ex.round === currentRound) : []
     const posInRound = currentEx ? roundExercises.indexOf(currentEx) + 1 : 0
+    // List-view-only grouping: consecutive non-round entries sharing a
+    // base name (Squats (1), (2), (3)) are one visual card with
+    // stacked set rows, instead of three near-identical cards in a
+    // row. Round-tagged entries never merge (their names carry "Round
+    // N", not a bare "(N)"), so they always come through as their own
+    // singleton group and render exactly as before. Guided view still
+    // walks the raw exercises array one entry at a time regardless -
+    // this grouping is purely cosmetic for the list.
+    const listGroups: CellExercise[][] = []
+    for (const ex of exercises) {
+      const prev = listGroups[listGroups.length - 1]
+      if (prev && ex.round == null && prev[0].round == null && baseName(ex.originalName) === baseName(prev[0].originalName)) {
+        prev.push(ex)
+      } else {
+        listGroups.push([ex])
+      }
+    }
+    // Only rendered while the roundIntro screen is showing - whether
+    // *this* transition is a phase change (warmup->main->cooldown) as
+    // opposed to just a same-phase round bump (round 2, 3... within
+    // main). Phase takes headline priority when both happen at once
+    // (main phase's round 1), since "Time for the main workout" says
+    // more than "Round 1 starts" would on its own.
+    const introIsPhaseFirst = isFirstOfPhase(exercises, guidedIndex)
+    const introPhase = introIsPhaseFirst ? currentEx?.phase ?? null : null
 
     // The interactive body of a single exercise - video/timer/overflow
     // row, swap panel, rest picker, and the set-logging inputs. Shared
@@ -635,7 +708,7 @@ export default function WorkoutDayPicker({
                   onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
                   className="text-xs font-medium text-zinc-400 hover:text-white transition"
                 >
-                  ⏱ Regular timer
+                  ⏱ Timer
                 </button>
               )}
             </div>
@@ -778,6 +851,229 @@ export default function WorkoutDayPicker({
       )
     }
 
+    // List-view-only counterpart to renderExerciseCard, for a run of
+    // straight sets sharing one exercise (Squats (1), (2), (3)).
+    // Video/timer/swap/overflow are exercise-level actions - showing
+    // them once at the top instead of once per set avoids repeating
+    // the same row three times. Swap, like on round days today,
+    // targets only the first set in the group rather than all of
+    // them at once - matching existing per-instance swap behavior
+    // rather than introducing new "swap the whole group" logic.
+    // Add/remove-set is deliberately omitted here (unlike the plain
+    // card) since each entry in the group is already exactly one
+    // predetermined set, not an open-ended list to extend.
+    function renderGroupedCard(group: CellExercise[]) {
+      const rep = group[0]
+      const last = lastByExercise[rep.name]
+      const video = findExerciseVideo(rep.name, videos)
+      const alreadyRequested = requestedVideos.has(rep.name)
+      const swapOpen = swapPanelFor === rep.originalName
+      const overflowOpen = overflowOpenFor === rep.originalName
+      const restPickerOpen = restPickerFor === rep.originalName
+      const label = baseName(rep.name)
+      return (
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-baseline justify-between mb-1 gap-2">
+            <p className="text-white font-semibold">{label}</p>
+            <p className="text-zinc-500 text-xs whitespace-nowrap">
+              Target: {group.length} x {rep.reps}
+            </p>
+          </div>
+          {rep.name !== rep.originalName && (
+            <p className="text-zinc-600 text-[11px] mb-1">Swapped from {baseName(rep.originalName)}</p>
+          )}
+          {last && (
+            <p className="text-zinc-500 text-xs mb-2">
+              Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-3">
+              {video ? (
+                <a
+                  href={video.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                >
+                  ▶ Watch video
+                </a>
+              ) : (
+                <a
+                  href={youtubeSearchUrl(rep.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                >
+                  Search on YouTube ↗
+                </a>
+              )}
+              {rep.timerSeconds ? (
+                <>
+                  <button
+                    onClick={() => startRestTimer(rep.timerSeconds!)}
+                    className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                  >
+                    ▶ {formatDurationLabel(rep.timerSeconds)} timer
+                  </button>
+                  <button
+                    onClick={() => setRestPickerFor(restPickerOpen ? null : rep.originalName)}
+                    className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                  >
+                    ⏱ custom
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setRestPickerFor(restPickerOpen ? null : rep.originalName)}
+                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                >
+                  ⏱ Timer
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <button
+                onClick={() => setOverflowOpenFor(overflowOpen ? null : rep.originalName)}
+                aria-label="More options"
+                className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+              >
+                ⋯
+              </button>
+              {overflowOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
+                  <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                    {!video && (
+                      <button
+                        onClick={() => {
+                          handleRequestVideo(rep.name)
+                          setOverflowOpenFor(null)
+                        }}
+                        disabled={alreadyRequested}
+                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                      >
+                        {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSwapPanelFor(rep.originalName)
+                        setSwapInput('')
+                        setOverflowOpenFor(null)
+                      }}
+                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                    >
+                      ⇄ Swap exercise
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {restPickerOpen && (
+            <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
+              {REST_PRESETS_SECONDS.map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => startRestTimer(sec)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-orange-500/40 transition"
+                >
+                  {formatDurationLabel(sec)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {swapOpen && (
+            <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <input
+                  type="text"
+                  list="exercise-swap-suggestions"
+                  value={swapInput}
+                  onChange={(e) => setSwapInput(e.target.value)}
+                  placeholder="Swap in which exercise?"
+                  autoFocus
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                />
+                <button
+                  onClick={() => {
+                    setSwapPanelFor(null)
+                    setSwapInput('')
+                  }}
+                  aria-label="Cancel swap"
+                  className="shrink-0 text-zinc-500 hover:text-white transition px-1"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => handleSwap(rep, activeCell!.week, false)}
+                  disabled={!swapInput.trim() || isPending}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition disabled:opacity-30"
+                >
+                  Just this week
+                </button>
+                <button
+                  onClick={() => handleSwap(rep, activeCell!.week, true)}
+                  disabled={!swapInput.trim() || isPending}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition disabled:opacity-30"
+                >
+                  All weeks
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-3 pt-3 border-t border-zinc-800 space-y-1">
+            {group.map((ex, i) => {
+              const rows = setsByExercise[ex.name] || []
+              const row = rows[0]
+              return (
+                <Fragment key={ex.originalName}>
+                  <div className={`flex items-center gap-2 ${i === 0 ? '' : 'pt-2 border-t border-zinc-800/60'}`}>
+                    <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
+                    {ex.trackWeight !== false && (
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                        value={row?.weight ?? ''}
+                        onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                      />
+                    )}
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder={ex.reps || 'reps'}
+                      value={row?.reps ?? ''}
+                      onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                    />
+                  </div>
+                  {ex.restSeconds != null && (
+                    <div className="flex justify-end pb-1">
+                      <button
+                        onClick={() => startRestTimer(ex.restSeconds!)}
+                        className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
+                      >
+                        ▶ {formatDurationLabel(ex.restSeconds)}
+                      </button>
+                    </div>
+                  )}
+                </Fragment>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div>
         <datalist id="exercise-swap-suggestions">
@@ -858,7 +1154,7 @@ export default function WorkoutDayPicker({
                 defaulting straight into the player on arrival. Label
                 reflects whether this is a fresh start or picking back
                 up partway through. */}
-            {hasRounds && (
+            {hasGuidedFlow && (
               <button
                 onClick={toggleViewMode}
                 className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition mb-4"
@@ -867,32 +1163,37 @@ export default function WorkoutDayPicker({
               </button>
             )}
             <div className="space-y-4">
-              {exercises.map((ex, i) => (
-                <Fragment key={ex.originalName}>
-                  {isFirstOfRound(exercises, i) && (
+              {listGroups.map((group) => {
+                const first = group[0]
+                const i = exercises.indexOf(first)
+                const isRoundCard = first.round != null
+                return (
+                <Fragment key={first.originalName}>
+                  {isRoundCard && isFirstOfRound(exercises, i) && (
                     <p
                       className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${
                         i === 0 ? '' : 'pt-3 border-t border-zinc-800'
                       }`}
                     >
-                      Round {ex.round}
+                      Round {first.round}
                     </p>
                   )}
-                  {renderExerciseCard(ex)}
-                  {ex.restSeconds != null && i < exercises.length - 1 && (
+                  {isRoundCard ? renderExerciseCard(first) : renderGroupedCard(group)}
+                  {isRoundCard && first.restSeconds != null && i < exercises.length - 1 && (
                     <div className="flex items-center gap-2 -mt-2">
                       <div className="flex-1 h-px bg-zinc-800" />
                       <button
-                        onClick={() => startRestTimer(ex.restSeconds!)}
+                        onClick={() => startRestTimer(first.restSeconds!)}
                         className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
                       >
-                        ▶ Rest {formatDurationLabel(ex.restSeconds)}
+                        ▶ Rest {formatDurationLabel(first.restSeconds)}
                       </button>
                       <div className="flex-1 h-px bg-zinc-800" />
                     </div>
                   )}
                 </Fragment>
-              ))}
+                )
+              })}
             </div>
           </div>
         ) : (
@@ -904,23 +1205,37 @@ export default function WorkoutDayPicker({
               ← Switch to list view
             </button>
 
-            {currentRound != null && guidedPhase !== 'done' && (
+            {guidedPhase !== 'done' && (
               <p className="text-zinc-500 text-xs text-center">
-                Round {currentRound} of {totalRounds} &middot; Exercise {posInRound} of {roundExercises.length}
+                {currentRound != null
+                  ? `Round ${currentRound} of ${totalRounds} · Exercise ${posInRound} of ${roundExercises.length}`
+                  : `Exercise ${guidedIndex + 1} of ${exercises.length}`}
               </p>
             )}
 
-            {guidedPhase === 'roundIntro' && currentRound != null && (
+            {guidedPhase === 'roundIntro' && (currentRound != null || introPhase != null) && (
               <div className="glass rounded-2xl p-8 text-center">
-                <p className="text-white text-xl font-bold mb-2">Round {currentRound} starts</p>
-                <p className="text-zinc-400 text-sm mb-6">
-                  {roundExercises.length} exercise{roundExercises.length === 1 ? '' : 's'} this round
+                <p className="text-white text-xl font-bold mb-2">
+                  {introPhase ? phaseIntroText(introPhase) : `Round ${currentRound} starts`}
                 </p>
+                {introPhase && currentRound != null && (
+                  <p className="text-zinc-400 text-sm mb-6">
+                    Round {currentRound} of {totalRounds}
+                  </p>
+                )}
+                {!introPhase && currentRound != null && (
+                  <p className="text-zinc-400 text-sm mb-6">
+                    {roundExercises.length} exercise{roundExercises.length === 1 ? '' : 's'} this round
+                  </p>
+                )}
+                {introPhase === 'cooldown' && (
+                  <p className="text-zinc-500 text-xs mb-6">Don&apos;t ignore this.</p>
+                )}
                 <button
                   onClick={() => setGuidedPhase('exercise')}
                   className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-6 py-3 rounded-xl transition"
                 >
-                  Start round {currentRound}
+                  {currentRound != null ? `Start round ${currentRound}` : 'Continue'}
                 </button>
               </div>
             )}
