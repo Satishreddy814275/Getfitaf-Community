@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { Fragment, useEffect, useRef, useState, useTransition } from 'react'
 import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/workouts/actions'
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
@@ -24,6 +24,7 @@ interface CellExercise {
   trackWeight?: boolean
   restSeconds?: number
   timerSeconds?: number
+  round?: number
 }
 
 interface Cell {
@@ -52,11 +53,11 @@ function resolveExercises(
       swaps.find(
         (s) => s.dayNumber === day.day && s.weekNumber === 0 && s.originalExerciseName === ex.name
       )
-    // trackWeight/restSeconds/timerSeconds aren't swap-diffable fields
-    // (the swap row only stores name/sets/reps) - a swapped-in
-    // exercise keeps the original slot's weight/rest/timer treatment
-    // rather than defaulting back to "needs weight, no rest
-    // reference, no prescribed timer".
+    // trackWeight/restSeconds/timerSeconds/round aren't swap-diffable
+    // fields (the swap row only stores name/sets/reps) - a swapped-in
+    // exercise keeps the original slot's weight/rest/timer/round
+    // treatment rather than defaulting back to "needs weight, no rest
+    // reference, no prescribed timer, not part of a round".
     return swap
       ? {
           originalName: ex.name,
@@ -66,6 +67,7 @@ function resolveExercises(
           trackWeight: ex.trackWeight,
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
+          round: ex.round,
         }
       : {
           originalName: ex.name,
@@ -75,6 +77,7 @@ function resolveExercises(
           trackWeight: ex.trackWeight,
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
+          round: ex.round,
         }
   })
 }
@@ -84,6 +87,10 @@ const DRAFT_KEY_PREFIX = 'workout-draft-'
 interface Draft {
   cell: Cell
   sets: Record<string, SetRow[]>
+  // Where the guided player was, so resuming a closed tab lands back
+  // on roughly the right exercise instead of restarting at the top.
+  // Optional so old drafts saved before this existed still parse fine.
+  guidedIndex?: number
 }
 
 // A session isn't saved to the server at all until "Finish Workout" -
@@ -102,10 +109,10 @@ function loadDraft(generationId: string): Draft | null {
   }
 }
 
-function saveDraft(generationId: string, cell: Cell, sets: Record<string, SetRow[]>) {
+function saveDraft(generationId: string, cell: Cell, sets: Record<string, SetRow[]>, guidedIndex: number) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(DRAFT_KEY_PREFIX + generationId, JSON.stringify({ cell, sets }))
+    window.localStorage.setItem(DRAFT_KEY_PREFIX + generationId, JSON.stringify({ cell, sets, guidedIndex }))
   } catch {
     // Storage full/unavailable - worst case the draft just doesn't
     // resume, logging itself still works fine.
@@ -119,6 +126,43 @@ function clearDraft(generationId: string) {
   } catch {
     // no-op
   }
+}
+
+// Whether someone prefers the guided one-at-a-time player or the
+// plain scrollable list, for round-based days (non-round days only
+// ever show the list, so this preference is moot for them). A single
+// global preference rather than per-program/per-day - simpler, and
+// matches "I just like one or the other" more than "I want different
+// modes for different programs."
+const VIEW_PREFERENCE_KEY = 'workout-view-preference'
+
+function loadViewPreference(): 'guided' | 'list' {
+  if (typeof window === 'undefined') return 'guided'
+  try {
+    return window.localStorage.getItem(VIEW_PREFERENCE_KEY) === 'list' ? 'list' : 'guided'
+  } catch {
+    return 'guided'
+  }
+}
+
+function saveViewPreference(mode: 'guided' | 'list') {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(VIEW_PREFERENCE_KEY, mode)
+  } catch {
+    // no-op
+  }
+}
+
+// True when this index is the first exercise of its round - i.e. the
+// round number here differs from the previous exercise's. Derived
+// straight from the array position rather than tracked through
+// session state, so it works identically whether arriving here via
+// normal forward progress or resuming a draft partway through.
+function isFirstOfRound(exercises: CellExercise[], index: number): boolean {
+  const round = exercises[index]?.round
+  if (round == null) return false
+  return exercises[index - 1]?.round !== round
 }
 
 function formatRestTime(totalSeconds: number): string {
@@ -220,6 +264,20 @@ export default function WorkoutDayPicker({
   const [restPickerFor, setRestPickerFor] = useState<string | null>(null)
   const [restTimer, setRestTimer] = useState<{ remaining: number; total: number } | null>(null)
   const restoredRef = useRef(false)
+  // Guided one-at-a-time player state, only relevant on round-based
+  // days (see hasRounds below) - list-only days ignore all of this.
+  // viewMode is a lasting preference (localStorage); guidedIndex/Phase
+  // are per-session. 'roundIntro' is the "Round N starts" interstitial
+  // shown on the first exercise of each round; 'done' is reached after
+  // the last exercise (rest or not) with nothing left to advance to.
+  const [viewMode, setViewMode] = useState<'guided' | 'list'>(loadViewPreference)
+  const [guidedIndex, setGuidedIndex] = useState(0)
+  const [guidedPhase, setGuidedPhase] = useState<'roundIntro' | 'exercise' | 'rest' | 'done'>('exercise')
+  // Tracks the previous render's restTimer so the effect below can
+  // tell "a running timer just reached zero on its own" apart from
+  // "there was never a timer running" - only the former should
+  // auto-advance the guided player.
+  const prevRestTimerRef = useRef<{ remaining: number; total: number } | null>(null)
 
   // One interval for the whole lifetime of a running timer, not
   // recreated every tick - keyed on the null/non-null transition
@@ -258,6 +316,57 @@ export default function WorkoutDayPicker({
     })
   }
 
+  // Moves the guided player forward one exercise, landing on
+  // 'roundIntro' if that next exercise starts a new round or plain
+  // 'exercise' otherwise. Reads activeCell/guidedIndex fresh each call
+  // rather than via functional state updates, which is fine since this
+  // only ever runs from a click handler or the auto-advance effect
+  // below, never concurrently with itself.
+  function advanceGuided() {
+    if (!activeCell) return
+    const nextIndex = guidedIndex + 1
+    if (nextIndex >= activeCell.exercises.length) {
+      setGuidedPhase('done')
+      return
+    }
+    setGuidedIndex(nextIndex)
+    setGuidedPhase(isFirstOfRound(activeCell.exercises, nextIndex) ? 'roundIntro' : 'exercise')
+  }
+
+  // Tapping "Done" on the current exercise either starts its rest
+  // timer (most circuit moves have one) or, for the rare exercise with
+  // no rest configured, skips straight to the next one.
+  function handleGuidedDone(ex: CellExercise) {
+    if (ex.restSeconds != null) {
+      startRestTimer(ex.restSeconds)
+      setGuidedPhase('rest')
+    } else {
+      advanceGuided()
+    }
+  }
+
+  function toggleViewMode() {
+    setViewMode((prev) => {
+      const next = prev === 'guided' ? 'list' : 'guided'
+      saveViewPreference(next)
+      return next
+    })
+  }
+
+  // Auto-advances the guided player the moment a rest countdown it
+  // started reaches zero on its own - the transition from "was
+  // running" to "now null" only happens once, naturally, when the
+  // interval counts down past 0 (see the interval effect above).
+  // Tapping "Skip rest" just nulls restTimer directly, which lands
+  // here too, so there's only one advance path instead of two.
+  useEffect(() => {
+    if (guidedPhase === 'rest' && prevRestTimerRef.current && !restTimer) {
+      advanceGuided()
+    }
+    prevRestTimerRef.current = restTimer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restTimer, guidedPhase])
+
   const completedSet = new Set(completedCells)
 
   // Each authored day is its own real week/day slot, shown exactly
@@ -291,6 +400,9 @@ export default function WorkoutDayPicker({
     if (allCells.some((c) => c.key === draft.cell.key)) {
       setActiveCell(draft.cell)
       setSetsByExercise(draft.sets)
+      const index = draft.guidedIndex ?? 0
+      setGuidedIndex(index)
+      setGuidedPhase(isFirstOfRound(draft.cell.exercises, index) ? 'roundIntro' : 'exercise')
     } else {
       // Stale draft (plan regenerated since, cell no longer exists) -
       // discard rather than resuming into something that's gone.
@@ -303,8 +415,8 @@ export default function WorkoutDayPicker({
   // - this is what actually makes the resume above possible.
   useEffect(() => {
     if (!activeCell) return
-    saveDraft(generationId, activeCell, setsByExercise)
-  }, [generationId, activeCell, setsByExercise])
+    saveDraft(generationId, activeCell, setsByExercise, guidedIndex)
+  }, [generationId, activeCell, setsByExercise, guidedIndex])
 
   function startCell(cell: Cell) {
     // Pre-fill one row per target set (e.g. "3-5" -> 3 rows) - just a
@@ -322,6 +434,8 @@ export default function WorkoutDayPicker({
     setOverflowOpenFor(null)
     setRestPickerFor(null)
     setRestTimer(null)
+    setGuidedIndex(0)
+    setGuidedPhase(isFirstOfRound(cell.exercises, 0) ? 'roundIntro' : 'exercise')
   }
 
   // Single close action for the session - replaces what used to be
@@ -347,6 +461,8 @@ export default function WorkoutDayPicker({
     setOverflowOpenFor(null)
     setRestPickerFor(null)
     setRestTimer(null)
+    setGuidedIndex(0)
+    setGuidedPhase('exercise')
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -448,6 +564,244 @@ export default function WorkoutDayPicker({
     // immediately watch a demo.
     const exerciseSuggestions = Array.from(new Set(videos.map((v) => v.exerciseName))).sort()
 
+    const exercises = activeCell.exercises
+    // A day counts as "round-based" the moment any exercise carries a
+    // round number - non-round days (or a rest day with none at all)
+    // only ever get the plain list, no toggle shown.
+    const hasRounds = exercises.some((ex) => ex.round != null)
+    const effectiveMode: 'guided' | 'list' = hasRounds ? viewMode : 'list'
+    const totalRounds = new Set(
+      exercises.map((ex) => ex.round).filter((r): r is number => r != null)
+    ).size
+    const currentEx: CellExercise | undefined = exercises[guidedIndex]
+    const currentRound = currentEx?.round ?? null
+    const roundExercises = currentRound != null ? exercises.filter((ex) => ex.round === currentRound) : []
+    const posInRound = currentEx ? roundExercises.indexOf(currentEx) + 1 : 0
+
+    // The interactive body of a single exercise - video/timer/overflow
+    // row, swap panel, rest picker, and the set-logging inputs. Shared
+    // between the list view (one per card, all shown at once) and the
+    // guided view (just the current one) so neither mode duplicates
+    // this logic.
+    function renderExerciseCard(ex: CellExercise) {
+      const last = lastByExercise[ex.name]
+      const video = findExerciseVideo(ex.name, videos)
+      const alreadyRequested = requestedVideos.has(ex.name)
+      const swapOpen = swapPanelFor === ex.originalName
+      const overflowOpen = overflowOpenFor === ex.originalName
+      const restPickerOpen = restPickerFor === ex.originalName
+      return (
+        <div className="glass rounded-2xl p-4">
+          <div className="flex items-baseline justify-between mb-1 gap-2">
+            <p className="text-white font-semibold">{ex.name}</p>
+            <p className="text-zinc-500 text-xs whitespace-nowrap flex items-center gap-1">
+              <span>Target: {ex.sets} x {ex.reps}</span>
+              {ex.restSeconds != null && (
+                <>
+                  <span>&middot; Rest: {formatDurationLabel(ex.restSeconds)}</span>
+                  <button
+                    onClick={() => startRestTimer(ex.restSeconds!)}
+                    aria-label="Start rest timer"
+                    className="text-orange-400 hover:text-orange-300 transition"
+                  >
+                    ▶
+                  </button>
+                </>
+              )}
+            </p>
+          </div>
+          {ex.name !== ex.originalName && (
+            <p className="text-zinc-600 text-[11px] mb-1">Swapped from {ex.originalName}</p>
+          )}
+          {last && (
+            <p className="text-zinc-500 text-xs mb-2">
+              Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-3">
+              {video ? (
+                <a
+                  href={video.videoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                >
+                  ▶ Watch video
+                </a>
+              ) : (
+                <a
+                  href={youtubeSearchUrl(ex.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                >
+                  Search on YouTube ↗
+                </a>
+              )}
+              {ex.timerSeconds ? (
+                <>
+                  <button
+                    onClick={() => startRestTimer(ex.timerSeconds!)}
+                    className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                  >
+                    ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                  </button>
+                  <button
+                    onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
+                    className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                  >
+                    ⏱ custom
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
+                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                >
+                  ⏱ Regular timer
+                </button>
+              )}
+            </div>
+
+            <div className="relative">
+              <button
+                onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
+                aria-label="More options"
+                className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+              >
+                ⋯
+              </button>
+              {overflowOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
+                  <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                    {!video && (
+                      <button
+                        onClick={() => {
+                          handleRequestVideo(ex.name)
+                          setOverflowOpenFor(null)
+                        }}
+                        disabled={alreadyRequested}
+                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                      >
+                        {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setSwapPanelFor(ex.originalName)
+                        setSwapInput('')
+                        setOverflowOpenFor(null)
+                      }}
+                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                    >
+                      ⇄ Swap exercise
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {restPickerOpen && (
+            <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
+              {REST_PRESETS_SECONDS.map((sec) => (
+                <button
+                  key={sec}
+                  onClick={() => startRestTimer(sec)}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-orange-500/40 transition"
+                >
+                  {formatDurationLabel(sec)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {swapOpen && (
+            <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <input
+                  type="text"
+                  list="exercise-swap-suggestions"
+                  value={swapInput}
+                  onChange={(e) => setSwapInput(e.target.value)}
+                  placeholder="Swap in which exercise?"
+                  autoFocus
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                />
+                <button
+                  onClick={() => {
+                    setSwapPanelFor(null)
+                    setSwapInput('')
+                  }}
+                  aria-label="Cancel swap"
+                  className="shrink-0 text-zinc-500 hover:text-white transition px-1"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => handleSwap(ex, activeCell!.week, false)}
+                  disabled={!swapInput.trim() || isPending}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition disabled:opacity-30"
+                >
+                  Just this week
+                </button>
+                <button
+                  onClick={() => handleSwap(ex, activeCell!.week, true)}
+                  disabled={!swapInput.trim() || isPending}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition disabled:opacity-30"
+                >
+                  All weeks
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2 mt-3 pt-3 border-t border-zinc-800">
+            {(setsByExercise[ex.name] || []).map((row, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
+                {ex.trackWeight !== false && (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                    value={row.weight}
+                    onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                  />
+                )}
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder={ex.reps || 'reps'}
+                  value={row.reps}
+                  onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                />
+                <button
+                  onClick={() => removeSetRow(ex.name, i)}
+                  aria-label="Remove set"
+                  className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={() => addSetRow(ex.name)}
+              className="text-xs text-orange-400 hover:text-orange-300 transition"
+            >
+              + Add set
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div>
         <datalist id="exercise-swap-suggestions">
@@ -462,8 +816,11 @@ export default function WorkoutDayPicker({
             Finish Workout bar and only came into view once you'd
             scrolled all the way back down. Offset below both header
             heights (top-16/top-20) so it doesn't sit under the logo
-            and notification bell at the very top of the page. */}
-        {restTimer && (
+            and notification bell at the very top of the page.
+            Suppressed during the guided player's own rest screen,
+            which already shows this same countdown as its main
+            content - no need for both at once. */}
+        {restTimer && !(effectiveMode === 'guided' && guidedPhase === 'rest') && (
           <div className="fixed top-16 sm:top-20 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
             <button
               onClick={() => adjustRestTimer(-15)}
@@ -496,13 +853,21 @@ export default function WorkoutDayPicker({
             <h2 className="text-white text-lg font-bold">
               Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
             </h2>
-            {activeCell.exercises.length > 0 && (
+            {exercises.length > 0 && (
               <p className="text-zinc-500 text-xs mt-0.5">
-                {activeCell.exercises.length} exercise{activeCell.exercises.length === 1 ? '' : 's'}
+                {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
               </p>
             )}
             {activeCell.notes && (
               <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
+            )}
+            {hasRounds && (
+              <button
+                onClick={toggleViewMode}
+                className="text-xs font-medium text-orange-400 hover:text-orange-300 transition mt-1"
+              >
+                Switch to {viewMode === 'guided' ? 'list' : 'guided'} view
+              </button>
             )}
           </div>
           <button
@@ -517,229 +882,95 @@ export default function WorkoutDayPicker({
           </button>
         </div>
 
-        <div className="space-y-4 mt-4">
-          {activeCell.exercises.map((ex) => {
-            const last = lastByExercise[ex.name]
-            const video = findExerciseVideo(ex.name, videos)
-            const alreadyRequested = requestedVideos.has(ex.name)
-            const swapOpen = swapPanelFor === ex.originalName
-            const overflowOpen = overflowOpenFor === ex.originalName
-            const restPickerOpen = restPickerFor === ex.originalName
-            return (
-              <div key={ex.originalName} className="glass rounded-2xl p-4">
-                <div className="flex items-baseline justify-between mb-1 gap-2">
-                  <p className="text-white font-semibold">{ex.name}</p>
-                  <p className="text-zinc-500 text-xs whitespace-nowrap flex items-center gap-1">
-                    <span>Target: {ex.sets} x {ex.reps}</span>
-                    {ex.restSeconds != null && (
-                      <>
-                        <span>&middot; Rest: {formatDurationLabel(ex.restSeconds)}</span>
-                        <button
-                          onClick={() => startRestTimer(ex.restSeconds!)}
-                          aria-label="Start rest timer"
-                          className="text-orange-400 hover:text-orange-300 transition"
-                        >
-                          ▶
-                        </button>
-                      </>
-                    )}
-                  </p>
-                </div>
-                {ex.name !== ex.originalName && (
-                  <p className="text-zinc-600 text-[11px] mb-1">Swapped from {ex.originalName}</p>
-                )}
-                {last && (
-                  <p className="text-zinc-500 text-xs mb-2">
-                    Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
+        {effectiveMode === 'list' ? (
+          <div className="space-y-4 mt-4">
+            {exercises.map((ex, i) => (
+              <Fragment key={ex.originalName}>
+                {isFirstOfRound(exercises, i) && (
+                  <p className="text-orange-400 text-[11px] font-semibold uppercase tracking-wide">
+                    Round {ex.round}
                   </p>
                 )}
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-center gap-3">
-                    {video ? (
-                      <a
-                        href={video.videoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-                      >
-                        ▶ Watch video
-                      </a>
-                    ) : (
-                      <a
-                        href={youtubeSearchUrl(ex.name)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                      >
-                        Search on YouTube ↗
-                      </a>
-                    )}
-                    {ex.timerSeconds ? (
-                      <>
-                        <button
-                          onClick={() => startRestTimer(ex.timerSeconds!)}
-                          className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-                        >
-                          ▶ {formatDurationLabel(ex.timerSeconds)} timer
-                        </button>
-                        <button
-                          onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                          className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                        >
-                          ⏱ custom
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                        className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                      >
-                        ⏱ Regular timer
-                      </button>
-                    )}
-                  </div>
+                {renderExerciseCard(ex)}
+              </Fragment>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {currentRound != null && guidedPhase !== 'done' && (
+              <p className="text-zinc-500 text-xs text-center">
+                Round {currentRound} of {totalRounds} &middot; Exercise {posInRound} of {roundExercises.length}
+              </p>
+            )}
 
-                  <div className="relative">
-                    <button
-                      onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
-                      aria-label="More options"
-                      className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
-                    >
-                      ⋯
-                    </button>
-                    {overflowOpen && (
-                      <>
-                        <div
-                          className="fixed inset-0 z-10"
-                          onClick={() => setOverflowOpenFor(null)}
-                        />
-                        <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
-                          {!video && (
-                            <button
-                              onClick={() => {
-                                handleRequestVideo(ex.name)
-                                setOverflowOpenFor(null)
-                              }}
-                              disabled={alreadyRequested}
-                              className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
-                            >
-                              {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => {
-                              setSwapPanelFor(ex.originalName)
-                              setSwapInput('')
-                              setOverflowOpenFor(null)
-                            }}
-                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                          >
-                            ⇄ Swap exercise
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+            {guidedPhase === 'roundIntro' && currentRound != null && (
+              <div className="glass rounded-2xl p-8 text-center">
+                <p className="text-white text-xl font-bold mb-2">Round {currentRound} starts</p>
+                <p className="text-zinc-400 text-sm mb-6">
+                  {roundExercises.length} exercise{roundExercises.length === 1 ? '' : 's'} this round
+                </p>
+                <button
+                  onClick={() => setGuidedPhase('exercise')}
+                  className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-6 py-3 rounded-xl transition"
+                >
+                  Start round {currentRound}
+                </button>
+              </div>
+            )}
 
-                {restPickerOpen && (
-                  <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
-                    {REST_PRESETS_SECONDS.map((sec) => (
-                      <button
-                        key={sec}
-                        onClick={() => startRestTimer(sec)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white hover:border-orange-500/40 transition"
-                      >
-                        {formatDurationLabel(sec)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {swapOpen && (
-                  <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        list="exercise-swap-suggestions"
-                        value={swapInput}
-                        onChange={(e) => setSwapInput(e.target.value)}
-                        placeholder="Swap in which exercise?"
-                        autoFocus
-                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                      />
-                      <button
-                        onClick={() => {
-                          setSwapPanelFor(null)
-                          setSwapInput('')
-                        }}
-                        aria-label="Cancel swap"
-                        className="shrink-0 text-zinc-500 hover:text-white transition px-1"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => handleSwap(ex, activeCell.week, false)}
-                        disabled={!swapInput.trim() || isPending}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition disabled:opacity-30"
-                      >
-                        Just this week
-                      </button>
-                      <button
-                        onClick={() => handleSwap(ex, activeCell.week, true)}
-                        disabled={!swapInput.trim() || isPending}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-400 hover:bg-orange-500/10 transition disabled:opacity-30"
-                      >
-                        All weeks
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="space-y-2 mt-3 pt-3 border-t border-zinc-800">
-                  {(setsByExercise[ex.name] || []).map((row, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
-                      {ex.trackWeight !== false && (
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          placeholder={last?.weight != null ? String(last.weight) : 'weight'}
-                          value={row.weight}
-                          onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                        />
-                      )}
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        placeholder={ex.reps || 'reps'}
-                        value={row.reps}
-                        onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                      />
-                      <button
-                        onClick={() => removeSetRow(ex.name, i)}
-                        aria-label="Remove set"
-                        className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
+            {guidedPhase === 'rest' && restTimer && (
+              <div className="glass rounded-2xl p-8 text-center">
+                <p className="text-zinc-400 text-sm mb-2">Rest</p>
+                <p className="text-white text-5xl font-bold tabular-nums mb-4">
+                  {formatRestTime(restTimer.remaining)}
+                </p>
+                <div className="flex items-center justify-center gap-3 mb-4">
                   <button
-                    onClick={() => addSetRow(ex.name)}
-                    className="text-xs text-orange-400 hover:text-orange-300 transition"
+                    onClick={() => adjustRestTimer(-15)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition"
                   >
-                    + Add set
+                    −15s
+                  </button>
+                  <button
+                    onClick={() => adjustRestTimer(15)}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition"
+                  >
+                    +15s
                   </button>
                 </div>
+                <button
+                  onClick={() => setRestTimer(null)}
+                  className="text-xs font-medium text-zinc-500 hover:text-white transition"
+                >
+                  Skip rest
+                </button>
               </div>
-            )
-          })}
-        </div>
+            )}
+
+            {guidedPhase === 'exercise' && currentEx && (
+              <>
+                {renderExerciseCard(currentEx)}
+                <button
+                  onClick={() => handleGuidedDone(currentEx)}
+                  className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
+                >
+                  {currentEx.restSeconds != null
+                    ? `Done - start ${formatDurationLabel(currentEx.restSeconds)} rest`
+                    : guidedIndex === exercises.length - 1
+                      ? 'Done'
+                      : 'Done - next exercise'}
+                </button>
+              </>
+            )}
+
+            {guidedPhase === 'done' && (
+              <div className="glass rounded-2xl p-5 text-center">
+                <p className="text-white font-semibold mb-1">That&apos;s the whole session</p>
+                <p className="text-zinc-400 text-sm">Tap Finish Workout below to log it.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pinned above the mobile bottom tab bar (bottom-16 matches
             the pb-16 clearance layout.tsx already gives page content)
