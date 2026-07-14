@@ -925,8 +925,20 @@ export default function WorkoutDayPicker({
               </div>
             )}
 
-            {guidedPhase === 'rest' && restTimer && (
+            {guidedPhase === 'rest' && restTimer && currentEx && (
               <div className="glass rounded-2xl p-8 text-center">
+                {/* guidedIndex still points at the just-finished
+                    exercise here - advanceGuided() only moves it once
+                    this rest ends - so both names are available
+                    exactly when someone would want to see them: right
+                    as they start resting, before the next card
+                    replaces this screen. */}
+                <p className="text-zinc-500 text-xs mb-3">
+                  Finished {currentEx.name}.
+                  {exercises[guidedIndex + 1]
+                    ? ` Up next: ${exercises[guidedIndex + 1].name}.`
+                    : " That's the last exercise."}
+                </p>
                 <p className="text-zinc-400 text-sm mb-2">Rest</p>
                 <p className="text-white text-5xl font-bold tabular-nums mb-4">
                   {formatRestTime(restTimer.remaining)}
