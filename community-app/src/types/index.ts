@@ -81,13 +81,31 @@ export interface WorkoutExercise {
   // weight that doesn't apply. Absent/true on older AI-generated plans,
   // where every exercise still shows a weight field same as before.
   trackWeight?: boolean
-  // Free-text rest reference shown next to Target (e.g. "40s") - a
-  // number to look at and optionally punch into the regular timer,
-  // not something the app enforces or counts down automatically.
-  rest?: string
+  // Prescribed rest duration in seconds shown next to Target (e.g. 40)
+  // - like timerSeconds, this is a number to reach for a one-tap timer
+  // with, not something the app enforces or counts down on its own.
+  // Kept as a separate field from timerSeconds (rather than reusing
+  // it) since an exercise can have both a work duration and a rest
+  // duration that differ.
+  restSeconds?: number
+  // Prescribed work duration in seconds (e.g. 600 for a 10-minute
+  // walk, 20 for a 20s hold) - only set on authored program-template
+  // content, where the duration is something we wrote ourselves and
+  // can trust, unlike AI-generated free text. When present, the
+  // logging UI shows a dedicated one-tap timer button pre-loaded to
+  // this exact duration, alongside the regular custom picker for
+  // anyone who wants a different one.
+  timerSeconds?: number
 }
 
 export interface WorkoutPlanDay {
+  // Real, distinct identifiers on program-template content - each
+  // week/day combination is its own authored entry and is shown
+  // exactly once, not a single-week template replayed across a fixed
+  // program length. (On older AI-generated plans, week was always 1
+  // and WorkoutDayPicker used to synthesize a repeating 4-week grid
+  // from it - that replay behavior is gone now that community-app
+  // logging only ever reads from program_templates.)
   week: number
   day: number
   label: string
@@ -141,12 +159,12 @@ export interface WorkoutHistoryGroup {
 }
 
 // A member-initiated exercise substitution (see
-// migration-exercise-swaps.sql). weekNumber 0 means "every week" -
-// the plan template only ever describes one week's worth of days,
-// replayed 4x by WorkoutDayPicker, so a swap that should apply
-// everywhere is just the same row without a specific week attached.
-// A week-specific swap (1-4) overrides an all-weeks swap for the same
-// day/exercise if both happen to exist. Keyed by originalExerciseName
+// migration-exercise-swaps.sql). weekNumber 0 means "apply to any
+// week" - useful when the same exercise/day-number combination
+// recurs across multiple authored weeks and the swap should follow it
+// everywhere. A week-specific swap (matching a real week number)
+// overrides an all-weeks swap for the same day/exercise if both
+// happen to exist. Keyed by originalExerciseName
 // (the untouched template name, not whatever's currently displayed)
 // so swapping twice in a row updates the same row instead of stacking,
 // and swapping back to the original name is just a normal swap.
