@@ -28,6 +28,7 @@ interface Cell {
   week: number
   day: number
   label: string
+  notes?: string
   exercises: CellExercise[]
 }
 
@@ -232,6 +233,7 @@ export default function WorkoutDayPicker({
         week,
         day: day.day,
         label: day.label,
+        notes: day.notes,
         exercises: resolveExercises(day, week, swaps),
       })
     }
@@ -416,6 +418,42 @@ export default function WorkoutDayPicker({
             <option key={name} value={name} />
           ))}
         </datalist>
+
+        {/* Fixed to the viewport, not the page - stays visible no
+            matter how far into the exercise list you've scrolled,
+            unlike the old version which lived inside the sticky
+            Finish Workout bar and only came into view once you'd
+            scrolled all the way back down. Offset below both header
+            heights (top-16/top-20) so it doesn't sit under the logo
+            and notification bell at the very top of the page. */}
+        {restTimer && (
+          <div className="fixed top-16 sm:top-20 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
+            <button
+              onClick={() => adjustRestTimer(-15)}
+              className="text-zinc-400 hover:text-white text-[11px] font-medium"
+            >
+              −15
+            </button>
+            <span className="text-white text-sm font-bold tabular-nums w-11 text-center">
+              {formatRestTime(restTimer.remaining)}
+            </span>
+            <button
+              onClick={() => adjustRestTimer(15)}
+              className="text-zinc-400 hover:text-white text-[11px] font-medium"
+            >
+              +15
+            </button>
+            <span className="w-px h-4 bg-zinc-700" />
+            <button
+              onClick={() => setRestTimer(null)}
+              aria-label="Dismiss timer"
+              className="text-zinc-500 hover:text-red-400 transition px-0.5"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         <div className="flex items-start justify-between mb-1">
           <div>
             <h2 className="text-white text-lg font-bold">
@@ -424,6 +462,9 @@ export default function WorkoutDayPicker({
             <p className="text-zinc-500 text-xs mt-0.5">
               {activeCell.exercises.length} exercise{activeCell.exercises.length === 1 ? '' : 's'}
             </p>
+            {activeCell.notes && (
+              <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
+            )}
           </div>
           <button
             onClick={handleCloseSession}
@@ -486,7 +527,7 @@ export default function WorkoutDayPicker({
                       onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
                       className="text-xs font-medium text-zinc-400 hover:text-white transition"
                     >
-                      ⏱ Rest timer
+                      ⏱ Regular timer
                     </button>
                   </div>
 
@@ -635,33 +676,7 @@ export default function WorkoutDayPicker({
             so the primary action never requires scrolling back down
             through a long session to reach - normal, non-sticky flow
             on desktop (sm:static) where that isn't a concern. */}
-        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0 space-y-2">
-          {restTimer && (
-            <div className="flex items-center justify-between gap-2 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2">
-              <button
-                onClick={() => adjustRestTimer(-15)}
-                className="text-zinc-400 hover:text-white text-xs font-medium px-2 py-1"
-              >
-                −15s
-              </button>
-              <span className="text-white text-lg font-bold tabular-nums">
-                {formatRestTime(restTimer.remaining)}
-              </span>
-              <button
-                onClick={() => adjustRestTimer(15)}
-                className="text-zinc-400 hover:text-white text-xs font-medium px-2 py-1"
-              >
-                +15s
-              </button>
-              <button
-                onClick={() => setRestTimer(null)}
-                aria-label="Dismiss timer"
-                className="text-zinc-500 hover:text-red-400 transition ml-1 px-1"
-              >
-                ✕
-              </button>
-            </div>
-          )}
+        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-6 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
           <button
             onClick={finishWorkout}
             disabled={isPending}
