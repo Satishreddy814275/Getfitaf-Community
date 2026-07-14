@@ -26,7 +26,7 @@ export default async function AdminProgramsPage() {
   // picker only ever seeing is_published = true rows.
   const { data: templatesData } = await supabase
     .from('program_templates')
-    .select('id, name, level, equipment_tier, duration_weeks, description, is_published')
+    .select('id, name, level, equipment_tier, duration_weeks, description, is_published, structured_plan')
     .order('created_at')
 
   const programs = templatesData || []
@@ -44,8 +44,9 @@ export default async function AdminProgramsPage() {
         <h1 className="text-xl font-bold text-white">Programs</h1>
         <p className="text-sm text-zinc-500 mt-1">
           Edit a program&apos;s title, level, equipment tier, duration, description, and published
-          status directly - no SQL needed. The actual day-by-day workout content still goes
-          through Claude, since that&apos;s the more complex piece.
+          status directly - no SQL needed. Use &quot;View workouts&quot; on a program to check its
+          actual day-by-day exercises before publishing. The workout content itself is still
+          authored through Claude, since that&apos;s the more complex piece.
         </p>
       </div>
 
