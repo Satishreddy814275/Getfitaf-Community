@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
-import type { WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
+import type { WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -210,13 +210,12 @@ export async function addExerciseVideosBulk(rows: { exerciseName: string; videoU
 // /admin/programs - self-service so Satish can update a program's
 // title, level, equipment tier, duration, or description whenever,
 // without going through a SQL insert. Deliberately does NOT touch
-// structured_plan (the actual day-by-day exercise content) - that
-// stays authored conversationally/via SQL, since it's the genuinely
-// complex piece (rounds, phases, rest timing) that benefits from
-// going through Claude rather than a free-form editor. Description is
-// stored as plain text with the small markdown-like syntax the
-// formatting toolbar produces (see src/lib/richText.tsx); null/empty
-// just means the program card shows no description yet.
+// structured_plan (the actual day-by-day exercise content) - see
+// updateProgramExercise below for the (currently numbers-only) editor
+// for that. Description is stored as plain text with the small
+// markdown-like syntax the formatting toolbar produces (see
+// src/lib/richText.tsx); null/empty just means the program card shows
+// no description yet.
 export async function updateProgramMetadata(
   id: string,
   fields: {
@@ -333,4 +332,67 @@ export async function getMemberWorkoutHistory(memberId: string): Promise<Workout
     if (b.isCurrent) return 1
     return (b.sessions[0]?.completedAt || '').localeCompare(a.sessions[0]?.completedAt || '')
   })
+}
+
+// "Tier 1" exercise editor - lets an admin tweak the numbers on an
+// EXISTING exercise (sets, reps, restSeconds, timerSeconds,
+// trackWeight) from /admin/programs, without touching name, round,
+// phase, or the exercise list's shape (no add/remove/reorder yet -
+// that's the harder "Tier 2" restructuring piece, deliberately left
+// out of this first pass since it needs its own guardrails so nobody
+// can accidentally desync "order" from array position, or leave a
+// round-based day with a mismatched round count, and break the guided
+// player for a real client mid-workout). Identifies the exercise by
+// (week, day, order) since order is unique within a single day and
+// is already how every program is authored.
+//
+// structured_plan is one JSONB blob per program (not a child table),
+// so this reads the whole plan, mutates the one matching exercise in
+// place, and writes the whole blob back - same pattern the SQL seed
+// files already rely on, just done through the app instead of a
+// manual insert.
+export async function updateProgramExercise(
+  programId: string,
+  week: number,
+  day: number,
+  order: number,
+  fields: {
+    sets: string
+    reps: string
+    restSeconds: number | null
+    timerSeconds: number | null
+    trackWeight: boolean
+  }
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  const dayEntry = plan.days.find((d) => d.week === week && d.day === day)
+  const exercise = dayEntry?.exercises.find((e) => e.order === order)
+  if (!exercise) return
+
+  const sets = fields.sets.trim() || exercise.sets
+  const reps = fields.reps.trim() || exercise.reps
+  exercise.sets = sets
+  exercise.reps = reps
+  exercise.trackWeight = fields.trackWeight
+
+  if (fields.restSeconds === null) delete exercise.restSeconds
+  else exercise.restSeconds = Math.max(0, Math.round(fields.restSeconds))
+
+  if (fields.timerSeconds === null) delete exercise.timerSeconds
+  else exercise.timerSeconds = Math.max(0, Math.round(fields.timerSeconds))
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
 }
