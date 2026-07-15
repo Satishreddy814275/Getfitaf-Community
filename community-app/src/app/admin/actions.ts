@@ -329,22 +329,36 @@ export async function createProgram(fields: {
 // /admin/programs as an "empty" day (recently relaxed to be openable
 // even with no exercises yet, see DayPreview) ready to build out via
 // the same "Edit day" flow as any other day.
-export async function addProgramDay(programId: string, week: number, day: number, label: string) {
+// Returns a result (rather than void) so the caller can actually tell
+// the trainer why nothing happened - this used to fail silently on a
+// (week, day) collision, closing the "+ Add day" form as if it had
+// worked while quietly doing nothing, which is exactly the confusing
+// "I clicked Add day and nothing happened" experience Satish hit
+// (Week 1 / Day 1 already existed in that program).
+export async function addProgramDay(
+  programId: string,
+  week: number,
+  day: number,
+  label: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const { supabase, isAdmin } = await requireAdmin()
-  if (!isAdmin) return
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
 
   const trimmedLabel = label.trim()
-  if (!trimmedLabel || week < 1 || day < 1) return
+  if (!trimmedLabel) return { ok: false, error: 'Enter a label for this day.' }
+  if (week < 1 || day < 1) return { ok: false, error: 'Week and day must be 1 or higher.' }
 
   const { data, error } = await supabase
     .from('program_templates')
     .select('structured_plan')
     .eq('id', programId)
     .single()
-  if (error || !data?.structured_plan) return
+  if (error || !data?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
 
   const plan = data.structured_plan as { days: WorkoutPlanDay[] }
-  if (plan.days.some((d) => d.week === week && d.day === day)) return
+  if (plan.days.some((d) => d.week === week && d.day === day)) {
+    return { ok: false, error: `Week ${week}, Day ${day} already has content - pick a different week/day, or edit that existing day instead.` }
+  }
 
   plan.days = [...plan.days, { week, day, label: trimmedLabel, exercises: [] }]
 
@@ -352,6 +366,7 @@ export async function addProgramDay(programId: string, week: number, day: number
 
   revalidatePath('/admin/programs')
   revalidatePath('/workouts')
+  return { ok: true }
 }
 
 // Full workout history for one member, fetched on-demand (only when
