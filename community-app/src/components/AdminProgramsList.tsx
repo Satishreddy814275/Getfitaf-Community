@@ -2,7 +2,8 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { toggleProgramPublished, updateProgramExercise, updateProgramMetadata } from '@/app/admin/actions'
+import { toggleProgramPublished, updateProgramDay, updateProgramMetadata } from '@/app/admin/actions'
+import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
 import { renderRichText } from '@/lib/richText'
 import type { WorkoutPlanDay } from '@/types'
 
@@ -14,164 +15,476 @@ interface ProgramRow {
   duration_weeks: number
   description: string | null
   is_published: boolean
-  // Read-only here - the actual day-by-day content is still
-  // authored/edited via Claude + SQL (see admin/programs/page.tsx
-  // header note), this is just so Satish can sanity-check what's in
-  // a program before flipping it published, without needing to ask
-  // Claude or open Supabase directly.
+  // Editable here via "Edit day" (see DayEditor) - grouping into
+  // rounds, ungrouping, renaming/swapping exercises, and tweaking
+  // sets/reps/rest/timer/trackWeight all live in that one screen, so
+  // Satish never has to bounce between separate edit surfaces or fall
+  // back to Claude + SQL just to restructure a day.
   structured_plan: { days: WorkoutPlanDay[] } | null
 }
 
-// One exercise row. Read mode is compact (name + sets×reps + rest,
-// round shown as a small tag when present); clicking "Edit" swaps in
-// number/text inputs for sets, reps, restSeconds, timerSeconds, and a
-// trackWeight checkbox - the "Tier 1" edit surface. Name, round, and
-// phase are NOT editable here on purpose: changing those needs to stay
-// in sync with the rest of the day (round counts, phase-transition
-// screens, the "(1)/(2)/(3)" naming on unrolled straight sets), which
-// is exactly the harder "Tier 2" restructuring work called out in
-// updateProgramExercise's comment - safer to leave those alone for now
-// than let a quick number edit silently break something else.
-function ExerciseRow({
-  programId,
-  week,
-  day,
-  e,
+// Compact read-only row - name + sets×reps + rest, round shown as a
+// small tag when present. This is just the at-a-glance view; all
+// editing (numbers, grouping, renaming) happens in DayEditor below so
+// there's exactly one place to make changes, not a quick-edit surface
+// here plus a "real" editor elsewhere.
+function ReadOnlyExerciseRow({ e }: { e: WorkoutPlanDay['exercises'][number] }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-1 text-xs border-b border-zinc-900 last:border-b-0">
+      <span className="text-zinc-300">
+        {e.name}
+        {e.round ? <span className="text-zinc-600"> · Round {e.round}</span> : null}
+      </span>
+      <span className="text-zinc-500 text-right shrink-0">
+        {e.sets}×{e.reps}
+        {e.restSeconds ? <span className="text-zinc-600"> · rest {e.restSeconds}s</span> : null}
+      </span>
+    </div>
+  )
+}
+
+type PhaseItem =
+  | { type: 'single'; blocks: [EditableBlock] }
+  | { type: 'group'; groupId: string; blocks: EditableBlock[] }
+
+// Groups a phase's flat block list into displayable items - a
+// standalone block is its own item, and a round group collapses to
+// one item covering all its members (rendered as a single boxed unit
+// with a shared round-count control), in the order blocks first appear.
+function itemsForPhase(phaseBlocks: EditableBlock[]): PhaseItem[] {
+  const items: PhaseItem[] = []
+  const seenGroups = new Set<string>()
+  for (const b of phaseBlocks) {
+    if (b.groupId == null) {
+      items.push({ type: 'single', blocks: [b] })
+      continue
+    }
+    if (seenGroups.has(b.groupId)) continue
+    seenGroups.add(b.groupId)
+    items.push({
+      type: 'group',
+      groupId: b.groupId,
+      blocks: phaseBlocks.filter((x) => x.groupId === b.groupId),
+    })
+  }
+  return items
+}
+
+// Shared reps/rest/timer/trackWeight inputs for one block - identical
+// whether the block is standalone or one member of a round group.
+// `showSets` toggles the per-block "Sets" input, which only makes
+// sense for standalone blocks (grouped blocks share one round-count
+// input on the group header instead, since they must stay in sync).
+function BlockNumberFields({
+  block,
+  onUpdateBlock,
+  showSets,
 }: {
-  programId: string
-  week: number
-  day: number
-  e: WorkoutPlanDay['exercises'][number]
+  block: EditableBlock
+  onUpdateBlock: (id: string, fields: Partial<EditableBlock>) => void
+  showSets: boolean
 }) {
-  const router = useRouter()
-  const [isEditing, setIsEditing] = useState(false)
-  const [isSaving, setIsSaving] = useState(false)
-  const [current, setCurrent] = useState(e)
-  const [sets, setSets] = useState(e.sets)
-  const [reps, setReps] = useState(e.reps)
-  const [restSeconds, setRestSeconds] = useState(e.restSeconds != null ? String(e.restSeconds) : '')
-  const [timerSeconds, setTimerSeconds] = useState(e.timerSeconds != null ? String(e.timerSeconds) : '')
-  const [trackWeight, setTrackWeight] = useState(e.trackWeight !== false)
+  return (
+    <>
+      {showSets && (
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Sets
+          <input
+            type="number"
+            min={1}
+            value={block.setsCount}
+            onChange={(e) =>
+              onUpdateBlock(block.id, { setsCount: Math.max(1, Number(e.target.value) || 1) })
+            }
+            className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+      )}
+      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+        Reps
+        <input
+          value={block.reps}
+          onChange={(e) => onUpdateBlock(block.id, { reps: e.target.value })}
+          className="w-16 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+        />
+      </label>
+      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+        Rest
+        <input
+          value={block.restSeconds ?? ''}
+          onChange={(e) => {
+            const v = e.target.value.trim()
+            onUpdateBlock(block.id, { restSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
+          }}
+          placeholder="—"
+          className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+        />
+      </label>
+      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+        Timer
+        <input
+          value={block.timerSeconds ?? ''}
+          onChange={(e) => {
+            const v = e.target.value.trim()
+            onUpdateBlock(block.id, { timerSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
+          }}
+          placeholder="—"
+          className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+        />
+      </label>
+      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <input
+          type="checkbox"
+          checked={block.trackWeight}
+          onChange={(e) => onUpdateBlock(block.id, { trackWeight: e.target.checked })}
+          className="accent-orange-500"
+        />
+        Weight
+      </label>
+    </>
+  )
+}
 
-  function startEdit() {
-    setSets(current.sets)
-    setReps(current.reps)
-    setRestSeconds(current.restSeconds != null ? String(current.restSeconds) : '')
-    setTimerSeconds(current.timerSeconds != null ? String(current.timerSeconds) : '')
-    setTrackWeight(current.trackWeight !== false)
-    setIsEditing(true)
-  }
+// One phase item, rendered Trainerize-style: a standalone block is one
+// row with a checkbox (for multi-select into a new group) and inline
+// fields; a round group is a bordered box with a shared "Rounds" input
+// on the header (editing it moves every member's round count at once)
+// plus an Ungroup link, and one child row per exercise underneath -
+// each with its own name/reps/rest/timer/weight, so editing e.g.
+// "I/T/Ws" updates it everywhere it appears since there's only one row
+// for it, not one row per round.
+function BlockItemEditor({
+  item,
+  selected,
+  onToggleSelect,
+  onUpdateBlock,
+  onUpdateGroupSetsCount,
+  onUngroup,
+  onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}: {
+  item: PhaseItem
+  selected: Set<string>
+  onToggleSelect: (id: string) => void
+  onUpdateBlock: (id: string, fields: Partial<EditableBlock>) => void
+  onUpdateGroupSetsCount: (groupId: string, setsCount: number) => void
+  onUngroup: (groupId: string) => void
+  onRemove: (id: string) => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  canMoveUp: boolean
+  canMoveDown: boolean
+}) {
+  const moveButtons = (
+    <span className="flex flex-col leading-none shrink-0">
+      <button
+        type="button"
+        onClick={onMoveUp}
+        disabled={!canMoveUp}
+        className="text-zinc-600 hover:text-white disabled:opacity-30 text-[10px]"
+      >
+        ▲
+      </button>
+      <button
+        type="button"
+        onClick={onMoveDown}
+        disabled={!canMoveDown}
+        className="text-zinc-600 hover:text-white disabled:opacity-30 text-[10px]"
+      >
+        ▼
+      </button>
+    </span>
+  )
 
-  async function handleSave() {
-    setIsSaving(true)
-    const parsedRest = restSeconds.trim() === '' ? null : Number(restSeconds)
-    const parsedTimer = timerSeconds.trim() === '' ? null : Number(timerSeconds)
-    await updateProgramExercise(programId, week, day, current.order, {
-      sets: sets.trim() || current.sets,
-      reps: reps.trim() || current.reps,
-      restSeconds: parsedRest !== null && !Number.isNaN(parsedRest) ? parsedRest : null,
-      timerSeconds: parsedTimer !== null && !Number.isNaN(parsedTimer) ? parsedTimer : null,
-      trackWeight,
-    })
-    setCurrent({
-      ...current,
-      sets: sets.trim() || current.sets,
-      reps: reps.trim() || current.reps,
-      restSeconds: parsedRest !== null && !Number.isNaN(parsedRest) ? parsedRest : undefined,
-      timerSeconds: parsedTimer !== null && !Number.isNaN(parsedTimer) ? parsedTimer : undefined,
-      trackWeight,
-    })
-    setIsSaving(false)
-    setIsEditing(false)
-    router.refresh()
-  }
-
-  if (!isEditing) {
+  if (item.type === 'single') {
+    const b = item.blocks[0]
     return (
-      <div className="flex items-start justify-between gap-3 py-1 text-xs border-b border-zinc-900 last:border-b-0">
-        <span className="text-zinc-300">
-          {current.name}
-          {current.round ? <span className="text-zinc-600"> · Round {current.round}</span> : null}
-        </span>
-        <span className="flex items-center gap-2 shrink-0">
-          <span className="text-zinc-500 text-right">
-            {current.sets}×{current.reps}
-            {current.restSeconds ? <span className="text-zinc-600"> · rest {current.restSeconds}s</span> : null}
-          </span>
-          <button
-            type="button"
-            onClick={startEdit}
-            className="text-zinc-600 hover:text-orange-400 transition text-[11px] font-medium"
-          >
-            Edit
-          </button>
-        </span>
+      <div className="flex items-start gap-2 bg-zinc-900/40 rounded-lg px-2 py-1.5">
+        {moveButtons}
+        <input
+          type="checkbox"
+          checked={selected.has(b.id)}
+          onChange={() => onToggleSelect(b.id)}
+          className="mt-1.5 accent-orange-500"
+        />
+        <div className="flex-1 flex flex-wrap items-center gap-1.5">
+          <input
+            value={b.name}
+            onChange={(e) => onUpdateBlock(b.id, { name: e.target.value })}
+            className="flex-1 min-w-[140px] bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+          <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets />
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(b.id)}
+          className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0 mt-1"
+        >
+          Remove
+        </button>
       </div>
     )
   }
 
+  const rounds = item.blocks[0].setsCount
   return (
-    <div className="py-2 border-b border-zinc-900 last:border-b-0 bg-zinc-900/40 rounded-lg px-2 my-1">
-      <p className="text-xs text-zinc-300 mb-1.5">{current.name}</p>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="border border-zinc-800 rounded-lg px-2 py-1.5 bg-zinc-900/20">
+      <div className="flex items-center gap-2 mb-1.5">
+        {moveButtons}
+        <span className="text-[11px] text-orange-400 font-medium">Round group</span>
         <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-          Sets
+          Rounds
           <input
-            value={sets}
-            onChange={(e2) => setSets(e2.target.value)}
+            type="number"
+            min={1}
+            value={rounds}
+            onChange={(e) =>
+              onUpdateGroupSetsCount(item.groupId, Math.max(1, Number(e.target.value) || 1))
+            }
             className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
           />
         </label>
-        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-          Reps
-          <input
-            value={reps}
-            onChange={(e2) => setReps(e2.target.value)}
-            className="w-20 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-          Rest (s)
-          <input
-            value={restSeconds}
-            onChange={(e2) => setRestSeconds(e2.target.value)}
-            placeholder="—"
-            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-          Timer (s)
-          <input
-            value={timerSeconds}
-            onChange={(e2) => setTimerSeconds(e2.target.value)}
-            placeholder="—"
-            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
-          />
-        </label>
-        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-          <input
-            type="checkbox"
-            checked={trackWeight}
-            onChange={(e2) => setTrackWeight(e2.target.checked)}
-            className="accent-orange-500"
-          />
-          Track weight
-        </label>
+        <button
+          type="button"
+          onClick={() => onUngroup(item.groupId)}
+          className="text-[11px] text-zinc-500 hover:text-white transition ml-auto"
+        >
+          Ungroup
+        </button>
       </div>
-      <div className="flex items-center gap-3 mt-2">
+      <div className="space-y-1 pl-1">
+        {item.blocks.map((b) => (
+          <div key={b.id} className="flex items-start gap-2">
+            <input
+              value={b.name}
+              onChange={(e) => onUpdateBlock(b.id, { name: e.target.value })}
+              className="flex-1 min-w-[140px] bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+            />
+            <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets={false} />
+            <button
+              type="button"
+              onClick={() => onRemove(b.id)}
+              className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0 mt-1"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const PHASES: Array<'warmup' | 'main' | 'cooldown'> = ['warmup', 'main', 'cooldown']
+const PHASE_LABELS: Record<string, string> = { warmup: 'Warm-up', main: 'Workout', cooldown: 'Cool-down' }
+
+// The unified "Tier 2" day editor - everything from a quick number
+// tweak to full restructuring (grouping into rounds, ungrouping,
+// renaming/swapping an exercise) happens on this one screen, per
+// Trainerize's own editor pattern: a table of exercises, checkbox
+// multi-select, a Group action, an editable round count, Ungroup, and
+// reordering (here via up/down rather than drag, to keep this a
+// dependency-free first build).
+//
+// Internally this operates on EditableBlock[] (see workoutBlocks.ts) -
+// one row per exercise regardless of how many rounds/sets it repeats -
+// and only expands back to the flat, unrolled exercise list inside
+// updateProgramDay when saved. Phase is fixed per section (warm-up/
+// workout/cool-down); blocks never move between phases here, matching
+// "keep the phase the same" - only order and grouping within a phase
+// change.
+function DayEditor({
+  programId,
+  week,
+  day,
+  exercises,
+  onClose,
+}: {
+  programId: string
+  week: number
+  day: number
+  exercises: WorkoutPlanDay['exercises']
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [blocks, setBlocks] = useState<EditableBlock[]>(() => collapseExercisesToBlocks(exercises))
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [isSaving, setIsSaving] = useState(false)
+
+  function updateBlock(id: string, fields: Partial<EditableBlock>) {
+    setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...fields } : b)))
+  }
+
+  // A group's round count is shared by definition - editing it here
+  // applies to every member at once, same reasoning as renaming a
+  // block applying across every round it represents.
+  function updateGroupSetsCount(groupId: string, setsCount: number) {
+    setBlocks((prev) => prev.map((b) => (b.groupId === groupId ? { ...b, setsCount } : b)))
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  // Groups every selected (currently ungrouped) block in this phase
+  // into a new round group. Default round count is the max of the
+  // selected blocks' own set counts - e.g. combining three exercises
+  // that were each 3 straight sets defaults to a 3-round circuit -
+  // adjustable afterward via the group's "Rounds" input.
+  function handleGroup(phase: 'warmup' | 'main' | 'cooldown') {
+    const targets = blocks.filter((b) => b.phase === phase && selected.has(b.id) && b.groupId == null)
+    if (targets.length < 2) return
+    const ids = new Set(targets.map((b) => b.id))
+    const groupId = `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+    const defaultRounds = Math.max(...targets.map((b) => b.setsCount), 1)
+    setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? { ...b, groupId, setsCount: defaultRounds } : b)))
+    setSelected(new Set())
+  }
+
+  // Splits a round group back into standalone exercises, each keeping
+  // the group's current round count as its own straight-set count -
+  // e.g. ungrouping a 3-round circuit gives each exercise 3 straight
+  // sets rather than resetting anything.
+  function handleUngroup(groupId: string) {
+    setBlocks((prev) => prev.map((b) => (b.groupId === groupId ? { ...b, groupId: null } : b)))
+  }
+
+  function addExercise(phase: 'warmup' | 'main' | 'cooldown') {
+    setBlocks((prev) => [
+      ...prev,
+      {
+        id: `new${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+        name: 'New exercise',
+        setsCount: 1,
+        reps: '10',
+        restSeconds: null,
+        timerSeconds: null,
+        trackWeight: true,
+        phase,
+        groupId: null,
+      },
+    ])
+  }
+
+  function removeBlock(id: string) {
+    setBlocks((prev) => prev.filter((b) => b.id !== id))
+    setSelected((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  // Reorders a whole item (a standalone block, or an entire group)
+  // within its phase. expandBlocksToExercises always emits warm-up,
+  // then workout, then cool-down regardless of storage order, so only
+  // the relative order *within* one phase's slice of `blocks` actually
+  // affects the saved result - reordering only needs to touch that slice.
+  function moveItem(phase: 'warmup' | 'main' | 'cooldown', itemIndex: number, direction: -1 | 1) {
+    setBlocks((prev) => {
+      const phaseIndices = prev.map((b, i) => (b.phase === phase ? i : -1)).filter((i) => i !== -1)
+      const items = itemsForPhase(prev.filter((b) => b.phase === phase))
+      const targetIndex = itemIndex + direction
+      if (targetIndex < 0 || targetIndex >= items.length) return prev
+
+      const reordered = [...items]
+      ;[reordered[itemIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[itemIndex]]
+      const flatPhaseBlocks = reordered.flatMap((i) => i.blocks)
+
+      const next = [...prev]
+      phaseIndices.forEach((originalIdx, i) => {
+        next[originalIdx] = flatPhaseBlocks[i]
+      })
+      return next
+    })
+  }
+
+  async function handleSave() {
+    setIsSaving(true)
+    await updateProgramDay(programId, week, day, blocks)
+    setIsSaving(false)
+    router.refresh()
+    onClose()
+  }
+
+  return (
+    <div className="mt-2 space-y-4">
+      {PHASES.map((phase) => {
+        const phaseBlocks = blocks.filter((b) => b.phase === phase)
+        if (phaseBlocks.length === 0 && phase !== 'main') return null
+        const items = itemsForPhase(phaseBlocks)
+        const hasSelectionInPhase = [...selected].some(
+          (id) => blocks.find((b) => b.id === id)?.phase === phase
+        )
+
+        return (
+          <div key={phase}>
+            <div className="flex items-center justify-between mb-1.5">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">{PHASE_LABELS[phase]}</p>
+              <div className="flex items-center gap-3">
+                {hasSelectionInPhase && (
+                  <button
+                    type="button"
+                    onClick={() => handleGroup(phase)}
+                    className="text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
+                  >
+                    Group selected
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => addExercise(phase)}
+                  className="text-[11px] font-medium text-zinc-500 hover:text-white transition"
+                >
+                  + Add exercise
+                </button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {items.length === 0 && <p className="text-xs text-zinc-700 italic">Nothing here yet.</p>}
+              {items.map((item, idx) => (
+                <BlockItemEditor
+                  key={item.type === 'group' ? item.groupId : item.blocks[0].id}
+                  item={item}
+                  selected={selected}
+                  onToggleSelect={toggleSelect}
+                  onUpdateBlock={updateBlock}
+                  onUpdateGroupSetsCount={updateGroupSetsCount}
+                  onUngroup={handleUngroup}
+                  onRemove={removeBlock}
+                  onMoveUp={() => moveItem(phase, idx, -1)}
+                  onMoveDown={() => moveItem(phase, idx, 1)}
+                  canMoveUp={idx > 0}
+                  canMoveDown={idx < items.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="flex items-center gap-3 pt-1">
         <button
           type="button"
           onClick={handleSave}
           disabled={isSaving}
-          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1 rounded-lg transition"
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-xs font-semibold px-3 py-1.5 rounded-lg transition"
         >
-          {isSaving ? 'Saving...' : 'Save'}
+          {isSaving ? 'Saving...' : 'Save day'}
         </button>
         <button
           type="button"
-          onClick={() => setIsEditing(false)}
+          onClick={onClose}
           disabled={isSaving}
-          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-xs font-medium transition"
         >
           Cancel
         </button>
@@ -182,6 +495,7 @@ function ExerciseRow({
 
 function DayPreview({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
   const [open, setOpen] = useState(false)
+  const [isEditingDay, setIsEditingDay] = useState(false)
   const isRestDay = day.exercises.length === 0
 
   return (
@@ -205,9 +519,28 @@ function DayPreview({ programId, day }: { programId: string; day: WorkoutPlanDay
       {open && !isRestDay && (
         <div className="mt-2 pl-2">
           {day.notes && <p className="text-xs text-zinc-500 italic mb-1.5">{day.notes}</p>}
-          {day.exercises.map((e, i) => (
-            <ExerciseRow key={i} programId={programId} week={day.week} day={day.day} e={e} />
-          ))}
+          {isEditingDay ? (
+            <DayEditor
+              programId={programId}
+              week={day.week}
+              day={day.day}
+              exercises={day.exercises}
+              onClose={() => setIsEditingDay(false)}
+            />
+          ) : (
+            <>
+              {day.exercises.map((e, i) => (
+                <ReadOnlyExerciseRow key={i} e={e} />
+              ))}
+              <button
+                type="button"
+                onClick={() => setIsEditingDay(true)}
+                className="mt-2 text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
+              >
+                Edit day
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -251,11 +584,12 @@ function WeekPreview({
 
 // Week-by-week / day-by-day breakdown of a program's actual content,
 // so Satish can check what's in a program before publishing it, and
-// now also tweak an existing exercise's sets/reps/rest/timer/
-// trackWeight directly (see ExerciseRow) - without asking Claude or
-// opening Supabase for that kind of numeric tweak. Collapsed by
-// default at every level (weeks, then days) since a 4-week program can
-// easily run 20-40+ exercises per day.
+// now also fully restructure a day - regroup into rounds, ungroup,
+// rename/swap exercises, reorder, tweak sets/reps/rest/timer/
+// trackWeight - via "Edit day" (see DayEditor), without asking Claude
+// or opening Supabase. Collapsed by default at every level (weeks,
+// then days) since a 4-week program can easily run 20-40+ exercises
+// per day.
 function WorkoutPreview({ programId, days }: { programId: string; days: WorkoutPlanDay[] }) {
   if (days.length === 0) {
     return <p className="text-xs text-zinc-600 italic mt-3">No workout content yet.</p>
