@@ -5,8 +5,18 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
 import type { WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
-import { expandBlocksToExercises, replaceDayExercises, type EditableBlock } from '@/lib/workoutBlocks'
-import { applyWeekOverrides, type ProgressionCell } from '@/lib/dayGroups'
+import {
+  collapseExercisesToBlocks,
+  expandBlocksToExercises,
+  replaceDayExercises,
+  type EditableBlock,
+} from '@/lib/workoutBlocks'
+import {
+  applyWeekOverrides,
+  applyStructuralDiffToBlocks,
+  type ProgressionCell,
+  type StructuralDiffEntry,
+} from '@/lib/dayGroups'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -581,6 +591,57 @@ export async function updateProgramDayGroup(
   }
   plan.days = days
 
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+}
+
+// Companion to the day-group grid above, for the opposite case: days
+// sharing a label whose exercises DON'T all match structurally, so
+// there's no shared template to edit in one place (see
+// diffBlockStructure in dayGroups.ts). Called after a normal
+// updateProgramDay save, only when the admin explicitly confirms - it
+// replicates just the identity/grouping change onto every OTHER day in
+// this program sharing `label`, matched by exercise name, and skips
+// any sibling day that doesn't already have a matching exercise
+// (never adds/removes exercises on a sibling). Deliberately leaves
+// sets/reps/rest/timer untouched everywhere - those stay per-day.
+export async function propagateDayStructuralChanges(
+  programId: string,
+  label: string,
+  sourceWeek: number,
+  sourceDay: number,
+  changes: StructuralDiffEntry[]
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+  if (changes.length === 0) return
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  let days = plan.days
+
+  for (const d of days) {
+    if (d.label !== label) continue
+    if (d.week === sourceWeek && d.day === sourceDay) continue
+    if (!d.exercises || d.exercises.length === 0) continue
+
+    const blocks = collapseExercisesToBlocks(d.exercises)
+    const { blocks: nextBlocks, changed } = applyStructuralDiffToBlocks(blocks, changes)
+    if (!changed) continue
+
+    const exercises = expandBlocksToExercises(nextBlocks)
+    days = replaceDayExercises(days, d.week, d.day, exercises)
+  }
+
+  plan.days = days
   await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
 
   revalidatePath('/admin/programs')
