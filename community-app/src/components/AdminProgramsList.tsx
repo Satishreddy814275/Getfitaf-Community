@@ -426,6 +426,15 @@ export function BlockNumberFields({
         />
         Weight
       </label>
+      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <input
+          type="checkbox"
+          checked={block.perSide}
+          onChange={(e) => onUpdateBlock(block.id, { perSide: e.target.checked })}
+          className="accent-orange-500"
+        />
+        Each side
+      </label>
     </>
   )
 }
@@ -741,6 +750,7 @@ function DayEditor({
         restSeconds: null,
         timerSeconds: null,
         trackWeight: true,
+        perSide: false,
         phase,
         groupId: null,
       },

@@ -182,6 +182,7 @@ function DayGroupEditor({
         restSeconds: null,
         timerSeconds: null,
         trackWeight: true,
+        perSide: false,
         phase,
         groupId: null,
       },
