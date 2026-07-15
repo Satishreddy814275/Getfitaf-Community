@@ -143,7 +143,7 @@ export async function approveProfile(userId: string) {
 // /workouts (src/lib/exerciseVideos.ts), not at generation time, so a
 // video added here immediately becomes visible on every past plan
 // that references a matching exercise name, no regeneration needed.
-export async function addExerciseVideo(exerciseName: string, videoUrl: string) {
+export async function addExerciseVideo(exerciseName: string, videoUrl: string, coachNotes?: string) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
@@ -158,13 +158,27 @@ export async function addExerciseVideo(exerciseName: string, videoUrl: string) {
   await supabase.from('exercise_videos').insert({
     exercise_name: trimmedName,
     video_url: trimmedUrl,
+    coach_notes: coachNotes?.trim() || null,
     added_by: user?.id || null,
   })
 
   revalidatePath('/admin/videos')
+  revalidatePath('/workouts')
 }
 
-export async function updateExerciseVideo(id: string, exerciseName: string, videoUrl: string) {
+// `coachNotes` is optional and, when omitted (undefined), leaves the
+// existing note untouched rather than clearing it - callers like the
+// inline video editors in AdminProgramsList.tsx only ever edit
+// name/url and have no notes field of their own, so they shouldn't be
+// able to silently wipe out a note added elsewhere. Passing an empty
+// string, on the other hand, explicitly clears it - that only happens
+// from the real edit form in AdminExerciseVideosList.tsx.
+export async function updateExerciseVideo(
+  id: string,
+  exerciseName: string,
+  videoUrl: string,
+  coachNotes?: string
+) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
@@ -172,12 +186,16 @@ export async function updateExerciseVideo(id: string, exerciseName: string, vide
   const trimmedUrl = videoUrl.trim()
   if (!trimmedName || !trimmedUrl) return
 
-  await supabase
-    .from('exercise_videos')
-    .update({ exercise_name: trimmedName, video_url: trimmedUrl })
-    .eq('id', id)
+  const update: { exercise_name: string; video_url: string; coach_notes?: string | null } = {
+    exercise_name: trimmedName,
+    video_url: trimmedUrl,
+  }
+  if (coachNotes !== undefined) update.coach_notes = coachNotes.trim() || null
+
+  await supabase.from('exercise_videos').update(update).eq('id', id)
 
   revalidatePath('/admin/videos')
+  revalidatePath('/workouts')
 }
 
 export async function deleteExerciseVideo(id: string) {
