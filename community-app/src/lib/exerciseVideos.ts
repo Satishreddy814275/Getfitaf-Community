@@ -1,6 +1,11 @@
 export interface ExerciseVideo {
   exerciseName: string
   videoUrl: string
+  // Short coaching note (form cues, common mistakes) shown as a
+  // collapsible section on the exercise's card in the workout logging
+  // view - absent on most exercises, only set where a coach has
+  // actually written one via /admin/videos.
+  coachNotes?: string
 }
 
 // Lowercase, trim, collapse whitespace, strip punctuation - just
