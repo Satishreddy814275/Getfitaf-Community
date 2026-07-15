@@ -4,6 +4,8 @@ import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   addExerciseVideo,
+  addProgramDay,
+  createProgram,
   toggleProgramPublished,
   updateExerciseVideo,
   updateProgramDay,
@@ -12,6 +14,7 @@ import {
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
 import type { ExercisePoolEntry } from '@/lib/exercisePool'
 import { renderRichText } from '@/lib/richText'
+import { DayGroupSection } from './DayGroupEditor'
 import type { WorkoutPlanDay } from '@/types'
 
 interface ProgramRow {
@@ -50,7 +53,7 @@ function ReadOnlyExerciseRow({ e }: { e: WorkoutPlanDay['exercises'][number] }) 
   )
 }
 
-type PhaseItem =
+export type PhaseItem =
   | { type: 'single'; blocks: [EditableBlock] }
   | { type: 'group'; groupId: string; blocks: EditableBlock[] }
 
@@ -58,7 +61,7 @@ type PhaseItem =
 // standalone block is its own item, and a round group collapses to
 // one item covering all its members (rendered as a single boxed unit
 // with a shared round-count control), in the order blocks first appear.
-function itemsForPhase(phaseBlocks: EditableBlock[]): PhaseItem[] {
+export function itemsForPhase(phaseBlocks: EditableBlock[]): PhaseItem[] {
   const items: PhaseItem[] = []
   const seenGroups = new Set<string>()
   for (const b of phaseBlocks) {
@@ -224,7 +227,7 @@ function ExercisePicker({
 // rather than a free text box. Selecting a name (existing or new)
 // applies to every round instance of this block at once, same as any
 // other field edit on a block.
-function ExerciseNameField({
+export function ExerciseNameField({
   name,
   pool,
   onChange,
@@ -261,7 +264,7 @@ function ExerciseNameField({
 // ExercisePicker inline underneath the phase header rather than
 // creating a blank "New exercise" placeholder immediately, so a new
 // block always starts from a deliberate name choice.
-function AddExerciseControl({
+export function AddExerciseControl({
   pool,
   onAdd,
 }: {
@@ -297,18 +300,25 @@ function AddExerciseControl({
 // `showSets` toggles the per-block "Sets" input, which only makes
 // sense for standalone blocks (grouped blocks share one round-count
 // input on the group header instead, since they must stay in sync).
-function BlockNumberFields({
+export function BlockNumberFields({
   block,
   onUpdateBlock,
   showSets,
+  showProgressionFields = true,
 }: {
   block: EditableBlock
   onUpdateBlock: (id: string, fields: Partial<EditableBlock>) => void
   showSets: boolean
+  // False inside the day-group structure editor (see DayGroupEditor.tsx)
+  // - there, sets/reps/rest/timer are edited per-occurrence in the
+  // progression grid instead, so only trackWeight (a structural
+  // property, not a number that progresses week to week) stays visible
+  // here.
+  showProgressionFields?: boolean
 }) {
   return (
     <>
-      {showSets && (
+      {showProgressionFields && showSets && (
         <label className="flex items-center gap-1 text-[11px] text-zinc-500">
           Sets
           <input
@@ -322,38 +332,44 @@ function BlockNumberFields({
           />
         </label>
       )}
-      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-        Reps
-        <input
-          value={block.reps}
-          onChange={(e) => onUpdateBlock(block.id, { reps: e.target.value })}
-          className="w-16 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-        />
-      </label>
-      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-        Rest
-        <input
-          value={block.restSeconds ?? ''}
-          onChange={(e) => {
-            const v = e.target.value.trim()
-            onUpdateBlock(block.id, { restSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
-          }}
-          placeholder="—"
-          className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
-        />
-      </label>
-      <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-        Timer
-        <input
-          value={block.timerSeconds ?? ''}
-          onChange={(e) => {
-            const v = e.target.value.trim()
-            onUpdateBlock(block.id, { timerSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
-          }}
-          placeholder="—"
-          className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
-        />
-      </label>
+      {showProgressionFields && (
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Reps
+          <input
+            value={block.reps}
+            onChange={(e) => onUpdateBlock(block.id, { reps: e.target.value })}
+            className="w-16 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+      )}
+      {showProgressionFields && (
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Rest
+          <input
+            value={block.restSeconds ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              onUpdateBlock(block.id, { restSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
+            }}
+            placeholder="—"
+            className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+          />
+        </label>
+      )}
+      {showProgressionFields && (
+        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+          Timer
+          <input
+            value={block.timerSeconds ?? ''}
+            onChange={(e) => {
+              const v = e.target.value.trim()
+              onUpdateBlock(block.id, { timerSeconds: v === '' ? null : Math.max(0, Number(v) || 0) })
+            }}
+            placeholder="—"
+            className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+          />
+        </label>
+      )}
       <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
         <input
           type="checkbox"
@@ -375,7 +391,7 @@ function BlockNumberFields({
 // each with its own name/reps/rest/timer/weight, so editing e.g.
 // "I/T/Ws" updates it everywhere it appears since there's only one row
 // for it, not one row per round.
-function BlockItemEditor({
+export function BlockItemEditor({
   item,
   pool,
   selected,
@@ -388,6 +404,12 @@ function BlockItemEditor({
   onMoveDown,
   canMoveUp,
   canMoveDown,
+  onDragStart,
+  onDragOverItem,
+  onDropItem,
+  onDragEndItem,
+  isDragOver,
+  showProgressionFields = true,
 }: {
   item: PhaseItem
   pool: ExercisePoolEntry[]
@@ -401,6 +423,16 @@ function BlockItemEditor({
   onMoveDown: () => void
   canMoveUp: boolean
   canMoveDown: boolean
+  onDragStart: () => void
+  onDragOverItem: () => void
+  onDropItem: () => void
+  onDragEndItem: () => void
+  isDragOver: boolean
+  // False inside the day-group structure editor - rounds/sets/reps/
+  // rest/timer are all per-occurrence there (see the progression grid
+  // in DayGroupEditor.tsx), so this screen only edits what's shared:
+  // name, grouping, order, trackWeight.
+  showProgressionFields?: boolean
 }) {
   const moveButtons = (
     <span className="flex flex-col leading-none shrink-0">
@@ -423,10 +455,46 @@ function BlockItemEditor({
     </span>
   )
 
+  // Drag handle - draggable itself (rather than the whole row) so
+  // clicking inputs/buttons elsewhere in the row never accidentally
+  // starts a drag. The row's outer container is the actual drop
+  // target (onDragOver/onDrop below) so you don't have to land the
+  // cursor precisely on the tiny handle to drop - only picking it up
+  // requires that. Arrows stay alongside as the precise, click-only
+  // alternative for anyone who'd rather not drag.
+  const dragHandle = (
+    <span
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEndItem}
+      className="cursor-grab active:cursor-grabbing text-zinc-600 hover:text-white select-none text-sm leading-none shrink-0 px-0.5"
+      title="Drag to reorder"
+    >
+      ⠿
+    </span>
+  )
+
+  const dropZoneProps = {
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault()
+      onDragOverItem()
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      onDropItem()
+    },
+  }
+
   if (item.type === 'single') {
     const b = item.blocks[0]
     return (
-      <div className="flex items-start gap-2 bg-zinc-900/40 rounded-lg px-2 py-1.5">
+      <div
+        {...dropZoneProps}
+        className={`flex items-start gap-2 bg-zinc-900/40 rounded-lg px-2 py-1.5 border-t-2 transition ${
+          isDragOver ? 'border-orange-500' : 'border-transparent'
+        }`}
+      >
+        {dragHandle}
         {moveButtons}
         <input
           type="checkbox"
@@ -436,7 +504,12 @@ function BlockItemEditor({
         />
         <div className="flex-1 flex flex-wrap items-center gap-1.5">
           <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
-          <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets />
+          <BlockNumberFields
+            block={b}
+            onUpdateBlock={onUpdateBlock}
+            showSets
+            showProgressionFields={showProgressionFields}
+          />
         </div>
         <button
           type="button"
@@ -451,22 +524,33 @@ function BlockItemEditor({
 
   const rounds = item.blocks[0].setsCount
   return (
-    <div className="border border-zinc-800 rounded-lg px-2 py-1.5 bg-zinc-900/20">
+    <div
+      {...dropZoneProps}
+      className={`border border-zinc-800 rounded-lg px-2 py-1.5 bg-zinc-900/20 border-t-2 transition ${
+        isDragOver ? 'border-t-orange-500' : ''
+      }`}
+    >
       <div className="flex items-center gap-2 mb-1.5">
+        {dragHandle}
         {moveButtons}
         <span className="text-[11px] text-orange-400 font-medium">Round group</span>
-        <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-          Rounds
-          <input
-            type="number"
-            min={1}
-            value={rounds}
-            onChange={(e) =>
-              onUpdateGroupSetsCount(item.groupId, Math.max(1, Number(e.target.value) || 1))
-            }
-            className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-          />
-        </label>
+        {showProgressionFields && (
+          <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+            Rounds
+            <input
+              type="number"
+              min={1}
+              value={rounds}
+              onChange={(e) =>
+                onUpdateGroupSetsCount(item.groupId, Math.max(1, Number(e.target.value) || 1))
+              }
+              className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+            />
+          </label>
+        )}
+        {!showProgressionFields && (
+          <span className="text-[11px] text-zinc-600 italic">rounds vary by week - see below</span>
+        )}
         <button
           type="button"
           onClick={() => onUngroup(item.groupId)}
@@ -479,7 +563,12 @@ function BlockItemEditor({
         {item.blocks.map((b) => (
           <div key={b.id} className="flex items-start gap-2">
             <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
-            <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets={false} />
+            <BlockNumberFields
+              block={b}
+              onUpdateBlock={onUpdateBlock}
+              showSets={false}
+              showProgressionFields={showProgressionFields}
+            />
             <button
               type="button"
               onClick={() => onRemove(b.id)}
@@ -494,16 +583,21 @@ function BlockItemEditor({
   )
 }
 
-const PHASES: Array<'warmup' | 'main' | 'cooldown'> = ['warmup', 'main', 'cooldown']
-const PHASE_LABELS: Record<string, string> = { warmup: 'Warm-up', main: 'Workout', cooldown: 'Cool-down' }
+export const PHASES: Array<'warmup' | 'main' | 'cooldown'> = ['warmup', 'main', 'cooldown']
+export const PHASE_LABELS: Record<string, string> = {
+  warmup: 'Warm-up',
+  main: 'Workout',
+  cooldown: 'Cool-down',
+}
 
 // The unified "Tier 2" day editor - everything from a quick number
 // tweak to full restructuring (grouping into rounds, ungrouping,
 // renaming/swapping an exercise) happens on this one screen, per
 // Trainerize's own editor pattern: a table of exercises, checkbox
 // multi-select, a Group action, an editable round count, Ungroup, and
-// reordering (here via up/down rather than drag, to keep this a
-// dependency-free first build).
+// reordering via drag-and-drop (native HTML5 drag events, no extra
+// dependency) or the up/down arrows - both call the same moveItemTo,
+// so pick whichever's more convenient in the moment.
 //
 // Internally this operates on EditableBlock[] (see workoutBlocks.ts) -
 // one row per exercise regardless of how many rounds/sets it repeats -
@@ -534,6 +628,8 @@ function DayEditor({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [notesText, setNotesText] = useState(notes || '')
   const [isSaving, setIsSaving] = useState(false)
+  const [dragFrom, setDragFrom] = useState<{ phase: 'warmup' | 'main' | 'cooldown'; index: number } | null>(null)
+  const [dragOver, setDragOver] = useState<{ phase: 'warmup' | 'main' | 'cooldown'; index: number } | null>(null)
 
   function updateBlock(id: string, fields: Partial<EditableBlock>) {
     setBlocks((prev) => prev.map((b) => (b.id === id ? { ...b, ...fields } : b)))
@@ -610,14 +706,26 @@ function DayEditor({
   // the relative order *within* one phase's slice of `blocks` actually
   // affects the saved result - reordering only needs to touch that slice.
   function moveItem(phase: 'warmup' | 'main' | 'cooldown', itemIndex: number, direction: -1 | 1) {
+    moveItemTo(phase, itemIndex, itemIndex + direction)
+  }
+
+  // Generalized reorder - moves the item at fromIndex to sit at
+  // toIndex within its phase (insert-at-position, not swap-adjacent),
+  // so it powers both the arrow buttons (toIndex = fromIndex ± 1) and
+  // drag-and-drop (toIndex = wherever it's dropped, possibly several
+  // spots away in one move). Same phase-scoping reasoning as before -
+  // expandBlocksToExercises always emits warm-up/workout/cool-down in
+  // that fixed order regardless of storage order, so only order
+  // *within* one phase's slice of `blocks` needs touching.
+  function moveItemTo(phase: 'warmup' | 'main' | 'cooldown', fromIndex: number, toIndex: number) {
     setBlocks((prev) => {
       const phaseIndices = prev.map((b, i) => (b.phase === phase ? i : -1)).filter((i) => i !== -1)
       const items = itemsForPhase(prev.filter((b) => b.phase === phase))
-      const targetIndex = itemIndex + direction
-      if (targetIndex < 0 || targetIndex >= items.length) return prev
+      if (toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return prev
 
       const reordered = [...items]
-      ;[reordered[itemIndex], reordered[targetIndex]] = [reordered[targetIndex], reordered[itemIndex]]
+      const [moved] = reordered.splice(fromIndex, 1)
+      reordered.splice(toIndex, 0, moved)
       const flatPhaseBlocks = reordered.flatMap((i) => i.blocks)
 
       const next = [...prev]
@@ -693,6 +801,18 @@ function DayEditor({
                   onMoveDown={() => moveItem(phase, idx, 1)}
                   canMoveUp={idx > 0}
                   canMoveDown={idx < items.length - 1}
+                  onDragStart={() => setDragFrom({ phase, index: idx })}
+                  onDragOverItem={() => setDragOver({ phase, index: idx })}
+                  onDropItem={() => {
+                    if (dragFrom && dragFrom.phase === phase) moveItemTo(phase, dragFrom.index, idx)
+                    setDragFrom(null)
+                    setDragOver(null)
+                  }}
+                  onDragEndItem={() => {
+                    setDragFrom(null)
+                    setDragOver(null)
+                  }}
+                  isDragOver={dragOver?.phase === phase && dragOver.index === idx}
                 />
               ))}
             </div>
@@ -733,15 +853,19 @@ function DayPreview({
 }) {
   const [open, setOpen] = useState(false)
   const [isEditingDay, setIsEditingDay] = useState(false)
-  const isRestDay = day.exercises.length === 0
+  // An empty exercise list could mean an intentional rest day, or a
+  // brand-new day that just hasn't been built out yet via "+ Add day" -
+  // both are always openable/editable now (previously this disabled
+  // the whole row, which blocked building out a new program from
+  // scratch since every freshly-added day starts empty).
+  const isEmpty = day.exercises.length === 0
 
   return (
     <div className="border-t border-zinc-800 first:border-t-0 py-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        disabled={isRestDay}
-        className="w-full flex items-center justify-between text-left disabled:cursor-default"
+        className="w-full flex items-center justify-between text-left"
       >
         <span className="text-sm text-zinc-300">
           Day {day.day} — {day.label}
@@ -750,10 +874,10 @@ function DayPreview({
           )}
         </span>
         <span className="text-xs text-zinc-600">
-          {isRestDay ? 'Rest' : `${day.exercises.length} exercises ${open ? '▲' : '▼'}`}
+          {isEmpty ? 'Rest / empty' : `${day.exercises.length} exercises`} {open ? '▲' : '▼'}
         </span>
       </button>
-      {open && !isRestDay && (
+      {open && (
         <div className="mt-2 pl-2">
           {day.notes && <p className="text-xs text-zinc-500 italic mb-1.5">{day.notes}</p>}
           {isEditingDay ? (
@@ -771,6 +895,7 @@ function DayPreview({
               {day.exercises.map((e, i) => (
                 <ReadOnlyExerciseRow key={i} e={e} />
               ))}
+              {isEmpty && <p className="text-xs text-zinc-700 italic mb-2">No exercises yet.</p>}
               <button
                 type="button"
                 onClick={() => setIsEditingDay(true)}
@@ -831,6 +956,95 @@ function WeekPreview({
 // or opening Supabase. Collapsed by default at every level (weeks,
 // then days) since a 4-week program can easily run 20-40+ exercises
 // per day.
+// "+ Add day" for building out a program's calendar shape one entry at
+// a time - the other half of self-service program creation alongside
+// createProgram, since a brand-new program starts with zero days.
+// Refuses (server-side, in addProgramDay) to clobber a (week, day)
+// that already has content, so a mistyped week/day number can't wipe
+// out real authored material.
+function AddDayControl({ programId }: { programId: string }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [week, setWeek] = useState('1')
+  const [day, setDay] = useState('1')
+  const [label, setLabel] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleAdd() {
+    const w = Number(week)
+    const d = Number(day)
+    if (!w || !d || !label.trim()) return
+    setIsSaving(true)
+    await addProgramDay(programId, w, d, label.trim())
+    setIsSaving(false)
+    setLabel('')
+    setOpen(false)
+    router.refresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
+      >
+        + Add day
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 bg-zinc-900/40 rounded-lg p-2">
+      <label className="flex flex-col text-[11px] text-zinc-500">
+        Week
+        <input
+          type="number"
+          min={1}
+          value={week}
+          onChange={(e) => setWeek(e.target.value)}
+          className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+        />
+      </label>
+      <label className="flex flex-col text-[11px] text-zinc-500">
+        Day
+        <input
+          type="number"
+          min={1}
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+        />
+      </label>
+      <label className="flex flex-col text-[11px] text-zinc-500 flex-1 min-w-[140px]">
+        Label
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="e.g. Upper Body A"
+          className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+        />
+      </label>
+      <button
+        type="button"
+        onClick={handleAdd}
+        disabled={isSaving || !label.trim()}
+        className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1.5 rounded-lg transition"
+      >
+        {isSaving ? 'Adding...' : 'Add'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        disabled={isSaving}
+        className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
 function WorkoutPreview({
   programId,
   days,
@@ -840,13 +1054,11 @@ function WorkoutPreview({
   days: WorkoutPlanDay[]
   exercisePool: ExercisePoolEntry[]
 }) {
-  if (days.length === 0) {
-    return <p className="text-xs text-zinc-600 italic mt-3">No workout content yet.</p>
-  }
   const weeks = Array.from(new Set(days.map((d) => d.week))).sort((a, b) => a - b)
 
   return (
     <div className="mt-3 space-y-2">
+      {days.length === 0 && <p className="text-xs text-zinc-600 italic">No workout content yet.</p>}
       {weeks.map((w) => (
         <WeekPreview
           key={w}
@@ -856,6 +1068,7 @@ function WorkoutPreview({
           exercisePool={exercisePool}
         />
       ))}
+      <AddDayControl programId={programId} />
     </div>
   )
 }
@@ -953,6 +1166,7 @@ function ProgramCard({ program, exercisePool }: { program: ProgramRow; exerciseP
   const [isPublished, setIsPublished] = useState(program.is_published)
   const [isTogglePending, setIsTogglePending] = useState(false)
   const [showWorkouts, setShowWorkouts] = useState(false)
+  const [showDayGroups, setShowDayGroups] = useState(false)
 
   const [name, setName] = useState(program.name)
   const [level, setLevel] = useState(program.level)
@@ -1022,9 +1236,22 @@ function ProgramCard({ program, exercisePool }: { program: ProgramRow; exerciseP
           >
             {showWorkouts ? 'Hide workouts' : 'View workouts'}
           </button>
+          <button
+            onClick={() => setShowDayGroups((v) => !v)}
+            className="text-xs font-medium text-zinc-400 hover:text-white transition"
+          >
+            {showDayGroups ? 'Hide day groups' : 'Edit day groups'}
+          </button>
         </div>
         {showWorkouts && (
           <WorkoutPreview
+            programId={program.id}
+            days={program.structured_plan?.days ?? []}
+            exercisePool={exercisePool}
+          />
+        )}
+        {showDayGroups && (
+          <DayGroupSection
             programId={program.id}
             days={program.structured_plan?.days ?? []}
             exercisePool={exercisePool}
@@ -1156,6 +1383,130 @@ function ProgramCard({ program, exercisePool }: { program: ProgramRow; exerciseP
   )
 }
 
+// Self-service program creation - the first authoring path that
+// doesn't require a manual SQL insert. Creates the row with just
+// title/level/equipment/duration/description via createProgram
+// (structured_plan starts empty), then the admin builds out the
+// calendar with "+ Add day" and fills each day in with the same
+// editor already used for everything else.
+function NewProgramForm() {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [level, setLevel] = useState('')
+  const [equipmentTier, setEquipmentTier] = useState('')
+  const [durationWeeks, setDurationWeeks] = useState('4')
+  const [description, setDescription] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleCreate() {
+    if (!name.trim() || !level.trim() || !equipmentTier.trim()) return
+    setIsSaving(true)
+    await createProgram({
+      name,
+      level,
+      equipmentTier,
+      durationWeeks: Number(durationWeeks) || 1,
+      description,
+    })
+    setIsSaving(false)
+    setName('')
+    setLevel('')
+    setEquipmentTier('')
+    setDurationWeeks('4')
+    setDescription('')
+    setOpen(false)
+    router.refresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
+      >
+        + New Program
+      </button>
+    )
+  }
+
+  return (
+    <div className="glass rounded-2xl p-5 space-y-4">
+      <p className="text-sm font-semibold text-white">New program</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">Program title</label>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">Duration (weeks)</label>
+          <input
+            type="number"
+            min={1}
+            value={durationWeeks}
+            onChange={(e) => setDurationWeeks(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">Level</label>
+          <input
+            type="text"
+            value={level}
+            onChange={(e) => setLevel(e.target.value)}
+            placeholder="e.g. beginner"
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">Equipment tier</label>
+          <input
+            type="text"
+            value={equipmentTier}
+            onChange={(e) => setEquipmentTier(e.target.value)}
+            placeholder="e.g. minimal_equipment"
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs text-zinc-500 mb-1 block">Description (optional)</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          placeholder="Who is this program for?"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleCreate}
+          disabled={isSaving || !name.trim() || !level.trim() || !equipmentTier.trim()}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
+        >
+          {isSaving ? 'Creating...' : 'Create program'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-sm font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function AdminProgramsList({
   programs,
   exercisePool,
@@ -1163,15 +1514,16 @@ export default function AdminProgramsList({
   programs: ProgramRow[]
   exercisePool: ExercisePoolEntry[]
 }) {
-  if (programs.length === 0) {
-    return <p className="text-center text-sm text-zinc-500 py-12">No programs yet.</p>
-  }
-
   return (
     <div className="space-y-4">
-      {programs.map((program) => (
-        <ProgramCard key={program.id} program={program} exercisePool={exercisePool} />
-      ))}
+      <NewProgramForm />
+      {programs.length === 0 ? (
+        <p className="text-center text-sm text-zinc-500 py-12">No programs yet.</p>
+      ) : (
+        programs.map((program) => (
+          <ProgramCard key={program.id} program={program} exercisePool={exercisePool} />
+        ))
+      )}
     </div>
   )
 }
