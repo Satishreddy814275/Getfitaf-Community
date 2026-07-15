@@ -6,16 +6,28 @@ import {
   addExerciseVideo,
   addProgramDay,
   createProgram,
+  propagateDayStructuralChanges,
   toggleProgramPublished,
   updateExerciseVideo,
   updateProgramDay,
   updateProgramMetadata,
 } from '@/app/admin/actions'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
+import { diffBlockStructure, type StructuralDiffEntry } from '@/lib/dayGroups'
 import type { ExercisePoolEntry } from '@/lib/exercisePool'
 import { renderRichText } from '@/lib/richText'
 import { DayGroupSection } from './DayGroupEditor'
 import type { WorkoutPlanDay } from '@/types'
+
+// One-line human-readable description of a structural change, for the
+// "apply to N other days too?" confirm prompt in DayEditor.
+function describeStructuralChange(entry: StructuralDiffEntry): string {
+  const identity =
+    entry.originalName === entry.newName ? `"${entry.originalName}"` : `"${entry.originalName}" → "${entry.newName}"`
+  if (entry.groupMates === null) return `${identity} — now standalone`
+  if (entry.groupMates.length === 0) return identity
+  return `${identity} — grouped with ${entry.groupMates.map((m) => m.newName).join(', ')}`
+}
 
 interface ProgramRow {
   id: string
@@ -610,21 +622,30 @@ function DayEditor({
   programId,
   week,
   day,
+  label,
   exercises,
   notes,
   exercisePool,
+  allDays,
   onClose,
 }: {
   programId: string
   week: number
   day: number
+  label: string
   exercises: WorkoutPlanDay['exercises']
   notes?: string
   exercisePool: ExercisePoolEntry[]
+  allDays: WorkoutPlanDay[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [blocks, setBlocks] = useState<EditableBlock[]>(() => collapseExercisesToBlocks(exercises))
+  // Snapshot of the day's structure exactly as it was when this editor
+  // was opened - never updated after that - so handleSave can diff
+  // "what changed structurally this session" regardless of how many
+  // renames/regroups/reorders happened along the way.
+  const originalBlocksRef = useRef<EditableBlock[]>(collapseExercisesToBlocks(exercises))
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [notesText, setNotesText] = useState(notes || '')
   const [isSaving, setIsSaving] = useState(false)
@@ -738,7 +759,31 @@ function DayEditor({
 
   async function handleSave() {
     setIsSaving(true)
+
+    // Structural-only diff (identity/grouping - never sets/reps/rest/
+    // timer) against how this day looked when the editor opened. If
+    // anything changed AND other days in this program share this same
+    // label, offer to replicate it onto those too - matched by
+    // exercise name, skipping any sibling that doesn't already have a
+    // matching exercise. This is separate from, and doesn't require,
+    // the day-group grid's stricter full-structure alignment.
+    const changes = diffBlockStructure(originalBlocksRef.current, blocks)
+    const siblings = allDays.filter(
+      (d) => d.label === label && !(d.week === week && d.day === day) && d.exercises.length > 0
+    )
+
     await updateProgramDay(programId, week, day, blocks, notesText.trim() || null)
+
+    if (changes.length > 0 && siblings.length > 0) {
+      const summary = changes.map(describeStructuralChange).join('\n')
+      const proceed = confirm(
+        `Also apply ${changes.length === 1 ? 'this change' : 'these changes'} to ${siblings.length} other day${siblings.length === 1 ? '' : 's'} labeled "${label}"?\n\n${summary}\n\n(Sets, reps, rest, and timers won't be touched - only exercise names and rounds.)`
+      )
+      if (proceed) {
+        await propagateDayStructuralChanges(programId, label, week, day, changes)
+      }
+    }
+
     setIsSaving(false)
     router.refresh()
     onClose()
@@ -846,10 +891,12 @@ function DayPreview({
   programId,
   day,
   exercisePool,
+  allDays,
 }: {
   programId: string
   day: WorkoutPlanDay
   exercisePool: ExercisePoolEntry[]
+  allDays: WorkoutPlanDay[]
 }) {
   const [open, setOpen] = useState(false)
   const [isEditingDay, setIsEditingDay] = useState(false)
@@ -885,9 +932,11 @@ function DayPreview({
               programId={programId}
               week={day.week}
               day={day.day}
+              label={day.label}
               exercises={day.exercises}
               notes={day.notes}
               exercisePool={exercisePool}
+              allDays={allDays}
               onClose={() => setIsEditingDay(false)}
             />
           ) : (
@@ -916,11 +965,13 @@ function WeekPreview({
   week,
   days,
   exercisePool,
+  allDays,
 }: {
   programId: string
   week: number
   days: WorkoutPlanDay[]
   exercisePool: ExercisePoolEntry[]
+  allDays: WorkoutPlanDay[]
 }) {
   const [open, setOpen] = useState(false)
   const sorted = [...days].sort((a, b) => a.day - b.day)
@@ -940,7 +991,7 @@ function WeekPreview({
       {open && (
         <div className="mt-1">
           {sorted.map((d) => (
-            <DayPreview key={d.day} programId={programId} day={d} exercisePool={exercisePool} />
+            <DayPreview key={d.day} programId={programId} day={d} exercisePool={exercisePool} allDays={allDays} />
           ))}
         </div>
       )}
@@ -1066,6 +1117,7 @@ function WorkoutPreview({
           week={w}
           days={days.filter((d) => d.week === w)}
           exercisePool={exercisePool}
+          allDays={days}
         />
       ))}
       <AddDayControl programId={programId} />
