@@ -2,8 +2,15 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { toggleProgramPublished, updateProgramDay, updateProgramMetadata } from '@/app/admin/actions'
+import {
+  addExerciseVideo,
+  toggleProgramPublished,
+  updateExerciseVideo,
+  updateProgramDay,
+  updateProgramMetadata,
+} from '@/app/admin/actions'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
+import type { ExercisePoolEntry } from '@/lib/exercisePool'
 import { renderRichText } from '@/lib/richText'
 import type { WorkoutPlanDay } from '@/types'
 
@@ -68,6 +75,221 @@ function itemsForPhase(phaseBlocks: EditableBlock[]): PhaseItem[] {
     })
   }
   return items
+}
+
+// Searchable list backing both "Add exercise" and "swap this exercise" -
+// sourced from the canonical pool (every name already used across any
+// program, plus the video library) rather than a plain textbox, so a
+// near-duplicate ("Squat" vs "Squats") gets caught by seeing the real
+// entry in the list instead of quietly becoming a second, unmatched
+// exercise. Typing something genuinely new is still one click away via
+// the "Use as new exercise" row at the bottom, it's just a deliberate
+// action rather than the default outcome of a stray keystroke.
+//
+// Each row also carries a "has video" badge and an inline add/edit
+// action for that exercise's video, reusing the same addExerciseVideo/
+// updateExerciseVideo actions the dedicated /admin/videos page uses -
+// so a missing video can be filled in right where you notice it's
+// missing, without leaving the day you're editing. Since exercise
+// videos are a single shared table, saving one here updates it
+// everywhere that exercise appears, same as it already does today.
+function ExercisePicker({
+  pool,
+  onSelect,
+  onClose,
+}: {
+  pool: ExercisePoolEntry[]
+  onSelect: (name: string) => void
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [editingVideoFor, setEditingVideoFor] = useState<string | null>(null)
+  const [videoUrlDraft, setVideoUrlDraft] = useState('')
+  const [isSavingVideo, setIsSavingVideo] = useState(false)
+
+  const q = query.trim().toLowerCase()
+  const filtered = q ? pool.filter((e) => e.name.toLowerCase().includes(q)) : pool
+  const exactMatch = pool.some((e) => e.name.toLowerCase() === q)
+
+  async function handleSaveVideo(entry: ExercisePoolEntry) {
+    const url = videoUrlDraft.trim()
+    if (!url) return
+    setIsSavingVideo(true)
+    if (entry.videoId) {
+      await updateExerciseVideo(entry.videoId, entry.name, url)
+    } else {
+      await addExerciseVideo(entry.name, url)
+    }
+    setIsSavingVideo(false)
+    setEditingVideoFor(null)
+    router.refresh()
+  }
+
+  return (
+    <div className="w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-lg shadow-xl p-2">
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search exercises..."
+        className="w-full bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-xs text-white mb-2"
+      />
+      <div className="space-y-0.5 max-h-64 overflow-y-auto">
+        {filtered.map((entry) => (
+          <div key={entry.name} className="rounded hover:bg-zinc-900 px-1.5 py-1">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onSelect(entry.name)
+                  onClose()
+                }}
+                className="flex-1 text-left text-xs text-zinc-200 truncate"
+              >
+                {entry.name}
+              </button>
+              <span className="flex items-center gap-1.5 shrink-0">
+                {entry.videoUrl && (
+                  <span className="text-[9px] uppercase tracking-wide text-orange-400">Video</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingVideoFor(entry.name)
+                    setVideoUrlDraft(entry.videoUrl || '')
+                  }}
+                  className="text-[10px] text-zinc-600 hover:text-white transition"
+                >
+                  {entry.videoUrl ? 'Edit video' : '+ Video'}
+                </button>
+              </span>
+            </div>
+            {editingVideoFor === entry.name && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <input
+                  autoFocus
+                  value={videoUrlDraft}
+                  onChange={(e) => setVideoUrlDraft(e.target.value)}
+                  placeholder="Video URL"
+                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-[11px] text-white placeholder-zinc-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveVideo(entry)}
+                  disabled={isSavingVideo || !videoUrlDraft.trim()}
+                  className="text-[10px] font-semibold text-orange-400 hover:text-orange-300 disabled:opacity-50 transition"
+                >
+                  {isSavingVideo ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingVideoFor(null)}
+                  className="text-[10px] text-zinc-600 hover:text-white transition"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {filtered.length === 0 && <p className="text-[11px] text-zinc-600 italic px-1.5 py-1">No matches.</p>}
+      </div>
+      {query.trim() && !exactMatch && (
+        <button
+          type="button"
+          onClick={() => {
+            onSelect(query.trim())
+            onClose()
+          }}
+          className="w-full text-left mt-2 pt-2 border-t border-zinc-800 text-xs text-orange-400 hover:text-orange-300 transition"
+        >
+          + Use &quot;{query.trim()}&quot; as a new exercise
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full text-center mt-2 text-[11px] text-zinc-600 hover:text-white transition"
+      >
+        Cancel
+      </button>
+    </div>
+  )
+}
+
+// Inline "rename/swap this exercise" control - shows the current name
+// as a plain label plus a small "Swap" trigger; toggling opens the
+// same ExercisePicker used for adding exercises, right below the row,
+// rather than a free text box. Selecting a name (existing or new)
+// applies to every round instance of this block at once, same as any
+// other field edit on a block.
+function ExerciseNameField({
+  name,
+  pool,
+  onChange,
+}: {
+  name: string
+  pool: ExercisePoolEntry[]
+  onChange: (name: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="flex-1 min-w-[140px]">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full text-left bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white hover:border-orange-500/40 transition truncate"
+      >
+        {name}
+      </button>
+      {open && (
+        <div className="mt-1">
+          <ExercisePicker
+            pool={pool}
+            onSelect={(picked) => onChange(picked)}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// "+ Add exercise" trigger for one phase - toggles the same
+// ExercisePicker inline underneath the phase header rather than
+// creating a blank "New exercise" placeholder immediately, so a new
+// block always starts from a deliberate name choice.
+function AddExerciseControl({
+  pool,
+  onAdd,
+}: {
+  pool: ExercisePoolEntry[]
+  onAdd: (name: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="text-[11px] font-medium text-zinc-500 hover:text-white transition"
+      >
+        + Add exercise
+      </button>
+      {open && (
+        <div className="absolute right-0 z-10 mt-1">
+          <ExercisePicker
+            pool={pool}
+            onSelect={(name) => onAdd(name)}
+            onClose={() => setOpen(false)}
+          />
+        </div>
+      )}
+    </div>
+  )
 }
 
 // Shared reps/rest/timer/trackWeight inputs for one block - identical
@@ -155,6 +377,7 @@ function BlockNumberFields({
 // for it, not one row per round.
 function BlockItemEditor({
   item,
+  pool,
   selected,
   onToggleSelect,
   onUpdateBlock,
@@ -167,6 +390,7 @@ function BlockItemEditor({
   canMoveDown,
 }: {
   item: PhaseItem
+  pool: ExercisePoolEntry[]
   selected: Set<string>
   onToggleSelect: (id: string) => void
   onUpdateBlock: (id: string, fields: Partial<EditableBlock>) => void
@@ -211,11 +435,7 @@ function BlockItemEditor({
           className="mt-1.5 accent-orange-500"
         />
         <div className="flex-1 flex flex-wrap items-center gap-1.5">
-          <input
-            value={b.name}
-            onChange={(e) => onUpdateBlock(b.id, { name: e.target.value })}
-            className="flex-1 min-w-[140px] bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-          />
+          <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
           <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets />
         </div>
         <button
@@ -258,11 +478,7 @@ function BlockItemEditor({
       <div className="space-y-1 pl-1">
         {item.blocks.map((b) => (
           <div key={b.id} className="flex items-start gap-2">
-            <input
-              value={b.name}
-              onChange={(e) => onUpdateBlock(b.id, { name: e.target.value })}
-              className="flex-1 min-w-[140px] bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-            />
+            <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
             <BlockNumberFields block={b} onUpdateBlock={onUpdateBlock} showSets={false} />
             <button
               type="button"
@@ -301,17 +517,22 @@ function DayEditor({
   week,
   day,
   exercises,
+  notes,
+  exercisePool,
   onClose,
 }: {
   programId: string
   week: number
   day: number
   exercises: WorkoutPlanDay['exercises']
+  notes?: string
+  exercisePool: ExercisePoolEntry[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [blocks, setBlocks] = useState<EditableBlock[]>(() => collapseExercisesToBlocks(exercises))
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [notesText, setNotesText] = useState(notes || '')
   const [isSaving, setIsSaving] = useState(false)
 
   function updateBlock(id: string, fields: Partial<EditableBlock>) {
@@ -357,12 +578,12 @@ function DayEditor({
     setBlocks((prev) => prev.map((b) => (b.groupId === groupId ? { ...b, groupId: null } : b)))
   }
 
-  function addExercise(phase: 'warmup' | 'main' | 'cooldown') {
+  function addExerciseWithName(phase: 'warmup' | 'main' | 'cooldown', name: string) {
     setBlocks((prev) => [
       ...prev,
       {
         id: `new${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
-        name: 'New exercise',
+        name,
         setsCount: 1,
         reps: '10',
         restSeconds: null,
@@ -409,7 +630,7 @@ function DayEditor({
 
   async function handleSave() {
     setIsSaving(true)
-    await updateProgramDay(programId, week, day, blocks)
+    await updateProgramDay(programId, week, day, blocks, notesText.trim() || null)
     setIsSaving(false)
     router.refresh()
     onClose()
@@ -417,6 +638,19 @@ function DayEditor({
 
   return (
     <div className="mt-2 space-y-4">
+      <div>
+        <label className="text-[11px] uppercase tracking-wide text-zinc-500 mb-1 block">
+          Instructions shown to members
+        </label>
+        <textarea
+          value={notesText}
+          onChange={(e) => setNotesText(e.target.value)}
+          placeholder="e.g. Circuit format - work through the moves below in order..."
+          rows={2}
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white placeholder-zinc-700"
+        />
+      </div>
+
       {PHASES.map((phase) => {
         const phaseBlocks = blocks.filter((b) => b.phase === phase)
         if (phaseBlocks.length === 0 && phase !== 'main') return null
@@ -439,13 +673,7 @@ function DayEditor({
                     Group selected
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => addExercise(phase)}
-                  className="text-[11px] font-medium text-zinc-500 hover:text-white transition"
-                >
-                  + Add exercise
-                </button>
+                <AddExerciseControl pool={exercisePool} onAdd={(name) => addExerciseWithName(phase, name)} />
               </div>
             </div>
             <div className="space-y-1.5">
@@ -454,6 +682,7 @@ function DayEditor({
                 <BlockItemEditor
                   key={item.type === 'group' ? item.groupId : item.blocks[0].id}
                   item={item}
+                  pool={exercisePool}
                   selected={selected}
                   onToggleSelect={toggleSelect}
                   onUpdateBlock={updateBlock}
@@ -493,7 +722,15 @@ function DayEditor({
   )
 }
 
-function DayPreview({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+function DayPreview({
+  programId,
+  day,
+  exercisePool,
+}: {
+  programId: string
+  day: WorkoutPlanDay
+  exercisePool: ExercisePoolEntry[]
+}) {
   const [open, setOpen] = useState(false)
   const [isEditingDay, setIsEditingDay] = useState(false)
   const isRestDay = day.exercises.length === 0
@@ -525,6 +762,8 @@ function DayPreview({ programId, day }: { programId: string; day: WorkoutPlanDay
               week={day.week}
               day={day.day}
               exercises={day.exercises}
+              notes={day.notes}
+              exercisePool={exercisePool}
               onClose={() => setIsEditingDay(false)}
             />
           ) : (
@@ -551,10 +790,12 @@ function WeekPreview({
   programId,
   week,
   days,
+  exercisePool,
 }: {
   programId: string
   week: number
   days: WorkoutPlanDay[]
+  exercisePool: ExercisePoolEntry[]
 }) {
   const [open, setOpen] = useState(false)
   const sorted = [...days].sort((a, b) => a.day - b.day)
@@ -574,7 +815,7 @@ function WeekPreview({
       {open && (
         <div className="mt-1">
           {sorted.map((d) => (
-            <DayPreview key={d.day} programId={programId} day={d} />
+            <DayPreview key={d.day} programId={programId} day={d} exercisePool={exercisePool} />
           ))}
         </div>
       )}
@@ -590,7 +831,15 @@ function WeekPreview({
 // or opening Supabase. Collapsed by default at every level (weeks,
 // then days) since a 4-week program can easily run 20-40+ exercises
 // per day.
-function WorkoutPreview({ programId, days }: { programId: string; days: WorkoutPlanDay[] }) {
+function WorkoutPreview({
+  programId,
+  days,
+  exercisePool,
+}: {
+  programId: string
+  days: WorkoutPlanDay[]
+  exercisePool: ExercisePoolEntry[]
+}) {
   if (days.length === 0) {
     return <p className="text-xs text-zinc-600 italic mt-3">No workout content yet.</p>
   }
@@ -599,7 +848,13 @@ function WorkoutPreview({ programId, days }: { programId: string; days: WorkoutP
   return (
     <div className="mt-3 space-y-2">
       {weeks.map((w) => (
-        <WeekPreview key={w} programId={programId} week={w} days={days.filter((d) => d.week === w)} />
+        <WeekPreview
+          key={w}
+          programId={programId}
+          week={w}
+          days={days.filter((d) => d.week === w)}
+          exercisePool={exercisePool}
+        />
       ))}
     </div>
   )
@@ -692,7 +947,7 @@ function PublishToggle({
   )
 }
 
-function ProgramCard({ program }: { program: ProgramRow }) {
+function ProgramCard({ program, exercisePool }: { program: ProgramRow; exercisePool: ExercisePoolEntry[] }) {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isPublished, setIsPublished] = useState(program.is_published)
@@ -769,7 +1024,11 @@ function ProgramCard({ program }: { program: ProgramRow }) {
           </button>
         </div>
         {showWorkouts && (
-          <WorkoutPreview programId={program.id} days={program.structured_plan?.days ?? []} />
+          <WorkoutPreview
+            programId={program.id}
+            days={program.structured_plan?.days ?? []}
+            exercisePool={exercisePool}
+          />
         )}
       </div>
     )
@@ -897,7 +1156,13 @@ function ProgramCard({ program }: { program: ProgramRow }) {
   )
 }
 
-export default function AdminProgramsList({ programs }: { programs: ProgramRow[] }) {
+export default function AdminProgramsList({
+  programs,
+  exercisePool,
+}: {
+  programs: ProgramRow[]
+  exercisePool: ExercisePoolEntry[]
+}) {
   if (programs.length === 0) {
     return <p className="text-center text-sm text-zinc-500 py-12">No programs yet.</p>
   }
@@ -905,7 +1170,7 @@ export default function AdminProgramsList({ programs }: { programs: ProgramRow[]
   return (
     <div className="space-y-4">
       {programs.map((program) => (
-        <ProgramCard key={program.id} program={program} />
+        <ProgramCard key={program.id} program={program} exercisePool={exercisePool} />
       ))}
     </div>
   )
