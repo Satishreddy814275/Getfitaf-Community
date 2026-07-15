@@ -24,6 +24,7 @@ import type { WorkoutPlanDay } from '@/types'
 function describeStructuralChange(entry: StructuralDiffEntry): string {
   const identity =
     entry.originalName === entry.newName ? `"${entry.originalName}"` : `"${entry.originalName}" → "${entry.newName}"`
+  if (entry.deleted) return `${identity} — removed`
   const bits: string[] = []
   if (entry.phase) bits.push(`moved to ${PHASE_LABELS[entry.phase] ?? entry.phase}`)
   if (entry.groupMates === null) bits.push('now standalone')
