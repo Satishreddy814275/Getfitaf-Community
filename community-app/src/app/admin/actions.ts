@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
 import type { WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
+import { expandBlocksToExercises, replaceDayExercises, type EditableBlock } from '@/lib/workoutBlocks'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -390,6 +391,45 @@ export async function updateProgramExercise(
 
   if (fields.timerSeconds === null) delete exercise.timerSeconds
   else exercise.timerSeconds = Math.max(0, Math.round(fields.timerSeconds))
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+}
+
+// "Tier 2" restructuring editor - a single day's full exercise list,
+// saved as a batch from the block-based editor (see workoutBlocks.ts).
+// Unlike updateProgramExercise, the caller doesn't mutate one field on
+// one existing row - it hands over the complete, already-edited block
+// list for the day (grouped/ungrouped, renamed, reordered, whatever),
+// and this always rebuilds that day's exercises from scratch via
+// expandBlocksToExercises. That function is what actually guarantees
+// order/phase/round invariants hold - this action just trusts its
+// output and replaces the one day's exercises wholesale, same
+// read-whole-blob/write-whole-blob pattern as updateProgramExercise.
+export async function updateProgramDay(
+  programId: string,
+  week: number,
+  day: number,
+  blocks: EditableBlock[]
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  const dayEntry = plan.days.find((d) => d.week === week && d.day === day)
+  if (!dayEntry) return
+
+  const exercises = expandBlocksToExercises(blocks)
+  plan.days = replaceDayExercises(plan.days, week, day, exercises)
 
   await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
 
