@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import {
   addExerciseVideo,
   addProgramDay,
+  copyProgramDay,
   createProgram,
+  deleteProgramDay,
+  duplicateProgramWeek,
   propagateDayStructuralChanges,
   toggleProgramPublished,
   updateExerciseVideo,
   updateProgramDay,
   updateProgramMetadata,
+  type DayCopyCollision,
 } from '@/app/admin/actions'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
 import { diffBlockStructure } from '@/lib/dayGroups'
@@ -934,6 +938,286 @@ function DayEditor({
   )
 }
 
+// Shared by every copy/duplicate control below - all three follow the
+// same two-step flow: call once with no overwrites approved, and if
+// anything came back in `collisions` (a target that already has
+// content), ask once via a single confirm listing every colliding slot
+// rather than one popup per slot, then re-call with just those keys
+// approved. A "no" on the confirm still counts as success for whatever
+// slots WERE free and already got created on the first call - nothing
+// rolls back, it just stops short of touching the slots that would
+// have overwritten something.
+async function runCopyWithConfirm(
+  call: (
+    overwriteKeys: string[]
+  ) => Promise<
+    | { ok: true; created: number; overwritten: number; collisions: DayCopyCollision[] }
+    | { ok: false; error: string }
+  >
+): Promise<{ ok: true; created: number; overwritten: number } | { ok: false; error: string }> {
+  const first = await call([])
+  if (!first.ok) return first
+  if (first.collisions.length === 0) {
+    return { ok: true, created: first.created, overwritten: first.overwritten }
+  }
+
+  const list = first.collisions.map((c) => `Week ${c.week}, Day ${c.day} (${c.label})`).join('\n')
+  const confirmed = confirm(
+    `These already have content and will be overwritten:\n\n${list}\n\nOverwrite them?`
+  )
+  if (!confirmed) {
+    return { ok: true, created: first.created, overwritten: 0 }
+  }
+
+  const keys = first.collisions.map((c) => `${c.week}-${c.day}`)
+  const second = await call(keys)
+  if (!second.ok) return second
+  return { ok: true, created: first.created + second.created, overwritten: second.overwritten }
+}
+
+// Clones this day into the same day-of-week, N weeks forward - the
+// direct fix for "build Monday once, repeat it for the next 3 weeks"
+// instead of re-authoring each week's Monday from scratch.
+function RepeatWeeklyControl({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [weeks, setWeeks] = useState('3')
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleGo() {
+    const n = Number(weeks)
+    if (!n || n < 1) {
+      setError('Enter a number of weeks.')
+      return
+    }
+    setIsSaving(true)
+    setError(null)
+    const targets = Array.from({ length: n }, (_, i) => ({ week: day.week + i + 1, day: day.day }))
+    const result = await runCopyWithConfirm((overwriteKeys) =>
+      copyProgramDay(programId, day.week, day.day, targets, overwriteKeys)
+    )
+    setIsSaving(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setOpen(false)
+    router.refresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-medium text-zinc-400 hover:text-white transition"
+      >
+        Repeat weekly
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-zinc-900/40 rounded-lg p-2 space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[11px] text-zinc-500">Repeat weekly for</span>
+        <input
+          type="number"
+          min={1}
+          value={weeks}
+          onChange={(e) => {
+            setWeeks(e.target.value)
+            setError(null)
+          }}
+          className="w-12 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+        />
+        <span className="text-[11px] text-zinc-500">more week{weeks === '1' ? '' : 's'}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGo}
+          disabled={isSaving}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1 rounded-lg transition"
+        >
+          {isSaving ? 'Copying...' : 'Go'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+// More general than RepeatWeeklyControl - copies this day into any
+// hand-picked list of (week, day) slots, not necessarily the same day
+// number or consecutive weeks. Covers "copy Tuesday's workout onto a
+// different day-of-week" and "copy into just week 3, skipping 2."
+function CopyToControl({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<Array<{ week: string; day: string }>>([{ week: '', day: '' }])
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function updateRow(i: number, field: 'week' | 'day', value: string) {
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)))
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, { week: '', day: '' }])
+  }
+
+  function removeRow(i: number) {
+    setRows((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  async function handleGo() {
+    const targets = rows
+      .map((r) => ({ week: Number(r.week), day: Number(r.day) }))
+      .filter((t) => t.week > 0 && t.day > 0)
+    if (targets.length === 0) {
+      setError('Enter at least one valid week and day.')
+      return
+    }
+    setIsSaving(true)
+    setError(null)
+    const result = await runCopyWithConfirm((overwriteKeys) =>
+      copyProgramDay(programId, day.week, day.day, targets, overwriteKeys)
+    )
+    setIsSaving(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setRows([{ week: '', day: '' }])
+    setOpen(false)
+    router.refresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-medium text-zinc-400 hover:text-white transition"
+      >
+        Copy to...
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-zinc-900/40 rounded-lg p-2 space-y-1.5">
+      {rows.map((r, i) => (
+        <div key={i} className="flex items-end gap-2">
+          <label className="flex flex-col text-[11px] text-zinc-500">
+            Week
+            <input
+              type="number"
+              min={1}
+              value={r.week}
+              onChange={(e) => updateRow(i, 'week', e.target.value)}
+              className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+            />
+          </label>
+          <label className="flex flex-col text-[11px] text-zinc-500">
+            Day
+            <input
+              type="number"
+              min={1}
+              value={r.day}
+              onChange={(e) => updateRow(i, 'day', e.target.value)}
+              className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+            />
+          </label>
+          {rows.length > 1 && (
+            <button
+              type="button"
+              onClick={() => removeRow(i)}
+              aria-label="Remove target"
+              className="text-zinc-600 hover:text-red-400 transition text-sm pb-1.5"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={addRow}
+        className="text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
+      >
+        + Add target
+      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGo}
+          disabled={isSaving}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1 rounded-lg transition"
+        >
+          {isSaving ? 'Copying...' : 'Copy'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
+    </div>
+  )
+}
+
+// The undo for a copy/repeat/duplicate landing in the wrong slot -
+// previously a day could only ever be emptied out by hand, never
+// actually removed.
+function DeleteDayButton({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+  const router = useRouter()
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (
+      !confirm(
+        `Delete Day ${day.day}: ${day.label}? This can't be undone - members' already-logged history for it is unaffected, but the day itself is gone.`
+      )
+    ) {
+      return
+    }
+    setIsDeleting(true)
+    const result = await deleteProgramDay(programId, day.week, day.day)
+    setIsDeleting(false)
+    if (!result.ok) {
+      alert(result.error)
+      return
+    }
+    router.refresh()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleDelete}
+      disabled={isDeleting}
+      className="text-[11px] font-medium text-zinc-600 hover:text-red-400 disabled:opacity-50 transition"
+    >
+      {isDeleting ? 'Deleting...' : 'Delete day'}
+    </button>
+  )
+}
+
 function DayPreview({
   programId,
   day,
@@ -990,17 +1274,107 @@ function DayPreview({
             <>
               {!isEmpty && <DayReadOnlyView exercises={day.exercises} />}
               {isEmpty && <p className="text-xs text-zinc-700 italic mb-2">No exercises yet.</p>}
-              <button
-                type="button"
-                onClick={() => setIsEditingDay(true)}
-                className="mt-2 text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
-              >
-                Edit day
-              </button>
+              <div className="mt-2 flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingDay(true)}
+                  className="text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
+                >
+                  Edit day
+                </button>
+                {!isEmpty && (
+                  <>
+                    <RepeatWeeklyControl programId={programId} day={day} />
+                    <CopyToControl programId={programId} day={day} />
+                  </>
+                )}
+                <DeleteDayButton programId={programId} day={day} />
+              </div>
             </>
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Clones every day in one week into a different week number in one
+// shot - for when a whole week is "basically last week, with a couple
+// of changes," rather than repeating/copying it day by day.
+function DuplicateWeekControl({ programId, week }: { programId: string; week: number }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [targetWeek, setTargetWeek] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleGo() {
+    const w = Number(targetWeek)
+    if (!w || w < 1) {
+      setError('Enter a valid week number.')
+      return
+    }
+    setIsSaving(true)
+    setError(null)
+    const result = await runCopyWithConfirm((overwriteKeys) =>
+      duplicateProgramWeek(programId, week, w, overwriteKeys)
+    )
+    setIsSaving(false)
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setTargetWeek('')
+    setOpen(false)
+    router.refresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-[11px] font-medium text-zinc-400 hover:text-white transition"
+      >
+        Duplicate week
+      </button>
+    )
+  }
+
+  return (
+    <div className="bg-zinc-900/40 rounded-lg p-2 space-y-1.5 inline-block">
+      <div className="flex items-center gap-1.5">
+        <span className="text-[11px] text-zinc-500">Duplicate into week</span>
+        <input
+          type="number"
+          min={1}
+          value={targetWeek}
+          onChange={(e) => {
+            setTargetWeek(e.target.value)
+            setError(null)
+          }}
+          className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+        />
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleGo}
+          disabled={isSaving}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1 rounded-lg transition"
+        >
+          {isSaving ? 'Duplicating...' : 'Go'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>
   )
 }
@@ -1038,6 +1412,9 @@ function WeekPreview({
           {sorted.map((d) => (
             <DayPreview key={d.day} programId={programId} day={d} exercisePool={exercisePool} allDays={allDays} />
           ))}
+          <div className="pt-2 mt-1 border-t border-zinc-800">
+            <DuplicateWeekControl programId={programId} week={week} />
+          </div>
         </div>
       )}
     </div>
