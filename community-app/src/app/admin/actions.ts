@@ -408,11 +408,19 @@ export async function updateProgramExercise(
 // order/phase/round invariants hold - this action just trusts its
 // output and replaces the one day's exercises wholesale, same
 // read-whole-blob/write-whole-blob pattern as updateProgramExercise.
+//
+// Also carries the day's `notes` - the free-text instructions shown to
+// members above the exercise list in the guided player (e.g. "Circuit
+// format - work through the moves below in order") - since it's the
+// other piece of day-level content that previously had no edit surface
+// at all. Passing null/empty clears it rather than leaving a stale
+// value key present with an empty string.
 export async function updateProgramDay(
   programId: string,
   week: number,
   day: number,
-  blocks: EditableBlock[]
+  blocks: EditableBlock[],
+  notes: string | null
 ) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
@@ -429,7 +437,15 @@ export async function updateProgramDay(
   if (!dayEntry) return
 
   const exercises = expandBlocksToExercises(blocks)
-  plan.days = replaceDayExercises(plan.days, week, day, exercises)
+  const withExercises = replaceDayExercises(plan.days, week, day, exercises)
+  const trimmedNotes = notes?.trim() || null
+
+  plan.days = withExercises.map((d) => {
+    if (d.week !== week || d.day !== day) return d
+    if (trimmedNotes) return { ...d, notes: trimmedNotes }
+    const { notes: _drop, ...rest } = d
+    return rest as WorkoutPlanDay
+  })
 
   await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
 
