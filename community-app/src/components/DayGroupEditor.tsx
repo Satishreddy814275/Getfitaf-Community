@@ -336,7 +336,8 @@ function DayGroupEditor({
         </p>
         {PHASES.map((phase) => {
           const phaseBlocks = templateBlocks.filter((b) => b.phase === phase)
-          if (phaseBlocks.length === 0 && phase !== 'main') return null
+          // Always render every phase, even empty ones - see the same
+          // fix/comment in AdminProgramsList.tsx's DayEditor for why.
           const items = itemsForPhase(phaseBlocks)
           const hasSelectionInPhase = [...selected].some(
             (id) => templateBlocks.find((b) => b.id === id)?.phase === phase

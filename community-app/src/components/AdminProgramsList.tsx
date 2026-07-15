@@ -838,7 +838,12 @@ function DayEditor({
 
       {PHASES.map((phase) => {
         const phaseBlocks = blocks.filter((b) => b.phase === phase)
-        if (phaseBlocks.length === 0 && phase !== 'main') return null
+        // Always render every phase, even empty ones - warm-up and
+        // cool-down used to only show up once they already had an
+        // exercise in them, which meant there was no way to add the
+        // *first* exercise to either one (their Add Exercise control
+        // was hidden along with the empty section). Everything ended
+        // up in "main" by default as a result.
         const items = itemsForPhase(phaseBlocks)
         const hasSelectionInPhase = [...selected].some(
           (id) => blocks.find((b) => b.id === id)?.phase === phase
