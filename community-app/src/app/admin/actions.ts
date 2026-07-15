@@ -6,6 +6,7 @@ import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
 import type { WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
 import { expandBlocksToExercises, replaceDayExercises, type EditableBlock } from '@/lib/workoutBlocks'
+import { applyWeekOverrides, type ProgressionCell } from '@/lib/dayGroups'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -265,6 +266,84 @@ export async function toggleProgramPublished(id: string, isPublished: boolean) {
   revalidatePath('/programs')
 }
 
+// Creates a brand-new program directly from /admin/programs - the
+// first program-authoring path that doesn't require a manual SQL
+// insert. Starts unpublished with an empty structured_plan (no days
+// yet); the admin builds it out afterward via "+ Add day" and the
+// existing day editor, so everything from here on reuses tooling
+// that's already built rather than needing anything new. Returns the
+// new row's id (or null on failure/validation) in case a caller wants
+// it, though the current UI just refreshes the list.
+export async function createProgram(fields: {
+  name: string
+  level: string
+  equipmentTier: string
+  durationWeeks: number
+  description: string
+}): Promise<string | null> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return null
+
+  const name = fields.name.trim()
+  const level = fields.level.trim()
+  const equipmentTier = fields.equipmentTier.trim()
+  const description = fields.description.trim()
+  if (!name || !level || !equipmentTier) return null
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .insert({
+      name,
+      level,
+      equipment_tier: equipmentTier,
+      duration_weeks: Math.max(1, Math.round(fields.durationWeeks) || 1),
+      description: description || null,
+      is_published: false,
+      structured_plan: { days: [] },
+    })
+    .select('id')
+    .single()
+
+  if (error) return null
+
+  revalidatePath('/admin/programs')
+  return data.id as string
+}
+
+// Appends one new, empty (week, day) entry to a program - the other
+// half of self-service program creation, since createProgram starts
+// with zero days. Refuses to clobber an existing (week, day) rather
+// than overwriting it, since that would silently wipe out real
+// authored content if an admin mistypes a week/day that's already in
+// use. The new day starts with exercises: [] - it shows up in
+// /admin/programs as an "empty" day (recently relaxed to be openable
+// even with no exercises yet, see DayPreview) ready to build out via
+// the same "Edit day" flow as any other day.
+export async function addProgramDay(programId: string, week: number, day: number, label: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const trimmedLabel = label.trim()
+  if (!trimmedLabel || week < 1 || day < 1) return
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  if (plan.days.some((d) => d.week === week && d.day === day)) return
+
+  plan.days = [...plan.days, { week, day, label: trimmedLabel, exercises: [] }]
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+}
+
 // Full workout history for one member, fetched on-demand (only when
 // an admin actually expands that member's row on /admin/members, not
 // eagerly for everyone in the list) - mirrors the exact grouping logic
@@ -446,6 +525,61 @@ export async function updateProgramDay(
     const { notes: _drop, ...rest } = d
     return rest as WorkoutPlanDay
   })
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+}
+
+// "Day group" editor - writes a shared structure (which exercises,
+// their order/grouping/names, from workoutBlocks/dayGroups) across
+// every occurrence of the same day label in the program at once, plus
+// each occurrence's own progression numbers (sets/reps/rest/timer).
+// This is what makes editing e.g. "Upper Body A" in one place apply to
+// every week that uses it - the day-by-day updateProgramDay above is
+// still there for one-off edits, this is additive, not a replacement.
+//
+// `occurrences` must be given in the SAME order as the `cells` arrays
+// inside `progressionByBlockId` were built (see dayGroups.ts's
+// ProgressionRow.cells) - matched by array position, not by week
+// number, since the same label can occur more than once within a
+// single week (confirmed in real content) and a week-number key would
+// silently collide two different days together.
+export async function updateProgramDayGroup(
+  programId: string,
+  occurrences: Array<{ week: number; day: number }>,
+  templateBlocks: EditableBlock[],
+  progressionByBlockId: Record<string, ProgressionCell[]>
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+
+  let days = plan.days
+  for (let i = 0; i < occurrences.length; i++) {
+    const { week, day } = occurrences[i]
+    const dayEntry = days.find((d) => d.week === week && d.day === day)
+    if (!dayEntry) continue
+
+    const overridesForThisOccurrence: Record<string, ProgressionCell> = {}
+    for (const blockId of Object.keys(progressionByBlockId)) {
+      overridesForThisOccurrence[blockId] = progressionByBlockId[blockId][i]
+    }
+
+    const weekBlocks = applyWeekOverrides(templateBlocks, overridesForThisOccurrence)
+    const exercises = expandBlocksToExercises(weekBlocks)
+    days = replaceDayExercises(days, week, day, exercises)
+  }
+  plan.days = days
 
   await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
 
