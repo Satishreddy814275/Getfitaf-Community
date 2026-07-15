@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminProgramsList from '@/components/AdminProgramsList'
+import { buildExercisePool } from '@/lib/exercisePool'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
@@ -31,6 +32,20 @@ export default async function AdminProgramsPage() {
 
   const programs = templatesData || []
 
+  // Backs the day editor's "Add exercise" / swap-exercise picker -
+  // every distinct exercise name already used across ANY program (not
+  // just the one being edited) plus the video library, so admins pick
+  // from what already exists instead of retyping a name that's one
+  // typo away from silently becoming a duplicate. See exercisePool.ts.
+  const { data: videosData } = await supabase
+    .from('exercise_videos')
+    .select('id, exercise_name, video_url')
+
+  const exercisePool = buildExercisePool(
+    programs.map((p) => p.structured_plan?.days ?? []),
+    videosData || []
+  )
+
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
@@ -50,7 +65,7 @@ export default async function AdminProgramsPage() {
         </p>
       </div>
 
-      <AdminProgramsList programs={programs} />
+      <AdminProgramsList programs={programs} exercisePool={exercisePool} />
     </div>
   )
 }
