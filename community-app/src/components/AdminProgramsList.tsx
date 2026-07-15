@@ -13,24 +13,11 @@ import {
   updateProgramMetadata,
 } from '@/app/admin/actions'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { diffBlockStructure, type StructuralDiffEntry } from '@/lib/dayGroups'
+import { diffBlockStructure } from '@/lib/dayGroups'
 import type { ExercisePoolEntry } from '@/lib/exercisePool'
 import { renderRichText } from '@/lib/richText'
 import { DayGroupSection } from './DayGroupEditor'
 import type { WorkoutPlanDay } from '@/types'
-
-// One-line human-readable description of a structural change, for the
-// "apply to N other days too?" confirm prompt in DayEditor.
-function describeStructuralChange(entry: StructuralDiffEntry): string {
-  const identity =
-    entry.originalName === entry.newName ? `"${entry.originalName}"` : `"${entry.originalName}" → "${entry.newName}"`
-  if (entry.deleted) return `${identity} — removed`
-  const bits: string[] = []
-  if (entry.phase) bits.push(`moved to ${PHASE_LABELS[entry.phase] ?? entry.phase}`)
-  if (entry.groupMates === null) bits.push('now standalone')
-  else if (entry.groupMates.length > 0) bits.push(`grouped with ${entry.groupMates.map((m) => m.newName).join(', ')}`)
-  return bits.length > 0 ? `${identity} — ${bits.join(', ')}` : identity
-}
 
 interface ProgramRow {
   id: string
@@ -763,13 +750,16 @@ function DayEditor({
   async function handleSave() {
     setIsSaving(true)
 
-    // Structural-only diff (identity/grouping - never sets/reps/rest/
-    // timer) against how this day looked when the editor opened. If
-    // anything changed AND other days in this program share this same
-    // label, offer to replicate it onto those too - matched by
-    // exercise name, skipping any sibling that doesn't already have a
-    // matching exercise. This is separate from, and doesn't require,
-    // the day-group grid's stricter full-structure alignment.
+    // Structural-only diff (identity/grouping/phase - never sets/reps/
+    // rest/timer) against how this day looked when the editor opened.
+    // Per Satish, the same day label should always mean the same
+    // exercise sequence everywhere it appears - a week that genuinely
+    // needs something different gets its own label ("Upper Body B")
+    // rather than diverging under this one - so any structural change
+    // here silently propagates to every other day sharing this label,
+    // no confirmation needed. Matched by exercise name; a sibling
+    // that's missing a piece (or already has it) is just skipped for
+    // that part, never guessed at.
     const changes = diffBlockStructure(originalBlocksRef.current, blocks)
     const siblings = allDays.filter(
       (d) => d.label === label && !(d.week === week && d.day === day) && d.exercises.length > 0
@@ -778,13 +768,7 @@ function DayEditor({
     await updateProgramDay(programId, week, day, blocks, notesText.trim() || null)
 
     if (changes.length > 0 && siblings.length > 0) {
-      const summary = changes.map(describeStructuralChange).join('\n')
-      const proceed = confirm(
-        `Also apply ${changes.length === 1 ? 'this change' : 'these changes'} to ${siblings.length} other day${siblings.length === 1 ? '' : 's'} labeled "${label}"?\n\n${summary}\n\n(Sets, reps, rest, and timers won't be touched - only exercise names and rounds.)`
-      )
-      if (proceed) {
-        await propagateDayStructuralChanges(programId, label, week, day, changes)
-      }
+      await propagateDayStructuralChanges(programId, label, week, day, changes)
     }
 
     setIsSaving(false)
@@ -1016,21 +1000,51 @@ function WeekPreview({
 // Refuses (server-side, in addProgramDay) to clobber a (week, day)
 // that already has content, so a mistyped week/day number can't wipe
 // out real authored material.
-function AddDayControl({ programId }: { programId: string }) {
+// Defaults the "+ Add day" form to the next open slot after whatever's
+// already in the program - the latest week that exists, with the day
+// number one past its highest existing day (or Week 1 / Day 1 if the
+// program has no days yet) - so opening the form doesn't default to
+// Week 1 / Day 1 when that's almost always already taken, which is
+// exactly what silently swallowed every attempt before this fix.
+function nextOpenSlot(days: WorkoutPlanDay[]): { week: number; day: number } {
+  if (days.length === 0) return { week: 1, day: 1 }
+  const maxWeek = Math.max(...days.map((d) => d.week))
+  const maxDayInThatWeek = Math.max(...days.filter((d) => d.week === maxWeek).map((d) => d.day))
+  return { week: maxWeek, day: maxDayInThatWeek + 1 }
+}
+
+function AddDayControl({ programId, days }: { programId: string; days: WorkoutPlanDay[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [week, setWeek] = useState('1')
   const [day, setDay] = useState('1')
   const [label, setLabel] = useState('')
   const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function handleOpen() {
+    const slot = nextOpenSlot(days)
+    setWeek(String(slot.week))
+    setDay(String(slot.day))
+    setError(null)
+    setOpen(true)
+  }
 
   async function handleAdd() {
     const w = Number(week)
     const d = Number(day)
     if (!w || !d || !label.trim()) return
     setIsSaving(true)
-    await addProgramDay(programId, w, d, label.trim())
+    setError(null)
+    const result = await addProgramDay(programId, w, d, label.trim())
     setIsSaving(false)
+    if (!result.ok) {
+      // Stay open, keep whatever was typed - the trainer needs to see
+      // why it didn't work and adjust, not have the form vanish as if
+      // it had succeeded.
+      setError(result.error)
+      return
+    }
     setLabel('')
     setOpen(false)
     router.refresh()
@@ -1040,7 +1054,7 @@ function AddDayControl({ programId }: { programId: string }) {
     return (
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={handleOpen}
         className="text-[11px] font-medium text-orange-400 hover:text-orange-300 transition"
       >
         + Add day
@@ -1049,52 +1063,61 @@ function AddDayControl({ programId }: { programId: string }) {
   }
 
   return (
-    <div className="flex flex-wrap items-end gap-2 bg-zinc-900/40 rounded-lg p-2">
-      <label className="flex flex-col text-[11px] text-zinc-500">
-        Week
-        <input
-          type="number"
-          min={1}
-          value={week}
-          onChange={(e) => setWeek(e.target.value)}
-          className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-        />
-      </label>
-      <label className="flex flex-col text-[11px] text-zinc-500">
-        Day
-        <input
-          type="number"
-          min={1}
-          value={day}
-          onChange={(e) => setDay(e.target.value)}
-          className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
-        />
-      </label>
-      <label className="flex flex-col text-[11px] text-zinc-500 flex-1 min-w-[140px]">
-        Label
-        <input
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder="e.g. Upper Body A"
-          className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
-        />
-      </label>
-      <button
-        type="button"
-        onClick={handleAdd}
-        disabled={isSaving || !label.trim()}
-        className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1.5 rounded-lg transition"
-      >
-        {isSaving ? 'Adding...' : 'Add'}
-      </button>
-      <button
-        type="button"
-        onClick={() => setOpen(false)}
-        disabled={isSaving}
-        className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
-      >
-        Cancel
-      </button>
+    <div className="bg-zinc-900/40 rounded-lg p-2 space-y-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col text-[11px] text-zinc-500">
+          Week
+          <input
+            type="number"
+            min={1}
+            value={week}
+            onChange={(e) => {
+              setWeek(e.target.value)
+              setError(null)
+            }}
+            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+        <label className="flex flex-col text-[11px] text-zinc-500">
+          Day
+          <input
+            type="number"
+            min={1}
+            value={day}
+            onChange={(e) => {
+              setDay(e.target.value)
+              setError(null)
+            }}
+            className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          />
+        </label>
+        <label className="flex flex-col text-[11px] text-zinc-500 flex-1 min-w-[140px]">
+          Label
+          <input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Upper Body A"
+            className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white placeholder-zinc-700"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={handleAdd}
+          disabled={isSaving || !label.trim()}
+          className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-[11px] font-semibold px-3 py-1.5 rounded-lg transition"
+        >
+          {isSaving ? 'Adding...' : 'Add'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          disabled={isSaving}
+          className="text-zinc-500 hover:text-white disabled:opacity-50 text-[11px] font-medium transition"
+        >
+          Cancel
+        </button>
+      </div>
+      {error && <p className="text-[11px] text-red-400">{error}</p>}
     </div>
   )
 }
@@ -1123,7 +1146,7 @@ function WorkoutPreview({
           allDays={days}
         />
       ))}
-      <AddDayControl programId={programId} />
+      <AddDayControl programId={programId} days={days} />
     </div>
   )
 }
