@@ -151,3 +151,157 @@ export function applyWeekOverrides(
     }
   })
 }
+
+// --- Single-day "apply to similar days" propagation ---
+//
+// Separate mechanism from the day-group grid above, for the opposite
+// situation: a day whose sibling occurrences (same label) DON'T
+// structurally match, so there's no shared template to edit in one
+// place. Instead, editing a single day (the regular one-day editor)
+// can offer to replicate just the IDENTITY/GROUPING change it just
+// made onto whichever sibling days happen to already have a
+// matching-named exercise - it never touches sets/reps/rest/timer
+// (that's what the grid is for when it applies, and per Satish is
+// deliberately out of scope here otherwise), and it never adds or
+// removes an exercise from a sibling day it wasn't already in - a
+// wholesale restructure is a "rebuild that day by hand" situation, not
+// something to auto-propagate.
+export interface StructuralDiffEntry {
+  originalName: string
+  newName: string
+  // Other exercises this one should end up sharing a round with,
+  // carrying both their ORIGINAL name (to find the right block in a
+  // sibling day, which hasn't had this edit applied yet) and their NEW
+  // name (in case they were renamed in the same edit session) - or
+  // null if this exercise should end up standalone/ungrouped.
+  groupMates: Array<{ originalName: string; newName: string }> | null
+}
+
+// Compares a day's blocks before/after one edit session and returns
+// only the structural changes - a block whose name and group
+// membership are both unchanged is omitted entirely. Blocks that were
+// purely added or removed this session are excluded on purpose (not
+// renames, nothing to match against in a sibling day).
+export function diffBlockStructure(
+  original: EditableBlock[],
+  current: EditableBlock[]
+): StructuralDiffEntry[] {
+  const currentById = new Map(current.map((b) => [b.id, b]))
+  const originalById = new Map(original.map((b) => [b.id, b]))
+
+  function mateIdsOf(blocks: EditableBlock[], block: EditableBlock): Set<string> | null {
+    if (block.groupId == null) return null
+    return new Set(blocks.filter((b) => b.groupId === block.groupId && b.id !== block.id).map((b) => b.id))
+  }
+
+  function sameMateSet(a: Set<string> | null, b: Set<string> | null): boolean {
+    if (a == null || b == null) return a == null && b == null
+    if (a.size !== b.size) return false
+    for (const id of a) if (!b.has(id)) return false
+    return true
+  }
+
+  const entries: StructuralDiffEntry[] = []
+
+  for (const ob of original) {
+    const cb = currentById.get(ob.id)
+    if (!cb) continue // removed this session - not propagated
+
+    const originalMateIds = mateIdsOf(original, ob)
+    const currentMateIds = mateIdsOf(current, cb)
+    const renamed = ob.name !== cb.name
+
+    if (!renamed && sameMateSet(originalMateIds, currentMateIds)) continue
+
+    const currentMates = currentMateIds
+      ? current.filter((b) => b.groupId === cb.groupId && b.id !== cb.id)
+      : null
+
+    entries.push({
+      originalName: ob.name,
+      newName: cb.name,
+      groupMates: currentMates
+        ? currentMates.map((m) => {
+            const om = originalById.get(m.id)
+            return { originalName: om ? om.name : m.name, newName: m.name }
+          })
+        : null,
+    })
+  }
+
+  return entries
+}
+
+// Applies a set of StructuralDiffEntry changes to ONE sibling day's
+// blocks. Every name lookup is resolved against the sibling's own
+// pristine (pre-change) block list, keyed by name, so renaming several
+// exercises in the same batch can't have one rename's result
+// accidentally matched by a later entry. Entries whose target (or, for
+// a grouping change, ALL of whose mates) aren't present in this
+// sibling are skipped for that part of the change rather than guessed
+// at - a rename can still apply even if the grouping part can't.
+export function applyStructuralDiffToBlocks(
+  blocks: EditableBlock[],
+  changes: StructuralDiffEntry[]
+): { blocks: EditableBlock[]; changed: boolean } {
+  const workingById = new Map(blocks.map((b) => [b.id, { ...b }]))
+  const idByOriginalName = new Map(blocks.map((b) => [b.name, b.id]))
+  let changed = false
+
+  for (const entry of changes) {
+    const targetId = idByOriginalName.get(entry.originalName)
+    if (!targetId) continue
+    const target = workingById.get(targetId)!
+
+    if (entry.groupMates === null) {
+      if (target.groupId != null) {
+        target.groupId = null
+        changed = true
+      }
+      if (target.name !== entry.newName) {
+        target.name = entry.newName
+        changed = true
+      }
+      continue
+    }
+
+    const mateIds = entry.groupMates.map((m) => idByOriginalName.get(m.originalName))
+    if (mateIds.some((id) => !id)) {
+      // Can't replicate the round here - not every mate exists in this
+      // sibling day. Still apply the rename in isolation.
+      if (target.name !== entry.newName) {
+        target.name = entry.newName
+        changed = true
+      }
+      continue
+    }
+    const mates = mateIds.map((id) => workingById.get(id!)!)
+
+    if (target.name !== entry.newName) {
+      target.name = entry.newName
+      changed = true
+    }
+    mates.forEach((mb, i) => {
+      const wantName = entry.groupMates![i].newName
+      if (mb.name !== wantName) {
+        mb.name = wantName
+        changed = true
+      }
+    })
+
+    const allSameGroup = target.groupId != null && mates.every((mb) => mb.groupId === target.groupId)
+    if (!allSameGroup) {
+      const newGroupId = `pg${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+      const rounds = Math.max(target.setsCount, ...mates.map((mb) => mb.setsCount), 1)
+      target.groupId = newGroupId
+      target.setsCount = rounds
+      mates.forEach((mb) => {
+        mb.groupId = newGroupId
+        mb.setsCount = rounds
+      })
+      changed = true
+    }
+  }
+
+  return { blocks: [...workingById.values()], changed }
+}
