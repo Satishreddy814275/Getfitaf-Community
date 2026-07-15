@@ -180,23 +180,33 @@ export interface StructuralDiffEntry {
   // below. Undefined means "leave whatever phase it's already in" in a
   // sibling day.
   phase?: 'warmup' | 'main' | 'cooldown'
+  // True when this exercise was deleted outright this session (not
+  // moved to another phase - see the phase-move pairing below, which
+  // takes priority). When set, originalName is the only field that
+  // matters - it's used to find and remove the matching exercise in a
+  // sibling day; newName/groupMates/phase are irrelevant.
+  deleted?: boolean
 }
 
 // Compares a day's blocks before/after one edit session and returns
 // only the structural changes - a block whose name, group membership,
-// and phase are all unchanged is omitted entirely. Blocks that were
-// purely added or removed this session are excluded on purpose (not
-// renames, nothing to match against in a sibling day) - EXCEPT for the
-// one case below: DayEditor never moves a block between phases in
-// place (phase is fixed per block by design), so "move this exercise
-// from warm-up to the workout section" is only ever expressed as
-// deleting the old block and adding a new one with the same name in
-// the other phase. Treated literally, that's just an unrelated
-// removal + addition and would (correctly, per the general rule) not
-// propagate - but from Satish's side it's clearly "I moved this
-// exercise", the same kind of structural change as a rename, so it's
-// detected as its own case and folded into the same entry shape via
-// `phase`.
+// and phase are all unchanged is omitted entirely. Additions are
+// excluded on purpose (nothing to match against in a sibling day, and
+// per Satish, brand-new exercises shouldn't force themselves onto days
+// that don't already have them). Two things that look like a plain
+// removal get special-cased instead of being dropped silently:
+//
+// - A block removed from one phase that reappears (same name) in a
+//   different phase this session is a MOVE, not a delete - DayEditor
+//   never moves a block between phases in place (phase is fixed per
+//   block by design), so "move this exercise to the workout section"
+//   is only ever expressed as delete-old + add-new. Folded into the
+//   same entry shape via `phase`.
+// - Anything left over after that is a genuine deletion - Satish
+//   confirmed removals should propagate too (matched by name, skipped
+//   wherever a sibling doesn't have it - including a sibling that's
+//   already had the same exercise removed, which is what makes it safe
+//   to re-run without redoing already-fixed days).
 export function diffBlockStructure(
   original: EditableBlock[],
   current: EditableBlock[]
@@ -218,12 +228,17 @@ export function diffBlockStructure(
 
   function groupMatesFor(blocks: EditableBlock[], block: EditableBlock): Array<{ originalName: string; newName: string }> | null {
     if (block.groupId == null) return null
-    return blocks
-      .filter((b) => b.groupId === block.groupId && b.id !== block.id)
-      .map((m) => {
-        const om = originalById.get(m.id)
-        return { originalName: om ? om.name : m.name, newName: m.name }
-      })
+    const mates = blocks.filter((b) => b.groupId === block.groupId && b.id !== block.id)
+    // No other block actually shares this groupId (e.g. its one
+    // round-mate was just deleted, leaving a lingering but functionally
+    // meaningless groupId) - treat the same as standalone rather than
+    // an empty-but-non-null mates list, which the apply side would
+    // otherwise vacuously treat as "already matches, nothing to do".
+    if (mates.length === 0) return null
+    return mates.map((m) => {
+      const om = originalById.get(m.id)
+      return { originalName: om ? om.name : m.name, newName: m.name }
+    })
   }
 
   const entries: StructuralDiffEntry[] = []
@@ -272,6 +287,18 @@ export function diffBlockStructure(
     })
   }
 
+  // Whatever's left in `removed` after phase-move pairing is a genuine
+  // deletion this session.
+  for (const ob of removed) {
+    if (consumedRemovedIds.has(ob.id)) continue
+    entries.push({
+      originalName: ob.name,
+      newName: ob.name,
+      groupMates: null,
+      deleted: true,
+    })
+  }
+
   return entries
 }
 
@@ -293,7 +320,14 @@ export function applyStructuralDiffToBlocks(
 
   for (const entry of changes) {
     const targetId = idByOriginalName.get(entry.originalName)
-    if (!targetId) continue
+    if (!targetId) continue // not in this sibling at all (including one already fixed) - nothing to do
+
+    if (entry.deleted) {
+      workingById.delete(targetId)
+      changed = true
+      continue
+    }
+
     const target = workingById.get(targetId)!
 
     if (entry.phase && target.phase !== entry.phase) {
