@@ -387,6 +387,194 @@ export async function addProgramDay(
   return { ok: true }
 }
 
+export interface DayCopyCollision {
+  week: number
+  day: number
+  label: string
+}
+
+// Shared core for copyProgramDay and duplicateProgramWeek below - both
+// are really "clone one source day's full content (label, notes,
+// exercises - everything) into some target (week, day) slots," they
+// just differ in how the target list gets built. Never overwrites a
+// target that already has content unless its "week-day" key is in
+// overwriteKeys - anything else that collides comes back in
+// `collisions` instead, for the caller to surface as a confirm prompt
+// and re-call with those specific keys approved. Copying a source onto
+// itself is silently skipped rather than erroring, since "repeat
+// weekly starting from week 2" naturally includes week 2 itself in a
+// simple target-range construction.
+function applyDayCopies(
+  days: WorkoutPlanDay[],
+  source: WorkoutPlanDay,
+  targets: Array<{ week: number; day: number }>,
+  overwriteKeys: string[]
+): { days: WorkoutPlanDay[]; created: number; overwritten: number; collisions: DayCopyCollision[] } {
+  const overwriteSet = new Set(overwriteKeys)
+  const collisions: DayCopyCollision[] = []
+  let created = 0
+  let overwritten = 0
+  const nextDays = [...days]
+
+  for (const t of targets) {
+    if (t.week === source.week && t.day === source.day) continue
+    const key = `${t.week}-${t.day}`
+    const existingIdx = nextDays.findIndex((d) => d.week === t.week && d.day === t.day)
+    const clone: WorkoutPlanDay = {
+      week: t.week,
+      day: t.day,
+      label: source.label,
+      notes: source.notes,
+      exercises: source.exercises.map((e) => ({ ...e })),
+    }
+    if (existingIdx === -1) {
+      nextDays.push(clone)
+      created++
+    } else if (overwriteSet.has(key)) {
+      nextDays[existingIdx] = clone
+      overwritten++
+    } else {
+      collisions.push({ week: t.week, day: t.day, label: nextDays[existingIdx].label })
+    }
+  }
+
+  return { days: nextDays, created, overwritten, collisions }
+}
+
+// Backs both "Copy to..." (an arbitrary, hand-picked target list) and
+// "Repeat weekly" (a same-day-of-week run across N future weeks) - the
+// UI just builds a different `targets` array for each case and calls
+// this one action. First call with overwriteKeys=[] to see what's
+// free vs. colliding; if `collisions` comes back non-empty, show the
+// admin exactly which slots already have content and, if they confirm,
+// call again with those slots' keys in overwriteKeys.
+export async function copyProgramDay(
+  programId: string,
+  sourceWeek: number,
+  sourceDay: number,
+  targets: Array<{ week: number; day: number }>,
+  overwriteKeys: string[] = []
+): Promise<
+  | { ok: true; created: number; overwritten: number; collisions: DayCopyCollision[] }
+  | { ok: false; error: string }
+> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+  if (targets.length === 0) return { ok: false, error: 'Pick at least one target.' }
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  const source = plan.days.find((d) => d.week === sourceWeek && d.day === sourceDay)
+  if (!source) return { ok: false, error: 'Could not find the day to copy from.' }
+
+  const result = applyDayCopies(plan.days, source, targets, overwriteKeys)
+  plan.days = result.days
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+  return { ok: true, created: result.created, overwritten: result.overwritten, collisions: result.collisions }
+}
+
+// Clones every day in sourceWeek into targetWeek, day-for-day (Day 1 ->
+// Day 1, Day 2 -> Day 2, ...). Loops applyDayCopies once per source day
+// (each has its own content to clone) rather than reusing
+// copyProgramDay directly, so the whole week is read and written back
+// in one round trip instead of one per day. Same confirm-then-retry
+// collision flow as copyProgramDay - overwriteKeys here are also
+// "week-day" keys, scoped to targetWeek.
+export async function duplicateProgramWeek(
+  programId: string,
+  sourceWeek: number,
+  targetWeek: number,
+  overwriteKeys: string[] = []
+): Promise<
+  | { ok: true; created: number; overwritten: number; collisions: DayCopyCollision[] }
+  | { ok: false; error: string }
+> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+  if (sourceWeek === targetWeek) return { ok: false, error: 'Pick a different week to duplicate into.' }
+  if (targetWeek < 1) return { ok: false, error: 'Week must be 1 or higher.' }
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  const sourceDays = plan.days.filter((d) => d.week === sourceWeek)
+  if (sourceDays.length === 0) return { ok: false, error: `Week ${sourceWeek} has no days to duplicate.` }
+
+  let workingDays = plan.days
+  let created = 0
+  let overwritten = 0
+  const collisions: DayCopyCollision[] = []
+
+  for (const sourceDay of sourceDays) {
+    const target = { week: targetWeek, day: sourceDay.day }
+    const key = `${target.week}-${target.day}`
+    const r = applyDayCopies(workingDays, sourceDay, [target], overwriteKeys.includes(key) ? [key] : [])
+    workingDays = r.days
+    created += r.created
+    overwritten += r.overwritten
+    collisions.push(...r.collisions)
+  }
+
+  plan.days = workingDays
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+  return { ok: true, created, overwritten, collisions }
+}
+
+// Removes one day outright - the undo for a copy/repeat/duplicate that
+// landed in the wrong slot, and previously missing entirely (a day
+// could only ever be emptied out exercise-by-exercise, never actually
+// removed). Doesn't touch any member's already-logged history for that
+// (week, day) - workout_sessions/workout_logged_sets are separate
+// tables keyed by generation/week/day, not derived from
+// structured_plan, so past completions stay intact even after the
+// template day they came from is gone.
+export async function deleteProgramDay(
+  programId: string,
+  week: number,
+  day: number
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  if (!plan.days.some((d) => d.week === week && d.day === day)) {
+    return { ok: false, error: 'That day no longer exists.' }
+  }
+  plan.days = plan.days.filter((d) => !(d.week === week && d.day === day))
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+  return { ok: true }
+}
+
 // Full workout history for one member, fetched on-demand (only when
 // an admin actually expands that member's row on /admin/members, not
 // eagerly for everyone in the list) - mirrors the exact grouping logic
