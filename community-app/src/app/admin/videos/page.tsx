@@ -26,46 +26,65 @@ export default async function AdminVideosPage() {
 
   const { data: videosData } = await supabase
     .from('exercise_videos')
-    .select('id, exercise_name, video_url, created_at, added_by, profiles ( full_name )')
+    .select('id, exercise_name, video_url, coach_notes, created_at, added_by, profiles ( full_name )')
     .order('exercise_name')
 
   const videos = (videosData || []).map((v) => ({
     id: v.id,
     exercise_name: v.exercise_name,
     video_url: v.video_url,
+    coach_notes: v.coach_notes,
     created_at: v.created_at,
     added_by_name: (v.profiles as unknown as { full_name: string | null } | null)?.full_name || null,
   }))
 
   // Computed fresh on every page load, not cached - counts how often
-  // each exercise name has actually shown up across every generated
-  // plan, then filters to the ones with no matching video yet, ranked
-  // most-common first. Same matching logic as the member-facing
-  // /workouts view, so "needs a video" here always agrees with what
-  // members actually see as missing. Fine to recompute live at the
-  // current scale (a few hundred generations at most) - see
-  // project memory for the scaling plan if this ever needs to move to
-  // a precomputed/cached table.
+  // each exercise name has actually shown up, then filters to the ones
+  // with no matching video yet, ranked most-common first. Same matching
+  // logic as the member-facing /workouts view, so "needs a video" here
+  // always agrees with what members actually see as missing. Fine to
+  // recompute live at the current scale - see project memory for the
+  // scaling plan if this ever needs to move to a precomputed/cached
+  // table.
   //
-  // Admin (service-role) client required here - workout_generations
-  // has no RLS policies at all (the workout builder has no login of
-  // its own, see project memory), so the regular authenticated client
-  // silently gets zero rows back instead of an error, which is exactly
-  // why this looked like "no data" rather than "wrong client."
-  const { data: generationsData } = await createAdminClient()
-    .from('workout_generations')
-    .select('structured_plan')
-    .not('structured_plan', 'is', null)
+  // Counts from TWO sources: workout_generations (the AI builder's
+  // past output - still relevant, it still serves the free funnel) and
+  // program_templates (the admin-authored programs - Upper Body A,
+  // Foundations, etc., which is where actual paying members' content
+  // has lived since the pivot off AI-generated plans). Originally this
+  // only scanned workout_generations, which meant it silently stopped
+  // reflecting reality once program_templates became the real content
+  // - it could show zero "needs a video" entries even while an
+  // admin-authored program had gaps, since that content was never
+  // counted at all.
+  //
+  // Admin (service-role) client required for workout_generations -
+  // that table has no RLS policies at all (the workout builder has no
+  // login of its own, see project memory), so the regular authenticated
+  // client silently gets zero rows back instead of an error. program_templates
+  // has real RLS letting admins read it directly, same as /admin/programs.
+  const [{ data: generationsData }, { data: templatesData }] = await Promise.all([
+    createAdminClient()
+      .from('workout_generations')
+      .select('structured_plan')
+      .not('structured_plan', 'is', null),
+    supabase.from('program_templates').select('structured_plan'),
+  ])
 
   const frequency = new Map<string, number>()
-  for (const gen of generationsData || []) {
-    const days = ((gen.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[]
+  function countDays(days: WorkoutPlanDay[]) {
     for (const day of days) {
       for (const ex of day.exercises || []) {
         if (!ex?.name) continue
         frequency.set(ex.name, (frequency.get(ex.name) || 0) + 1)
       }
     }
+  }
+  for (const gen of generationsData || []) {
+    countDays(((gen.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[])
+  }
+  for (const tpl of templatesData || []) {
+    countDays(((tpl.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[])
   }
 
   const matchableVideos = videos.map((v) => ({ exerciseName: v.exercise_name, videoUrl: v.video_url }))
