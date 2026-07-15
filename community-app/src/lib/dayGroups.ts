@@ -186,27 +186,52 @@ export interface StructuralDiffEntry {
   // matters - it's used to find and remove the matching exercise in a
   // sibling day; newName/groupMates/phase are irrelevant.
   deleted?: boolean
+  // True when this is a brand-new exercise added this session (not a
+  // rename/move of an existing one). originalName === newName here -
+  // it's used to check whether a sibling already independently has an
+  // exercise by this name (skipped if so, never duplicated). Carries
+  // its own starting numbers via `initialCell` since a sibling that
+  // doesn't have this exercise yet has no existing local value to
+  // protect - seeding it with the numbers it was just given is the
+  // only sensible starting point, not an exception to "numbers stay
+  // local" so much as there being no local value yet.
+  added?: boolean
+  initialCell?: {
+    setsCount: number
+    reps: string
+    restSeconds: number | null
+    timerSeconds: number | null
+    trackWeight: boolean
+  }
 }
 
 // Compares a day's blocks before/after one edit session and returns
-// only the structural changes - a block whose name, group membership,
-// and phase are all unchanged is omitted entirely. Additions are
-// excluded on purpose (nothing to match against in a sibling day, and
-// per Satish, brand-new exercises shouldn't force themselves onto days
-// that don't already have them). Two things that look like a plain
-// removal get special-cased instead of being dropped silently:
+// the structural changes - a block whose name, group membership, and
+// phase are all unchanged is omitted entirely. Per Satish: the same
+// day label (e.g. "Upper Body A") should always mean the same exercise
+// sequence everywhere it appears - if a week genuinely needs a
+// different sequence, that's a new label ("Upper Body B"), not a
+// divergence under the same one. So every structural change here is
+// meant to propagate, including brand-new exercises now (previously
+// excluded) - the only things that stay local are sets/reps/rest/timer
+// on exercises a sibling already has. Two things that look like a
+// plain removal+addition get special-cased instead of being treated as
+// two unrelated events:
 //
 // - A block removed from one phase that reappears (same name) in a
-//   different phase this session is a MOVE, not a delete - DayEditor
+//   different phase this session is a MOVE, not a delete+add - DayEditor
 //   never moves a block between phases in place (phase is fixed per
 //   block by design), so "move this exercise to the workout section"
-//   is only ever expressed as delete-old + add-new. Folded into the
-//   same entry shape via `phase`.
-// - Anything left over after that is a genuine deletion - Satish
-//   confirmed removals should propagate too (matched by name, skipped
-//   wherever a sibling doesn't have it - including a sibling that's
-//   already had the same exercise removed, which is what makes it safe
-//   to re-run without redoing already-fixed days).
+//   is only ever expressed as delete-old + add-new. Folded into one
+//   entry via `phase`. (If the name ALSO changed in the same move,
+//   this won't match - it just falls through to a plain delete entry
+//   for the old name plus a plain add entry for the new one, which
+//   nets out to the same result in sibling days without needing to
+//   guess whether it was really "the same exercise".)
+// - Anything left over after that pairing is either a genuine deletion
+//   or a genuine addition, both of which now propagate the same way:
+//   matched/skipped by name in each sibling, safe to re-run against a
+//   sibling that's already been fixed by hand.
 export function diffBlockStructure(
   original: EditableBlock[],
   current: EditableBlock[]
@@ -299,6 +324,26 @@ export function diffBlockStructure(
     })
   }
 
+  // Whatever's left in `added` after phase-move pairing is a genuine
+  // new exercise this session.
+  for (const cb of added) {
+    if (consumedAddedIds.has(cb.id)) continue
+    entries.push({
+      originalName: cb.name,
+      newName: cb.name,
+      groupMates: groupMatesFor(current, cb),
+      phase: cb.phase,
+      added: true,
+      initialCell: {
+        setsCount: cb.setsCount,
+        reps: cb.reps,
+        restSeconds: cb.restSeconds,
+        timerSeconds: cb.timerSeconds,
+        trackWeight: cb.trackWeight,
+      },
+    })
+  }
+
   return entries
 }
 
@@ -319,6 +364,52 @@ export function applyStructuralDiffToBlocks(
   let changed = false
 
   for (const entry of changes) {
+    if (entry.added) {
+      // Never duplicate - if this sibling already independently has an
+      // exercise by this name (including one added in this very batch,
+      // e.g. a group-mate processed earlier), leave it alone.
+      if (idByOriginalName.has(entry.originalName)) continue
+
+      const newId = `padd${Date.now()}${Math.random().toString(36).slice(2, 6)}${workingById.size}`
+      const seed = entry.initialCell
+      const newBlock: EditableBlock = {
+        id: newId,
+        name: entry.newName,
+        setsCount: seed?.setsCount ?? 1,
+        reps: seed?.reps ?? '10',
+        restSeconds: seed?.restSeconds ?? null,
+        timerSeconds: seed?.timerSeconds ?? null,
+        trackWeight: seed?.trackWeight ?? true,
+        phase: entry.phase ?? 'main',
+        groupId: null,
+      }
+      workingById.set(newId, newBlock)
+      idByOriginalName.set(newBlock.name, newId)
+      changed = true
+
+      // Try to join the same round as its mates, if they're already
+      // present (including a mate added earlier in this same batch,
+      // thanks to the registration above) - reusing their existing
+      // groupId if they already share one, minting a fresh one
+      // otherwise. Silently stays standalone if the mates aren't here.
+      if (entry.groupMates && entry.groupMates.length > 0) {
+        const mateIds = entry.groupMates.map((m) => idByOriginalName.get(m.originalName))
+        if (mateIds.every((id): id is string => !!id)) {
+          const mates = mateIds.map((id) => workingById.get(id)!)
+          const existingGroupId = mates.find((mb) => mb.groupId != null)?.groupId
+          const groupId = existingGroupId ?? `padd-g${Date.now()}${Math.random().toString(36).slice(2, 6)}`
+          const rounds = Math.max(newBlock.setsCount, ...mates.map((mb) => mb.setsCount), 1)
+          newBlock.groupId = groupId
+          newBlock.setsCount = rounds
+          mates.forEach((mb) => {
+            mb.groupId = groupId
+            mb.setsCount = rounds
+          })
+        }
+      }
+      continue
+    }
+
     const targetId = idByOriginalName.get(entry.originalName)
     if (!targetId) continue // not in this sibling at all (including one already fixed) - nothing to do
 
