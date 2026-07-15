@@ -175,13 +175,28 @@ export interface StructuralDiffEntry {
   // name (in case they were renamed in the same edit session) - or
   // null if this exercise should end up standalone/ungrouped.
   groupMates: Array<{ originalName: string; newName: string }> | null
+  // Set only when this exercise moved to a different phase (warm-up /
+  // workout / cool-down) this session - see the phase-move detection
+  // below. Undefined means "leave whatever phase it's already in" in a
+  // sibling day.
+  phase?: 'warmup' | 'main' | 'cooldown'
 }
 
 // Compares a day's blocks before/after one edit session and returns
-// only the structural changes - a block whose name and group
-// membership are both unchanged is omitted entirely. Blocks that were
+// only the structural changes - a block whose name, group membership,
+// and phase are all unchanged is omitted entirely. Blocks that were
 // purely added or removed this session are excluded on purpose (not
-// renames, nothing to match against in a sibling day).
+// renames, nothing to match against in a sibling day) - EXCEPT for the
+// one case below: DayEditor never moves a block between phases in
+// place (phase is fixed per block by design), so "move this exercise
+// from warm-up to the workout section" is only ever expressed as
+// deleting the old block and adding a new one with the same name in
+// the other phase. Treated literally, that's just an unrelated
+// removal + addition and would (correctly, per the general rule) not
+// propagate - but from Satish's side it's clearly "I moved this
+// exercise", the same kind of structural change as a rename, so it's
+// detected as its own case and folded into the same entry shape via
+// `phase`.
 export function diffBlockStructure(
   original: EditableBlock[],
   current: EditableBlock[]
@@ -201,11 +216,23 @@ export function diffBlockStructure(
     return true
   }
 
+  function groupMatesFor(blocks: EditableBlock[], block: EditableBlock): Array<{ originalName: string; newName: string }> | null {
+    if (block.groupId == null) return null
+    return blocks
+      .filter((b) => b.groupId === block.groupId && b.id !== block.id)
+      .map((m) => {
+        const om = originalById.get(m.id)
+        return { originalName: om ? om.name : m.name, newName: m.name }
+      })
+  }
+
   const entries: StructuralDiffEntry[] = []
+  const consumedRemovedIds = new Set<string>()
+  const consumedAddedIds = new Set<string>()
 
   for (const ob of original) {
     const cb = currentById.get(ob.id)
-    if (!cb) continue // removed this session - not propagated
+    if (!cb) continue // handled below, as a possible phase-move pair
 
     const originalMateIds = mateIdsOf(original, ob)
     const currentMateIds = mateIdsOf(current, cb)
@@ -213,19 +240,35 @@ export function diffBlockStructure(
 
     if (!renamed && sameMateSet(originalMateIds, currentMateIds)) continue
 
-    const currentMates = currentMateIds
-      ? current.filter((b) => b.groupId === cb.groupId && b.id !== cb.id)
-      : null
-
     entries.push({
       originalName: ob.name,
       newName: cb.name,
-      groupMates: currentMates
-        ? currentMates.map((m) => {
-            const om = originalById.get(m.id)
-            return { originalName: om ? om.name : m.name, newName: m.name }
-          })
-        : null,
+      groupMates: groupMatesFor(current, cb),
+    })
+  }
+
+  // Phase-move detection: pair up a block removed from one phase with
+  // a newly-added block of the same name in a different phase. Name
+  // match is treated as a strong-enough signal that it's the same
+  // exercise relocated, not a coincidental unrelated swap - especially
+  // given exercise names come from the shared canonical picker rather
+  // than free text.
+  const removed = original.filter((ob) => !currentById.has(ob.id) && !consumedRemovedIds.has(ob.id))
+  const added = current.filter((cb) => !originalById.has(cb.id) && !consumedAddedIds.has(cb.id))
+
+  for (const ob of removed) {
+    const match = added.find(
+      (cb) => !consumedAddedIds.has(cb.id) && cb.name === ob.name && cb.phase !== ob.phase
+    )
+    if (!match) continue
+    consumedRemovedIds.add(ob.id)
+    consumedAddedIds.add(match.id)
+
+    entries.push({
+      originalName: ob.name,
+      newName: match.name,
+      groupMates: groupMatesFor(current, match),
+      phase: match.phase,
     })
   }
 
@@ -252,6 +295,11 @@ export function applyStructuralDiffToBlocks(
     const targetId = idByOriginalName.get(entry.originalName)
     if (!targetId) continue
     const target = workingById.get(targetId)!
+
+    if (entry.phase && target.phase !== entry.phase) {
+      target.phase = entry.phase
+      changed = true
+    }
 
     if (entry.groupMates === null) {
       if (target.groupId != null) {
