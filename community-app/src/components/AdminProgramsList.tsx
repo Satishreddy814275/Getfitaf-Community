@@ -24,9 +24,11 @@ import type { WorkoutPlanDay } from '@/types'
 function describeStructuralChange(entry: StructuralDiffEntry): string {
   const identity =
     entry.originalName === entry.newName ? `"${entry.originalName}"` : `"${entry.originalName}" → "${entry.newName}"`
-  if (entry.groupMates === null) return `${identity} — now standalone`
-  if (entry.groupMates.length === 0) return identity
-  return `${identity} — grouped with ${entry.groupMates.map((m) => m.newName).join(', ')}`
+  const bits: string[] = []
+  if (entry.phase) bits.push(`moved to ${PHASE_LABELS[entry.phase] ?? entry.phase}`)
+  if (entry.groupMates === null) bits.push('now standalone')
+  else if (entry.groupMates.length > 0) bits.push(`grouped with ${entry.groupMates.map((m) => m.newName).join(', ')}`)
+  return bits.length > 0 ? `${identity} — ${bits.join(', ')}` : identity
 }
 
 interface ProgramRow {
