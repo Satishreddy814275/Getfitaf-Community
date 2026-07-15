@@ -1,3 +1,5 @@
+import { baseExerciseName } from '@/lib/workoutBlocks'
+
 export interface ExerciseVideo {
   exerciseName: string
   videoUrl: string
@@ -60,7 +62,15 @@ export function findExerciseVideo(
 // Zero-curation fallback for anything not in the library yet - a
 // plain YouTube search link works immediately for every exercise, no
 // data entry required.
+//
+// Names coming out of structured_plan are auto-suffixed with their
+// round/set number ("Jumping Jacks (Round 2)", "Squats (3)") - great
+// for the guided player, useless (and confusing) as a search query.
+// baseExerciseName strips those back off first, same helper the admin
+// editor uses to collapse unrolled rows into one block, so "Jumping
+// Jacks (Round 1)" and "(Round 2)" both search for plain "Jumping
+// Jacks exercise tutorial".
 export function youtubeSearchUrl(exerciseName: string): string {
-  const query = encodeURIComponent(`${exerciseName} exercise tutorial`)
+  const query = encodeURIComponent(`${baseExerciseName(exerciseName)} exercise tutorial`)
   return `https://www.youtube.com/results?search_query=${query}`
 }

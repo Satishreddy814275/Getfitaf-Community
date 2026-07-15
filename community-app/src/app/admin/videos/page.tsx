@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminExerciseVideosList from '@/components/AdminExerciseVideosList'
 import { findExerciseVideo } from '@/lib/exerciseVideos'
+import { baseExerciseName } from '@/lib/workoutBlocks'
 import type { WorkoutPlanDay } from '@/types'
 
 // See admin/page.tsx for why this is forced dynamic.
@@ -71,12 +72,21 @@ export default async function AdminVideosPage() {
     supabase.from('program_templates').select('structured_plan'),
   ])
 
+  // Keyed by base exercise name (round/set suffix stripped), not the
+  // raw stored name - structured_plan unrolls a 3-round circuit into
+  // "Squats (Round 1)", "Squats (Round 2)", "Squats (Round 3)" as
+  // separate rows, which used to mean each round showed up as its own
+  // "needs a video" entry even though they're all the same exercise.
+  // Same helper the admin day editor uses to collapse those rows back
+  // into one block.
   const frequency = new Map<string, number>()
   function countDays(days: WorkoutPlanDay[]) {
     for (const day of days) {
       for (const ex of day.exercises || []) {
         if (!ex?.name) continue
-        frequency.set(ex.name, (frequency.get(ex.name) || 0) + 1)
+        const base = baseExerciseName(ex.name)
+        if (!base) continue
+        frequency.set(base, (frequency.get(base) || 0) + 1)
       }
     }
   }
