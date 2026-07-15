@@ -40,16 +40,61 @@ interface ProgramRow {
 // editing (numbers, grouping, renaming) happens in DayEditor below so
 // there's exactly one place to make changes, not a quick-edit surface
 // here plus a "real" editor elsewhere.
-function ReadOnlyExerciseRow({ e }: { e: WorkoutPlanDay['exercises'][number] }) {
+// Read-only counterpart to BlockItemEditor/DayEditor - same
+// phase-sectioned, round-grouped visual structure (so a day you've
+// collapsed reads the same way it edits, once you've used the editor
+// once), but with every interactive control - checkboxes, drag
+// handles, inputs, buttons - stripped out, and one row per distinct
+// exercise rather than one row per literal unrolled set/round (the
+// previous flat list showed "Squats (1)", "Squats (2)", "Squats
+// (Round 1)"... as separate lines, which is what made it hard to scan
+// and didn't actually communicate the day's structure at a glance).
+function DayReadOnlyView({ exercises }: { exercises: WorkoutPlanDay['exercises'] }) {
+  const blocks = collapseExercisesToBlocks(exercises)
+
   return (
-    <div className="flex items-start justify-between gap-3 py-1 text-xs border-b border-zinc-900 last:border-b-0">
-      <span className="text-zinc-300">
-        {e.name}
-        {e.round ? <span className="text-zinc-600"> · Round {e.round}</span> : null}
-      </span>
+    <div className="space-y-3 mb-2">
+      {PHASES.map((phase) => {
+        const phaseBlocks = blocks.filter((b) => b.phase === phase)
+        if (phaseBlocks.length === 0) return null
+        const items = itemsForPhase(phaseBlocks)
+
+        return (
+          <div key={phase}>
+            <p className="text-[11px] uppercase tracking-wide text-zinc-600 mb-1">{PHASE_LABELS[phase]}</p>
+            <div className="space-y-1">
+              {items.map((item) =>
+                item.type === 'single' ? (
+                  <ReadOnlyBlockRow key={item.blocks[0].id} block={item.blocks[0]} />
+                ) : (
+                  <div key={item.groupId} className="border border-zinc-800 rounded-lg px-2 py-1.5 bg-zinc-900/20">
+                    <p className="text-[11px] text-zinc-500 font-medium mb-1">
+                      Round × {item.blocks[0].setsCount}
+                    </p>
+                    <div className="space-y-0.5 pl-1">
+                      {item.blocks.map((b) => (
+                        <ReadOnlyBlockRow key={b.id} block={b} hideSets />
+                      ))}
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ReadOnlyBlockRow({ block, hideSets = false }: { block: EditableBlock; hideSets?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-3 bg-zinc-900/40 rounded-lg px-2 py-1.5 text-xs">
+      <span className="text-zinc-300">{block.name}</span>
       <span className="text-zinc-500 text-right shrink-0">
-        {e.sets}×{e.reps}
-        {e.restSeconds ? <span className="text-zinc-600"> · rest {e.restSeconds}s</span> : null}
+        {hideSets ? block.reps : `${block.setsCount}×${block.reps}`}
+        {block.restSeconds ? <span className="text-zinc-600"> · rest {block.restSeconds}s</span> : null}
+        {block.timerSeconds ? <span className="text-zinc-600"> · timer {block.timerSeconds}s</span> : null}
       </span>
     </div>
   )
@@ -928,9 +973,7 @@ function DayPreview({
             />
           ) : (
             <>
-              {day.exercises.map((e, i) => (
-                <ReadOnlyExerciseRow key={i} e={e} />
-              ))}
+              {!isEmpty && <DayReadOnlyView exercises={day.exercises} />}
               {isEmpty && <p className="text-xs text-zinc-700 italic mb-2">No exercises yet.</p>}
               <button
                 type="button"
