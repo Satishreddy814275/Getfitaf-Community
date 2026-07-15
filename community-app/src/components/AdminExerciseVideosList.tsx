@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import {
   addExerciseVideo,
   addExerciseVideosBulk,
@@ -13,6 +13,7 @@ interface ExerciseVideoRow {
   id: string
   exercise_name: string
   video_url: string
+  coach_notes: string | null
   created_at: string
   added_by_name: string | null
 }
@@ -32,6 +33,7 @@ export default function AdminExerciseVideosList({
   const exerciseNameInputRef = useRef<HTMLInputElement>(null)
   const [exerciseName, setExerciseName] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
+  const [coachNotes, setCoachNotes] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -39,6 +41,7 @@ export default function AdminExerciseVideosList({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
+  const [editNotes, setEditNotes] = useState('')
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const [showBulkImport, setShowBulkImport] = useState(false)
@@ -103,9 +106,10 @@ export default function AdminExerciseVideosList({
     if (!exerciseName.trim() || !videoUrl.trim()) return
 
     setIsSubmitting(true)
-    await addExerciseVideo(exerciseName, videoUrl)
+    await addExerciseVideo(exerciseName, videoUrl, coachNotes)
     setExerciseName('')
     setVideoUrl('')
+    setCoachNotes('')
     setIsSubmitting(false)
   }
 
@@ -120,6 +124,7 @@ export default function AdminExerciseVideosList({
     setEditingId(video.id)
     setEditName(video.exercise_name)
     setEditUrl(video.video_url)
+    setEditNotes(video.coach_notes || '')
   }
 
   function cancelEdit() {
@@ -129,7 +134,7 @@ export default function AdminExerciseVideosList({
   async function saveEdit() {
     if (!editingId || !editName.trim() || !editUrl.trim()) return
     setIsSavingEdit(true)
-    await updateExerciseVideo(editingId, editName, editUrl)
+    await updateExerciseVideo(editingId, editName, editUrl, editNotes)
     setIsSavingEdit(false)
     setEditingId(null)
   }
@@ -177,6 +182,18 @@ export default function AdminExerciseVideosList({
             onChange={(e) => setVideoUrl(e.target.value)}
             placeholder="https://..."
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-zinc-500 mb-1 block">
+            Coach notes <span className="text-zinc-600">(optional - form cues, common mistakes)</span>
+          </label>
+          <textarea
+            value={coachNotes}
+            onChange={(e) => setCoachNotes(e.target.value)}
+            placeholder="e.g. Keep your core braced, don't let your knees cave in..."
+            rows={4}
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
           />
         </div>
         <div className="flex items-center justify-between gap-3">
@@ -305,7 +322,8 @@ export default function AdminExerciseVideosList({
               {filteredVideos.map((video) => {
                 const isEditing = editingId === video.id
                 return (
-                  <tr key={video.id} className="border-b border-zinc-900 last:border-0">
+                  <Fragment key={video.id}>
+                  <tr className={isEditing ? '' : 'border-b border-zinc-900 last:border-0'}>
                     {isEditing ? (
                       <>
                         <td className="px-4 py-2.5 align-top">
@@ -351,6 +369,11 @@ export default function AdminExerciseVideosList({
                       <>
                         <td className="px-4 py-3 text-white font-medium align-top">
                           {video.exercise_name}
+                          {video.coach_notes && (
+                            <p className="text-zinc-500 text-xs font-normal mt-0.5 line-clamp-2 max-w-[200px]">
+                              {video.coach_notes}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3 align-top max-w-[220px]">
                           <a
@@ -386,6 +409,22 @@ export default function AdminExerciseVideosList({
                       </>
                     )}
                   </tr>
+                  {isEditing && (
+                    <tr className="border-b border-zinc-900 last:border-0">
+                      <td colSpan={5} className="px-4 pb-3 pt-0">
+                        <label className="text-xs text-zinc-500 mb-1 block">
+                          Coach notes <span className="text-zinc-600">(optional)</span>
+                        </label>
+                        <textarea
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          rows={4}
+                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 )
               })}
             </tbody>

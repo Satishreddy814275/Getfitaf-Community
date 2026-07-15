@@ -267,6 +267,9 @@ export default function WorkoutDayPicker({
   // it's shown once as a sticky bar rather than duplicated per card.
   const [restPickerFor, setRestPickerFor] = useState<string | null>(null)
   const [restTimer, setRestTimer] = useState<{ remaining: number; total: number } | null>(null)
+  // Which exercise's coach-notes section is expanded - collapsed by
+  // default per card, same per-card-toggle pattern as restPickerFor.
+  const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
   // days (see hasGuidedFlow below) - single-exercise days ignore all of this.
@@ -753,6 +756,22 @@ export default function WorkoutDayPicker({
             </div>
           </div>
 
+          {video?.coachNotes && (
+            <div className="mb-2">
+              <button
+                onClick={() => setNotesOpenFor(notesOpenFor === ex.originalName ? null : ex.originalName)}
+                className="text-xs font-medium text-zinc-400 hover:text-white transition"
+              >
+                {notesOpenFor === ex.originalName ? '▾' : '▸'} Coach notes
+              </button>
+              {notesOpenFor === ex.originalName && (
+                <p className="mt-1.5 text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900/60 rounded-lg p-2.5">
+                  {video.coachNotes}
+                </p>
+              )}
+            </div>
+          )}
+
           {restPickerOpen && (
             <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
               {REST_PRESETS_SECONDS.map((sec) => (
@@ -972,6 +991,22 @@ export default function WorkoutDayPicker({
               )}
             </div>
           </div>
+
+          {video?.coachNotes && (
+            <div className="mb-2">
+              <button
+                onClick={() => setNotesOpenFor(notesOpenFor === rep.originalName ? null : rep.originalName)}
+                className="text-xs font-medium text-zinc-400 hover:text-white transition"
+              >
+                {notesOpenFor === rep.originalName ? '▾' : '▸'} Coach notes
+              </button>
+              {notesOpenFor === rep.originalName && (
+                <p className="mt-1.5 text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900/60 rounded-lg p-2.5">
+                  {video.coachNotes}
+                </p>
+              )}
+            </div>
+          )}
 
           {restPickerOpen && (
             <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
