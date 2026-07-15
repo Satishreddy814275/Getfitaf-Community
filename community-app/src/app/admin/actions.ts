@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { revalidatePath } from 'next/cache'
-import type { WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
+import type { WorkoutExercise, WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
 import {
   collapseExercisesToBlocks,
   expandBlocksToExercises,
@@ -573,6 +573,184 @@ export async function deleteProgramDay(
   revalidatePath('/admin/programs')
   revalidatePath('/workouts')
   return { ok: true }
+}
+
+// --- Workout Templates - a reusable library of standalone days ---
+// separate from any program (see migration-workout-templates.sql).
+// Built with the same EditableBlock editor as a program day; content
+// only ever moves between here and a program as a one-time copy in
+// either direction, never a live link.
+
+export async function createWorkoutTemplate(
+  name: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const trimmed = name.trim()
+  if (!trimmed) return { ok: false, error: 'Enter a name for this template.' }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { data, error } = await supabase
+    .from('workout_templates')
+    .insert({ name: trimmed, exercises: [], created_by: user?.id ?? null })
+    .select('id')
+    .single()
+
+  if (error || !data) return { ok: false, error: 'Could not create the template - try again.' }
+
+  revalidatePath('/admin/templates')
+  return { ok: true, id: data.id }
+}
+
+// "Tier 2" editor for a template's content - same EditableBlock[] ->
+// expandBlocksToExercises path DayEditor uses to save a program day,
+// just writing to workout_templates.exercises instead of a specific
+// (week, day) slot inside a program's structured_plan. name is edited
+// alongside content here rather than as a separate rename action,
+// since the template list's edit view always shows both together.
+export async function updateWorkoutTemplate(
+  templateId: string,
+  name: string,
+  blocks: EditableBlock[],
+  notes: string | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const trimmedName = name.trim()
+  if (!trimmedName) return { ok: false, error: 'Enter a name for this template.' }
+
+  const exercises = expandBlocksToExercises(blocks)
+
+  const { error } = await supabase
+    .from('workout_templates')
+    .update({ name: trimmedName, exercises, notes, updated_at: new Date().toISOString() })
+    .eq('id', templateId)
+
+  if (error) return { ok: false, error: 'Could not save the template - try again.' }
+
+  revalidatePath('/admin/templates')
+  revalidatePath('/admin/programs')
+  return { ok: true }
+}
+
+export async function deleteWorkoutTemplate(
+  templateId: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const { error } = await supabase.from('workout_templates').delete().eq('id', templateId)
+  if (error) return { ok: false, error: 'Could not delete the template - try again.' }
+
+  revalidatePath('/admin/templates')
+  return { ok: true }
+}
+
+// The "From template..." half of Add Day - creates a new program day
+// at (week, day) seeded with a copy of a template's current content.
+// A one-time copy, same collision-safety as the plain addProgramDay:
+// refuses to clobber a (week, day) that already has content. label is
+// caller-supplied (pre-filled with the template's name client-side,
+// but editable) rather than always reusing the template's name as-is,
+// since a program's own day labels drive the same-label propagation
+// system and the admin may want this occurrence called something else.
+export async function addProgramDayFromTemplate(
+  programId: string,
+  week: number,
+  day: number,
+  templateId: string,
+  label: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const trimmedLabel = label.trim()
+  if (!trimmedLabel) return { ok: false, error: 'Enter a label for this day.' }
+  if (week < 1 || day < 1) return { ok: false, error: 'Week and day must be 1 or higher.' }
+
+  const [{ data: templateData, error: templateError }, { data: planData, error: planError }] = await Promise.all([
+    supabase.from('workout_templates').select('exercises, notes').eq('id', templateId).single(),
+    supabase.from('program_templates').select('structured_plan').eq('id', programId).single(),
+  ])
+  if (templateError || !templateData) return { ok: false, error: 'Could not find that template - try again.' }
+  if (planError || !planData?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
+
+  const plan = planData.structured_plan as { days: WorkoutPlanDay[] }
+  if (plan.days.some((d) => d.week === week && d.day === day)) {
+    return { ok: false, error: `Week ${week}, Day ${day} already has content - pick a different week/day, or edit that existing day instead.` }
+  }
+
+  plan.days = [
+    ...plan.days,
+    {
+      week,
+      day,
+      label: trimmedLabel,
+      notes: templateData.notes ?? undefined,
+      exercises: (templateData.exercises as WorkoutExercise[]).map((e) => ({ ...e })),
+    },
+  ]
+
+  await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
+
+  revalidatePath('/admin/programs')
+  revalidatePath('/workouts')
+  return { ok: true }
+}
+
+// The other direction - promotes one program day's current content
+// into a brand-new template, so a workout that's already been built
+// out at the program level doesn't have to be retyped from scratch in
+// the library. Always creates a new template row (never overwrites an
+// existing one), same one-time-copy philosophy as
+// addProgramDayFromTemplate.
+export async function saveProgramDayAsTemplate(
+  programId: string,
+  week: number,
+  day: number,
+  templateName: string
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return { ok: false, error: 'Not authorized.' }
+
+  const trimmedName = templateName.trim()
+  if (!trimmedName) return { ok: false, error: 'Enter a name for this template.' }
+
+  const { data, error } = await supabase
+    .from('program_templates')
+    .select('structured_plan')
+    .eq('id', programId)
+    .single()
+  if (error || !data?.structured_plan) return { ok: false, error: 'Could not load this program - try again.' }
+
+  const plan = data.structured_plan as { days: WorkoutPlanDay[] }
+  const source = plan.days.find((d) => d.week === week && d.day === day)
+  if (!source) return { ok: false, error: 'Could not find that day - try again.' }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('workout_templates')
+    .insert({
+      name: trimmedName,
+      notes: source.notes ?? null,
+      exercises: source.exercises.map((e) => ({ ...e })),
+      created_by: user?.id ?? null,
+    })
+    .select('id')
+    .single()
+
+  if (insertError || !inserted) return { ok: false, error: 'Could not save the template - try again.' }
+
+  revalidatePath('/admin/templates')
+  return { ok: true, id: inserted.id }
 }
 
 // Full workout history for one member, fetched on-demand (only when

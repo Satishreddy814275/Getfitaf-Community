@@ -146,6 +146,21 @@ export interface WorkoutPlanDay {
   exercises: WorkoutExercise[]
 }
 
+// A standalone, reusable day - "Upper Body 1," "Lower Body 1" - saved
+// independently of any program, so it can be copied into any program's
+// day slot instead of rebuilt from scratch each time. Same exercises
+// shape as WorkoutPlanDay, just without a week/day/program attached.
+// See admin/actions.ts (addProgramDayFromTemplate/
+// saveProgramDayAsTemplate) for how content moves between this and a
+// real program day - always a one-time copy, never a live link.
+export interface WorkoutTemplate {
+  id: string
+  name: string
+  notes?: string | null
+  exercises: WorkoutExercise[]
+  createdAt: string
+}
+
 // What a member most recently logged for a given exercise, used to
 // show "last time" reference numbers while logging a new session.
 export interface LastLoggedSet {
