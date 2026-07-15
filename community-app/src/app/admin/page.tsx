@@ -86,6 +86,12 @@ export default async function AdminPage() {
           >
             Programs →
           </Link>
+          <Link
+            href="/admin/templates"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Workout Library →
+          </Link>
         </div>
       </div>
 

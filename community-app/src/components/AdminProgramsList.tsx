@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation'
 import {
   addExerciseVideo,
   addProgramDay,
+  addProgramDayFromTemplate,
   copyProgramDay,
   createProgram,
   deleteProgramDay,
   duplicateProgramWeek,
   propagateDayStructuralChanges,
+  saveProgramDayAsTemplate,
   toggleProgramPublished,
   updateExerciseVideo,
   updateProgramDay,
@@ -21,7 +23,7 @@ import { diffBlockStructure } from '@/lib/dayGroups'
 import type { ExercisePoolEntry } from '@/lib/exercisePool'
 import { renderRichText } from '@/lib/richText'
 import { DayGroupSection } from './DayGroupEditor'
-import type { WorkoutPlanDay } from '@/types'
+import type { WorkoutPlanDay, WorkoutTemplate } from '@/types'
 
 interface ProgramRow {
   id: string
@@ -53,7 +55,7 @@ interface ProgramRow {
 // previous flat list showed "Squats (1)", "Squats (2)", "Squats
 // (Round 1)"... as separate lines, which is what made it hard to scan
 // and didn't actually communicate the day's structure at a glance).
-function DayReadOnlyView({ exercises }: { exercises: WorkoutPlanDay['exercises'] }) {
+export function DayReadOnlyView({ exercises }: { exercises: WorkoutPlanDay['exercises'] }) {
   const blocks = collapseExercisesToBlocks(exercises)
 
   return (
@@ -809,6 +811,13 @@ function DayEditor({
   async function handleSave() {
     setIsSaving(true)
 
+    // Captured before the save below - exercises still reflects how
+    // this day looked when the editor opened (the prop never changes
+    // during this session), so this is true only the moment a day goes
+    // from nothing to something, never on a routine edit to a day that
+    // already had content.
+    const justBuiltFromScratch = exercises.length === 0 && blocks.length > 0
+
     // Structural-only diff (identity/grouping/phase - never sets/reps/
     // rest/timer) against how this day looked when the editor opened.
     // Per Satish, the same day label should always mean the same
@@ -828,6 +837,21 @@ function DayEditor({
 
     if (changes.length > 0 && siblings.length > 0) {
       await propagateDayStructuralChanges(programId, label, week, day, changes)
+    }
+
+    // Offered once, right when a day goes from blank to actually built
+    // out - per Satish, most program-level workouts are template-worthy
+    // to begin with, so this is a lower-friction path than requiring a
+    // trip to the Workout Library to rebuild the same thing from
+    // scratch. Never re-asked on later edits to this same day (that's
+    // what the manual "Save to library" button on the collapsed day is
+    // for), so tweaking sets/reps for progression next week never
+    // triggers this.
+    if (justBuiltFromScratch && confirm(`Save "${label}" as a new template in your Workout Library too?`)) {
+      const name = window.prompt('Template name:', label)
+      if (name && name.trim()) {
+        await saveProgramDayAsTemplate(programId, week, day, name.trim())
+      }
     }
 
     setIsSaving(false)
@@ -1218,6 +1242,41 @@ function DeleteDayButton({ programId, day }: { programId: string; day: WorkoutPl
   )
 }
 
+// Manual promotion of an already-built day into the Workout Library -
+// the same underlying action (saveProgramDayAsTemplate) DayEditor's
+// first-save prompt uses, exposed here for anytime after that (an
+// older day that predates this feature, or one that's evolved enough
+// since to be worth saving as a fresh template). Always creates a new
+// template row; doesn't touch the day itself or any existing template.
+function SaveToLibraryControl({ programId, day }: { programId: string; day: WorkoutPlanDay }) {
+  const router = useRouter()
+  const [isSaving, setIsSaving] = useState(false)
+
+  async function handleSave() {
+    const name = window.prompt('Save as a new template named:', day.label)
+    if (!name || !name.trim()) return
+    setIsSaving(true)
+    const result = await saveProgramDayAsTemplate(programId, day.week, day.day, name.trim())
+    setIsSaving(false)
+    if (!result.ok) {
+      alert(result.error)
+      return
+    }
+    router.refresh()
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleSave}
+      disabled={isSaving}
+      className="text-[11px] font-medium text-zinc-400 hover:text-white disabled:opacity-50 transition"
+    >
+      {isSaving ? 'Saving...' : 'Save to library'}
+    </button>
+  )
+}
+
 function DayPreview({
   programId,
   day,
@@ -1286,6 +1345,7 @@ function DayPreview({
                   <>
                     <RepeatWeeklyControl programId={programId} day={day} />
                     <CopyToControl programId={programId} day={day} />
+                    <SaveToLibraryControl programId={programId} day={day} />
                   </>
                 )}
                 <DeleteDayButton programId={programId} day={day} />
@@ -1448,12 +1508,24 @@ function nextOpenSlot(days: WorkoutPlanDay[]): { week: number; day: number } {
   return { week: maxWeek, day: maxDayInThatWeek + 1 }
 }
 
-function AddDayControl({ programId, days }: { programId: string; days: WorkoutPlanDay[] }) {
+function AddDayControl({
+  programId,
+  days,
+  templates,
+}: {
+  programId: string
+  days: WorkoutPlanDay[]
+  templates: WorkoutTemplate[]
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [week, setWeek] = useState('1')
   const [day, setDay] = useState('1')
   const [label, setLabel] = useState('')
+  // '' means "Blank day" - anything else is a workout_templates id to
+  // seed the new day's content from (a one-time copy, see
+  // addProgramDayFromTemplate).
+  const [templateId, setTemplateId] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -1461,8 +1533,19 @@ function AddDayControl({ programId, days }: { programId: string; days: WorkoutPl
     const slot = nextOpenSlot(days)
     setWeek(String(slot.week))
     setDay(String(slot.day))
+    setTemplateId('')
     setError(null)
     setOpen(true)
+  }
+
+  function handleTemplateChange(id: string) {
+    setTemplateId(id)
+    setError(null)
+    // Pre-fills the label with the template's name (still editable) -
+    // switching back to "Blank day" clears it again rather than
+    // leaving a stale template name behind.
+    const t = templates.find((tpl) => tpl.id === id)
+    setLabel(t ? t.name : '')
   }
 
   async function handleAdd() {
@@ -1471,7 +1554,9 @@ function AddDayControl({ programId, days }: { programId: string; days: WorkoutPl
     if (!w || !d || !label.trim()) return
     setIsSaving(true)
     setError(null)
-    const result = await addProgramDay(programId, w, d, label.trim())
+    const result = templateId
+      ? await addProgramDayFromTemplate(programId, w, d, templateId, label.trim())
+      : await addProgramDay(programId, w, d, label.trim())
     setIsSaving(false)
     if (!result.ok) {
       // Stay open, keep whatever was typed - the trainer needs to see
@@ -1481,6 +1566,7 @@ function AddDayControl({ programId, days }: { programId: string; days: WorkoutPl
       return
     }
     setLabel('')
+    setTemplateId('')
     setOpen(false)
     router.refresh()
   }
@@ -1526,6 +1612,21 @@ function AddDayControl({ programId, days }: { programId: string; days: WorkoutPl
             className="w-14 bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
           />
         </label>
+        <label className="flex flex-col text-[11px] text-zinc-500 min-w-[150px]">
+          Start from
+          <select
+            value={templateId}
+            onChange={(e) => handleTemplateChange(e.target.value)}
+            className="bg-zinc-900 border border-zinc-800 rounded px-1.5 py-1 text-xs text-white"
+          >
+            <option value="">Blank day</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex flex-col text-[11px] text-zinc-500 flex-1 min-w-[140px]">
           Label
           <input
@@ -1561,10 +1662,12 @@ function WorkoutPreview({
   programId,
   days,
   exercisePool,
+  templates,
 }: {
   programId: string
   days: WorkoutPlanDay[]
   exercisePool: ExercisePoolEntry[]
+  templates: WorkoutTemplate[]
 }) {
   const weeks = Array.from(new Set(days.map((d) => d.week))).sort((a, b) => a - b)
 
@@ -1581,7 +1684,7 @@ function WorkoutPreview({
           allDays={days}
         />
       ))}
-      <AddDayControl programId={programId} days={days} />
+      <AddDayControl programId={programId} days={days} templates={templates} />
     </div>
   )
 }
@@ -1673,7 +1776,15 @@ function PublishToggle({
   )
 }
 
-function ProgramCard({ program, exercisePool }: { program: ProgramRow; exercisePool: ExercisePoolEntry[] }) {
+function ProgramCard({
+  program,
+  exercisePool,
+  templates,
+}: {
+  program: ProgramRow
+  exercisePool: ExercisePoolEntry[]
+  templates: WorkoutTemplate[]
+}) {
   const [isEditing, setIsEditing] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isPublished, setIsPublished] = useState(program.is_published)
@@ -1761,6 +1872,7 @@ function ProgramCard({ program, exercisePool }: { program: ProgramRow; exerciseP
             programId={program.id}
             days={program.structured_plan?.days ?? []}
             exercisePool={exercisePool}
+            templates={templates}
           />
         )}
         {showDayGroups && (
@@ -2023,9 +2135,11 @@ function NewProgramForm() {
 export default function AdminProgramsList({
   programs,
   exercisePool,
+  templates,
 }: {
   programs: ProgramRow[]
   exercisePool: ExercisePoolEntry[]
+  templates: WorkoutTemplate[]
 }) {
   return (
     <div className="space-y-4">
@@ -2034,7 +2148,7 @@ export default function AdminProgramsList({
         <p className="text-center text-sm text-zinc-500 py-12">No programs yet.</p>
       ) : (
         programs.map((program) => (
-          <ProgramCard key={program.id} program={program} exercisePool={exercisePool} />
+          <ProgramCard key={program.id} program={program} exercisePool={exercisePool} templates={templates} />
         ))
       )}
     </div>

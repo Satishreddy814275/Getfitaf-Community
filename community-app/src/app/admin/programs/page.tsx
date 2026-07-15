@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminProgramsList from '@/components/AdminProgramsList'
 import { buildExercisePool } from '@/lib/exercisePool'
+import type { WorkoutTemplate } from '@/types'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
@@ -46,6 +47,22 @@ export default async function AdminProgramsPage() {
     videosData || []
   )
 
+  // Backs the "+ Add day" -> "Start from" dropdown and the day-editor's
+  // first-save "Save to library" prompt (see AdminProgramsList.tsx) -
+  // every reusable standalone day, independent of any program.
+  const { data: workoutTemplatesData } = await supabase
+    .from('workout_templates')
+    .select('id, name, notes, exercises, created_at')
+    .order('name')
+
+  const templates: WorkoutTemplate[] = (workoutTemplatesData || []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    notes: t.notes,
+    exercises: t.exercises || [],
+    createdAt: t.created_at,
+  }))
+
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
@@ -65,7 +82,7 @@ export default async function AdminProgramsPage() {
         </p>
       </div>
 
-      <AdminProgramsList programs={programs} exercisePool={exercisePool} />
+      <AdminProgramsList programs={programs} exercisePool={exercisePool} templates={templates} />
     </div>
   )
 }
