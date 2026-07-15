@@ -35,7 +35,7 @@ export interface DayGroup {
 // needs a human to look, rather than silently forcing one week's shape
 // onto another.
 function structureKey(blocks: EditableBlock[]): string {
-  return blocks.map((b) => `${b.phase}|${b.groupId ? 'g' : 's'}|${b.name}`).join('||')
+  return blocks.map((b) => `${b.phase}|${b.groupId ? 'g' : 's'}|${b.name}|${b.perSide ? 'side' : ''}`).join('||')
 }
 
 export function buildDayGroups(days: WorkoutPlanDay[]): DayGroup[] {
@@ -180,6 +180,13 @@ export interface StructuralDiffEntry {
   // below. Undefined means "leave whatever phase it's already in" in a
   // sibling day.
   phase?: 'warmup' | 'main' | 'cooldown'
+  // Set only when this exercise's "each side" flag was actually
+  // toggled this session - same undefined-means-leave-it-alone
+  // convention as phase above. perSide is a structural property (like
+  // a rename), not a progression number, so per Satish's "same name =
+  // same everything except sets/reps/rest/timer" rule it propagates
+  // the same way a rename would.
+  perSide?: boolean
   // True when this exercise was deleted outright this session (not
   // moved to another phase - see the phase-move pairing below, which
   // takes priority). When set, originalName is the only field that
@@ -277,13 +284,15 @@ export function diffBlockStructure(
     const originalMateIds = mateIdsOf(original, ob)
     const currentMateIds = mateIdsOf(current, cb)
     const renamed = ob.name !== cb.name
+    const perSideChanged = !!ob.perSide !== !!cb.perSide
 
-    if (!renamed && sameMateSet(originalMateIds, currentMateIds)) continue
+    if (!renamed && !perSideChanged && sameMateSet(originalMateIds, currentMateIds)) continue
 
     entries.push({
       originalName: ob.name,
       newName: cb.name,
       groupMates: groupMatesFor(current, cb),
+      ...(perSideChanged ? { perSide: !!cb.perSide } : {}),
     })
   }
 
@@ -309,6 +318,7 @@ export function diffBlockStructure(
       newName: match.name,
       groupMates: groupMatesFor(current, match),
       phase: match.phase,
+      perSide: !!match.perSide,
     })
   }
 
@@ -334,6 +344,7 @@ export function diffBlockStructure(
       groupMates: groupMatesFor(current, cb),
       phase: cb.phase,
       added: true,
+      perSide: !!cb.perSide,
       initialCell: {
         setsCount: cb.setsCount,
         reps: cb.reps,
@@ -380,6 +391,7 @@ export function applyStructuralDiffToBlocks(
         restSeconds: seed?.restSeconds ?? null,
         timerSeconds: seed?.timerSeconds ?? null,
         trackWeight: seed?.trackWeight ?? true,
+        perSide: entry.perSide ?? false,
         phase: entry.phase ?? 'main',
         groupId: null,
       }
@@ -423,6 +435,11 @@ export function applyStructuralDiffToBlocks(
 
     if (entry.phase && target.phase !== entry.phase) {
       target.phase = entry.phase
+      changed = true
+    }
+
+    if (entry.perSide !== undefined && !!target.perSide !== entry.perSide) {
+      target.perSide = entry.perSide
       changed = true
     }
 

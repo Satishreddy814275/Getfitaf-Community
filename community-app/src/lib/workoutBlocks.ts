@@ -26,6 +26,9 @@ export interface EditableBlock {
   restSeconds: number | null
   timerSeconds: number | null
   trackWeight: boolean
+  // See WorkoutExercise.perSide in @/types - carried through unchanged
+  // by collapse/expand, same as trackWeight.
+  perSide: boolean
   phase: 'warmup' | 'main' | 'cooldown'
   groupId: string | null
 }
@@ -83,6 +86,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
       })
@@ -104,6 +108,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
       })
@@ -138,6 +143,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
       })
@@ -156,6 +162,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: source.restSeconds ?? null,
         timerSeconds: source.timerSeconds ?? null,
         trackWeight: source.trackWeight !== false,
+        perSide: !!source.perSide,
         phase: source.phase ?? 'main',
         groupId,
       })
@@ -224,6 +231,7 @@ function buildExercise(name: string, block: EditableBlock): WorkoutExercise {
   }
   if (block.restSeconds != null) e.restSeconds = block.restSeconds
   if (block.timerSeconds != null) e.timerSeconds = block.timerSeconds
+  if (block.perSide) e.perSide = true
   return e
 }
 

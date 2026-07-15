@@ -114,6 +114,11 @@ export interface WorkoutExercise {
   // sets are inside "main". Absent on older content, which just never
   // shows a phase screen (see isFirstOfPhase in WorkoutDayPicker).
   phase?: 'warmup' | 'main' | 'cooldown'
+  // True for unilateral moves that need to be done once per side (most
+  // stretches, single-arm/single-leg work) - see WorkoutDayPicker for
+  // how this changes the logging UI. Absent/false on everything else,
+  // which is the overwhelming majority of content.
+  perSide?: boolean
 }
 
 export interface WorkoutPlanDay {
