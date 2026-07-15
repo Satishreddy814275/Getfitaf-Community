@@ -95,11 +95,12 @@ export default async function WorkoutsPage() {
   // shape to change.
   const { data: videosData } = await supabase
     .from('exercise_videos')
-    .select('exercise_name, video_url')
+    .select('exercise_name, video_url, coach_notes')
 
   const videos: ExerciseVideo[] = (videosData || []).map((v) => ({
     exerciseName: v.exercise_name,
     videoUrl: v.video_url,
+    coachNotes: v.coach_notes || undefined,
   }))
 
   // Scoped to the current generation only, same as completedCells
