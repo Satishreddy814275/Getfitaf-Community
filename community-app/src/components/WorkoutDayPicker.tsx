@@ -26,6 +26,10 @@ interface CellExercise {
   timerSeconds?: number
   round?: number
   phase?: 'warmup' | 'main' | 'cooldown'
+  // True for unilateral moves done once per side - see the "Switch
+  // sides" prompt (timed exercises) and Left/Right row labels
+  // (rep-based exercises) further down.
+  perSide?: boolean
 }
 
 interface Cell {
@@ -54,12 +58,12 @@ function resolveExercises(
       swaps.find(
         (s) => s.dayNumber === day.day && s.weekNumber === 0 && s.originalExerciseName === ex.name
       )
-    // trackWeight/restSeconds/timerSeconds/round/phase aren't
+    // trackWeight/restSeconds/timerSeconds/round/phase/perSide aren't
     // swap-diffable fields (the swap row only stores name/sets/reps) -
     // a swapped-in exercise keeps the original slot's weight/rest/
-    // timer/round/phase treatment rather than defaulting back to
-    // "needs weight, no rest reference, no prescribed timer, not part
-    // of a round or phase".
+    // timer/round/phase/perSide treatment rather than defaulting back
+    // to "needs weight, no rest reference, no prescribed timer, not
+    // part of a round or phase, not per-side".
     return swap
       ? {
           originalName: ex.name,
@@ -71,6 +75,7 @@ function resolveExercises(
           timerSeconds: ex.timerSeconds,
           round: ex.round,
           phase: ex.phase,
+          perSide: ex.perSide,
         }
       : {
           originalName: ex.name,
@@ -82,6 +87,7 @@ function resolveExercises(
           timerSeconds: ex.timerSeconds,
           round: ex.round,
           phase: ex.phase,
+          perSide: ex.perSide,
         }
   })
 }
@@ -270,6 +276,24 @@ export default function WorkoutDayPicker({
   // Which exercise's coach-notes section is expanded - collapsed by
   // default per card, same per-card-toggle pattern as restPickerFor.
   const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
+  // Tracks whether the currently-running (or just-finished) shared
+  // restTimer belongs to a perSide exercise's own work timer, and
+  // which side it's timing - null whenever restTimer is being used for
+  // something else (a plain custom timer, the between-exercise rest in
+  // guided mode). Keyed by originalName like the other per-card state
+  // above.
+  const [sideTimerActive, setSideTimerActive] = useState<{
+    originalName: string
+    timerSeconds: number
+    isSecondSide: boolean
+  } | null>(null)
+  // Set the moment a perSide exercise's first-side timer finishes on
+  // its own - shows the "Switch sides" prompt on that exercise's card
+  // until they tap through to the second side. Cleared (without ever
+  // being set) if the timer is dismissed early instead of let to run
+  // out, so backing out of a timer never nags for a second side that
+  // was never really started.
+  const [awaitingOtherSideFor, setAwaitingOtherSideFor] = useState<string | null>(null)
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
   // days (see hasGuidedFlow below) - single-exercise days ignore all of this.
@@ -311,7 +335,26 @@ export default function WorkoutDayPicker({
   }, [restTimer === null])
 
   function startRestTimer(seconds: number) {
+    // Any plain/rest timer start means whatever perSide timer might
+    // have been running is no longer what's running - clearing this
+    // here (rather than only in the dedicated dismiss button) covers
+    // every other way a new timer can start over an old one: a custom
+    // preset, a between-round rest, the guided player's post-exercise
+    // rest.
+    setSideTimerActive(null)
     setRestTimer({ remaining: seconds, total: seconds })
+    setRestPickerFor(null)
+  }
+
+  // Starts (or restarts) the work timer for one side of a perSide
+  // exercise. Deliberately doesn't call startRestTimer - that would
+  // immediately null out the sideTimerActive this function just set,
+  // since state updates from this render batch together and the last
+  // one wins.
+  function startSideTimer(ex: CellExercise, isSecondSide: boolean) {
+    setAwaitingOtherSideFor(null)
+    setSideTimerActive({ originalName: ex.originalName, timerSeconds: ex.timerSeconds!, isSecondSide })
+    setRestTimer({ remaining: ex.timerSeconds!, total: ex.timerSeconds! })
     setRestPickerFor(null)
   }
 
@@ -376,6 +419,25 @@ export default function WorkoutDayPicker({
     prevRestTimerRef.current = restTimer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restTimer, guidedPhase])
+
+  // Own ref, separate from prevRestTimerRef above - deliberately not
+  // sharing one, since both effects run on every restTimer change and
+  // each needs to see the *pre-this-render* value independently rather
+  // than racing over which one updates the shared ref first.
+  const prevRestTimerForSideRef = useRef<{ remaining: number; total: number } | null>(null)
+
+  // Detects a perSide work timer running out on its own (as opposed to
+  // being dismissed early - the dismiss button clears sideTimerActive
+  // itself, so by the time this runs there's nothing left to react to)
+  // and either prompts for the other side or, if this was already the
+  // second side, wraps the exercise up.
+  useEffect(() => {
+    if (sideTimerActive && prevRestTimerForSideRef.current && !restTimer) {
+      setAwaitingOtherSideFor(sideTimerActive.isSecondSide ? null : sideTimerActive.originalName)
+      setSideTimerActive(null)
+    }
+    prevRestTimerForSideRef.current = restTimer
+  }, [restTimer, sideTimerActive])
 
   const completedSet = new Set(completedCells)
 
@@ -694,7 +756,9 @@ export default function WorkoutDayPicker({
               {ex.timerSeconds ? (
                 <>
                   <button
-                    onClick={() => startRestTimer(ex.timerSeconds!)}
+                    onClick={() =>
+                      ex.perSide ? startSideTimer(ex, false) : startRestTimer(ex.timerSeconds!)
+                    }
                     className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                   >
                     ▶ {formatDurationLabel(ex.timerSeconds)} timer
@@ -755,6 +819,18 @@ export default function WorkoutDayPicker({
               )}
             </div>
           </div>
+
+          {ex.perSide && ex.timerSeconds != null && awaitingOtherSideFor === ex.originalName && (
+            <div className="mb-2 flex items-center justify-between gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2">
+              <span className="text-orange-400 text-xs font-medium">First side done - now the other side</span>
+              <button
+                onClick={() => startSideTimer(ex, true)}
+                className="shrink-0 text-xs font-semibold text-black bg-orange-500 hover:bg-orange-400 rounded-lg px-3 py-1.5 transition"
+              >
+                ▶ Other side
+              </button>
+            </div>
+          )}
 
           {video?.coachNotes && (
             <div className="mb-2">
@@ -930,7 +1006,9 @@ export default function WorkoutDayPicker({
               {rep.timerSeconds ? (
                 <>
                   <button
-                    onClick={() => startRestTimer(rep.timerSeconds!)}
+                    onClick={() =>
+                      rep.perSide ? startSideTimer(rep, false) : startRestTimer(rep.timerSeconds!)
+                    }
                     className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                   >
                     ▶ {formatDurationLabel(rep.timerSeconds)} timer
@@ -991,6 +1069,18 @@ export default function WorkoutDayPicker({
               )}
             </div>
           </div>
+
+          {rep.perSide && rep.timerSeconds != null && awaitingOtherSideFor === rep.originalName && (
+            <div className="mb-2 flex items-center justify-between gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2">
+              <span className="text-orange-400 text-xs font-medium">First side done - now the other side</span>
+              <button
+                onClick={() => startSideTimer(rep, true)}
+                className="shrink-0 text-xs font-semibold text-black bg-orange-500 hover:bg-orange-400 rounded-lg px-3 py-1.5 transition"
+              >
+                ▶ Other side
+              </button>
+            </div>
+          )}
 
           {video?.coachNotes && (
             <div className="mb-2">
@@ -1071,7 +1161,16 @@ export default function WorkoutDayPicker({
               return (
                 <Fragment key={ex.originalName}>
                   <div className={`flex items-center gap-2 ${i === 0 ? '' : 'pt-2 border-t border-zinc-800/60'}`}>
-                    <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
+                    {/* Rep-based (no timer) perSide exercises label their
+                        two occurrences Left/Right instead of Set 1/Set 2 -
+                        i here indexes across the group's actual instances,
+                        so this correctly reads as "this row is one side."
+                        Timed perSide exercises use the Switch Sides prompt
+                        above instead, so keep the plain Set N label here
+                        even if someone's also logging extra rows on one. */}
+                    <span className="text-zinc-500 text-xs w-11 shrink-0">
+                      {ex.perSide && !ex.timerSeconds && i < 2 ? (i === 0 ? 'Left' : 'Right') : `Set ${i + 1}`}
+                    </span>
                     {ex.trackWeight !== false && (
                       <input
                         type="number"
@@ -1146,7 +1245,15 @@ export default function WorkoutDayPicker({
             </button>
             <span className="w-px h-4 bg-zinc-700" />
             <button
-              onClick={() => setRestTimer(null)}
+              onClick={() => {
+                // Cleared here (not just left to the natural-completion
+                // effect) so dismissing a perSide timer early is
+                // treated as "gave up," not "finished" - no
+                // switch-sides prompt for a side that wasn't actually
+                // done.
+                setSideTimerActive(null)
+                setRestTimer(null)
+              }}
               aria-label="Dismiss timer"
               className="text-zinc-500 hover:text-red-400 transition px-0.5"
             >
