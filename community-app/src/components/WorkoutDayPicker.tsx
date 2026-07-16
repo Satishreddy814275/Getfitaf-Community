@@ -1312,7 +1312,7 @@ export default function WorkoutDayPicker({
                         onClick={() => startRestTimer(ex.restSeconds!)}
                         className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
                       >
-                        ▶ {formatDurationLabel(ex.restSeconds)}
+                        ▶ Rest {formatDurationLabel(ex.restSeconds)}
                       </button>
                     </div>
                   )}
