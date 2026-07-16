@@ -1354,6 +1354,16 @@ export default function WorkoutDayPicker({
             sideTimerActive?.originalName === currentEx?.originalName
           ) && (
           <div className="fixed top-16 sm:top-20 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
+            {/* sideTimerActive is only ever set by startSideTimer (an
+                exercise's own work timer, e.g. a 30s plank) - every other
+                way this pill's countdown gets started goes through
+                startRestTimer directly, which always nulls it out first.
+                So this one check reliably tells rest apart from a work
+                timer without needing a separate "what kind of timer is
+                this" field. */}
+            <span className="text-zinc-500 text-[10px] font-semibold uppercase tracking-wide">
+              {sideTimerActive ? 'Timer' : 'Rest'}
+            </span>
             <button
               onClick={() => adjustRestTimer(-15)}
               className="text-zinc-400 hover:text-white text-[11px] font-medium"
