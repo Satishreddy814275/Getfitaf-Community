@@ -1082,8 +1082,17 @@ export default function WorkoutDayPicker({
       const overflowOpen = overflowOpenFor === rep.originalName
       const restPickerOpen = restPickerFor === rep.originalName
       const label = baseName(rep.name)
+      // When the last set's rest button is the final thing in the card,
+      // the card's normal p-3.5 bottom padding (matched to its top/side
+      // padding) reads as noticeably more open than the ~4px gap above
+      // that same button - a short text link doesn't fill the same
+      // visual weight a full input row does, so the standard padding
+      // looks uneven trailing it specifically. Tightening just the
+      // bottom edge in that one case keeps every other card (ending in
+      // a normal set row) at the standard padding.
+      const lastEntryHasRest = group[group.length - 1].restSeconds != null
       return (
-        <div className="glass rounded-2xl p-3.5">
+        <div className={lastEntryHasRest ? 'glass rounded-2xl pt-3.5 px-3.5 pb-2' : 'glass rounded-2xl p-3.5'}>
           <div className="flex items-baseline justify-between mb-0.5 gap-2">
             <p className="text-white font-semibold">{label}</p>
             <p className="text-zinc-500 text-xs whitespace-nowrap">
