@@ -166,6 +166,15 @@ function phaseIntroText(phase: 'warmup' | 'main' | 'cooldown'): string {
   return "Nice work, let's cool down."
 }
 
+// Short label for the list view's collapsible phase section headers -
+// same three phases as phaseIntroText above, just a header word instead
+// of a full sentence.
+function phaseSectionLabel(phase: 'warmup' | 'main' | 'cooldown'): string {
+  if (phase === 'warmup') return 'Warm-up'
+  if (phase === 'cooldown') return 'Cool-down'
+  return 'Main workout'
+}
+
 // Strips a trailing "(N)" set-number suffix - "Squats (2)" -> "Squats".
 // Deliberately only matches a bare number in parens, not "(Round 2)"
 // or "(Warm-Up)" etc., so round-tagged and one-off exercises are
@@ -294,6 +303,26 @@ export default function WorkoutDayPicker({
   // out, so backing out of a timer never nags for a second side that
   // was never really started.
   const [awaitingOtherSideFor, setAwaitingOtherSideFor] = useState<string | null>(null)
+  // Which phase sections (warmup/main/cooldown) are collapsed in list
+  // view - defaults to warmup and cooldown collapsed, main expanded, so
+  // the first screen of a day leads with a short "N exercises" summary
+  // of warm-up instead of every warm-up move rendered full-size before
+  // the actual workout even comes into view. Reset in startCell/the
+  // draft-restore effect below, same as the other per-card UI state,
+  // so re-opening a day (or a different one) always starts from this
+  // same default rather than remembering whatever was left expanded
+  // from a previous session.
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<'warmup' | 'main' | 'cooldown'>>(
+    new Set(['warmup', 'cooldown'])
+  )
+  function togglePhaseCollapsed(phase: 'warmup' | 'main' | 'cooldown') {
+    setCollapsedPhases((prev) => {
+      const next = new Set(prev)
+      if (next.has(phase)) next.delete(phase)
+      else next.add(phase)
+      return next
+    })
+  }
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
   // days (see hasGuidedFlow below) - single-exercise days ignore all of this.
@@ -472,6 +501,7 @@ export default function WorkoutDayPicker({
     if (allCells.some((c) => c.key === draft.cell.key)) {
       setActiveCell(draft.cell)
       setSetsByExercise(draft.sets)
+      setCollapsedPhases(new Set(['warmup', 'cooldown']))
       const index = draft.guidedIndex ?? 0
       setGuidedIndex(index)
       setGuidedPhase(
@@ -511,6 +541,7 @@ export default function WorkoutDayPicker({
     setOverflowOpenFor(null)
     setRestPickerFor(null)
     setRestTimer(null)
+    setCollapsedPhases(new Set(['warmup', 'cooldown']))
     setGuidedIndex(0)
     setGuidedPhase(
       isFirstOfRound(cell.exercises, 0) || isFirstOfPhase(cell.exercises, 0) ? 'roundIntro' : 'exercise'
@@ -683,6 +714,25 @@ export default function WorkoutDayPicker({
         listGroups.push([ex])
       }
     }
+    // List-view-only phase sectioning, one level up from listGroups
+    // above - consecutive groups sharing a phase become one collapsible
+    // "Warm-up"/"Main workout"/"Cool-down" section (see collapsedPhases
+    // state) instead of every exercise flowing together with no signal
+    // of which part of the day you're looking at. Content that never
+    // sets phase (phase undefined on every exercise) collapses to a
+    // single null-phase section with no header/toggle at all, so older
+    // programs that don't use warmup/main/cooldown render exactly as
+    // they did before this existed.
+    const phaseSections: { phase: 'warmup' | 'main' | 'cooldown' | null; groups: CellExercise[][] }[] = []
+    for (const group of listGroups) {
+      const phase = group[0].phase ?? null
+      const prevSection = phaseSections[phaseSections.length - 1]
+      if (prevSection && prevSection.phase === phase) {
+        prevSection.groups.push(group)
+      } else {
+        phaseSections.push({ phase, groups: [group] })
+      }
+    }
     // Only rendered while the roundIntro screen is showing - whether
     // *this* transition is a phase change (warmup->main->cooldown) as
     // opposed to just a same-phase round bump (round 2, 3... within
@@ -709,12 +759,12 @@ export default function WorkoutDayPicker({
       const overflowOpen = overflowOpenFor === ex.originalName
       const restPickerOpen = restPickerFor === ex.originalName
       return (
-        <div className={large ? 'glass rounded-2xl p-6 text-center' : 'glass rounded-2xl p-4'}>
+        <div className={large ? 'glass rounded-2xl p-6 text-center' : 'glass rounded-2xl p-3.5'}>
           <div
             className={
               large
                 ? 'mb-3'
-                : 'flex items-baseline justify-between mb-1 gap-2'
+                : 'flex items-baseline justify-between mb-0.5 gap-2'
             }
           >
             <p className={large ? 'text-white text-2xl font-bold mb-1' : 'text-white font-semibold'}>
@@ -728,11 +778,11 @@ export default function WorkoutDayPicker({
             <p className="text-zinc-600 text-[11px] mb-1">Swapped from {ex.originalName}</p>
           )}
           {last && (
-            <p className="text-zinc-500 text-xs mb-2">
+            <p className="text-zinc-500 text-xs mb-1.5">
               Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
             </p>
           )}
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5'}>
             <div className="flex items-center gap-3">
               {video ? (
                 <a
@@ -911,7 +961,13 @@ export default function WorkoutDayPicker({
             </div>
           )}
 
-          <div className="space-y-2 mt-3 pt-3 border-t border-zinc-800">
+          <div
+            className={
+              large
+                ? 'space-y-2 mt-3 pt-3 border-t border-zinc-800'
+                : 'space-y-1.5 mt-2.5 pt-2.5 border-t border-zinc-800'
+            }
+          >
             {(setsByExercise[ex.name] || []).map((row, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
@@ -1027,8 +1083,8 @@ export default function WorkoutDayPicker({
       const restPickerOpen = restPickerFor === rep.originalName
       const label = baseName(rep.name)
       return (
-        <div className="glass rounded-2xl p-4">
-          <div className="flex items-baseline justify-between mb-1 gap-2">
+        <div className="glass rounded-2xl p-3.5">
+          <div className="flex items-baseline justify-between mb-0.5 gap-2">
             <p className="text-white font-semibold">{label}</p>
             <p className="text-zinc-500 text-xs whitespace-nowrap">
               Target: {group.length} x {rep.reps}
@@ -1038,11 +1094,11 @@ export default function WorkoutDayPicker({
             <p className="text-zinc-600 text-[11px] mb-1">Swapped from {baseName(rep.originalName)}</p>
           )}
           {last && (
-            <p className="text-zinc-500 text-xs mb-2">
+            <p className="text-zinc-500 text-xs mb-1.5">
               Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
             </p>
           )}
-          <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
             <div className="flex items-center gap-3">
               {video ? (
                 <a
@@ -1214,7 +1270,7 @@ export default function WorkoutDayPicker({
             </div>
           )}
 
-          <div className="mt-3 pt-3 border-t border-zinc-800 space-y-1">
+          <div className="mt-2.5 pt-2.5 border-t border-zinc-800 space-y-1">
             {group.map((ex, i) => {
               const rows = setsByExercise[ex.name] || []
               const row = rows[0]
@@ -1374,36 +1430,72 @@ export default function WorkoutDayPicker({
                 ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue' : 'Start Now'}
               </button>
             )}
-            <div className="space-y-4">
-              {listGroups.map((group) => {
-                const first = group[0]
-                const i = exercises.indexOf(first)
-                const isRoundCard = first.round != null
-                return (
-                <Fragment key={first.originalName}>
-                  {isRoundCard && isFirstOfRound(exercises, i) && (
-                    <p
-                      className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${
-                        i === 0 ? '' : 'pt-3 border-t border-zinc-800'
-                      }`}
-                    >
-                      Round {first.round}
-                    </p>
-                  )}
-                  {isRoundCard ? renderExerciseCard(first) : renderGroupedCard(group)}
-                  {isRoundCard && first.restSeconds != null && i < exercises.length - 1 && (
-                    <div className="flex items-center gap-2 -mt-2">
-                      <div className="flex-1 h-px bg-zinc-800" />
-                      <button
-                        onClick={() => startRestTimer(first.restSeconds!)}
-                        className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
-                      >
-                        ▶ Rest {formatDurationLabel(first.restSeconds)}
-                      </button>
-                      <div className="flex-1 h-px bg-zinc-800" />
+            <div className="space-y-3">
+              {phaseSections.map((section, sectionIndex) => {
+                const groupsJsx = section.groups.map((group) => {
+                  const first = group[0]
+                  const i = exercises.indexOf(first)
+                  const isRoundCard = first.round != null
+                  return (
+                    <Fragment key={first.originalName}>
+                      {isRoundCard && isFirstOfRound(exercises, i) && (
+                        <p
+                          className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${
+                            i === 0 ? '' : 'pt-3 border-t border-zinc-800'
+                          }`}
+                        >
+                          Round {first.round}
+                        </p>
+                      )}
+                      {isRoundCard ? renderExerciseCard(first) : renderGroupedCard(group)}
+                      {isRoundCard && first.restSeconds != null && i < exercises.length - 1 && (
+                        <div className="flex items-center gap-2 -mt-2">
+                          <div className="flex-1 h-px bg-zinc-800" />
+                          <button
+                            onClick={() => startRestTimer(first.restSeconds!)}
+                            className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
+                          >
+                            ▶ Rest {formatDurationLabel(first.restSeconds)}
+                          </button>
+                          <div className="flex-1 h-px bg-zinc-800" />
+                        </div>
+                      )}
+                    </Fragment>
+                  )
+                })
+
+                // Content that never sets phase (phase === null) has no
+                // header/toggle at all - renders exactly as every other
+                // group always has.
+                if (section.phase == null) {
+                  return (
+                    <div key={`section-${sectionIndex}`} className="space-y-3">
+                      {groupsJsx}
                     </div>
-                  )}
-                </Fragment>
+                  )
+                }
+
+                const phase = section.phase
+                const collapsed = collapsedPhases.has(phase)
+                return (
+                  <div
+                    key={phase}
+                    className={sectionIndex === 0 ? '' : 'pt-3 border-t border-zinc-800'}
+                  >
+                    <button
+                      onClick={() => togglePhaseCollapsed(phase)}
+                      className="w-full flex items-center justify-between gap-2 mb-3"
+                    >
+                      <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
+                        {phaseSectionLabel(phase)} · {section.groups.length} exercise
+                        {section.groups.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
+                        {collapsed ? 'Show ▾' : 'Hide ▴'}
+                      </span>
+                    </button>
+                    {!collapsed && <div className="space-y-3">{groupsJsx}</div>}
+                  </div>
                 )
               })}
             </div>
