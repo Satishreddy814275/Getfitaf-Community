@@ -755,14 +755,19 @@ export default function WorkoutDayPicker({
               )}
               {ex.timerSeconds ? (
                 <>
-                  <button
-                    onClick={() =>
-                      ex.perSide ? startSideTimer(ex, false) : startRestTimer(ex.timerSeconds!)
-                    }
-                    className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-                  >
-                    ▶ {formatDurationLabel(ex.timerSeconds)} timer
-                  </button>
+                  {/* In guided/large mode this quick-start is replaced by
+                      the bigger, more prominent timer panel at the bottom
+                      of the card (see below) - showing both would be
+                      redundant and split attention between two "start
+                      timer" controls on the same card. */}
+                  {!large && (
+                    <button
+                      onClick={() => startSideTimer(ex, false)}
+                      className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                    >
+                      ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                    </button>
+                  )}
                   <button
                     onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
                     className="text-xs font-medium text-zinc-400 hover:text-white transition"
@@ -820,7 +825,9 @@ export default function WorkoutDayPicker({
             </div>
           </div>
 
-          {ex.perSide && ex.timerSeconds != null && awaitingOtherSideFor === ex.originalName && (
+          {/* Large/guided mode shows this same prompt inside the big
+              timer panel at the bottom of the card instead - see below. */}
+          {!large && ex.perSide && ex.timerSeconds != null && awaitingOtherSideFor === ex.originalName && (
             <div className="mb-2 flex items-center justify-between gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2">
               <span className="text-orange-400 text-xs font-medium">First side done - now the other side</span>
               <button
@@ -942,6 +949,59 @@ export default function WorkoutDayPicker({
               + Add set
             </button>
           </div>
+
+          {/* Big, centered timer panel - guided/large mode only. This
+              exercise's own work timer (start button, running countdown,
+              switch-sides prompt) used to live as a small top-row text
+              link plus a small pill in the corner of the screen; both are
+              hidden in large mode (see above and the floating pill's
+              condition) in favor of this single, much more visible
+              control sitting right above the "Done" button below, since
+              that's the thing someone's actually looking for mid-set. */}
+          {large && ex.timerSeconds != null && (
+            <div className="mt-4 pt-4 border-t border-zinc-800">
+              {sideTimerActive?.originalName === ex.originalName && restTimer ? (
+                <>
+                  <p className="text-white text-5xl font-bold tabular-nums mb-3">
+                    {formatRestTime(restTimer.remaining)}
+                  </p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => adjustRestTimer(-15)}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition"
+                    >
+                      −15s
+                    </button>
+                    <button
+                      onClick={() => adjustRestTimer(15)}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition"
+                    >
+                      +15s
+                    </button>
+                  </div>
+                </>
+              ) : ex.perSide && awaitingOtherSideFor === ex.originalName ? (
+                <>
+                  <p className="text-orange-400 text-sm font-medium mb-3">
+                    First side done - now the other side
+                  </p>
+                  <button
+                    onClick={() => startSideTimer(ex, true)}
+                    className="w-full bg-orange-500 hover:bg-orange-400 text-black text-base font-semibold py-3.5 rounded-xl transition"
+                  >
+                    ▶ Start other side
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => startSideTimer(ex, false)}
+                  className="w-full bg-orange-500 hover:bg-orange-400 text-black text-base font-semibold py-3.5 rounded-xl transition"
+                >
+                  ▶ Start {formatDurationLabel(ex.timerSeconds)} timer
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )
     }
@@ -1223,10 +1283,20 @@ export default function WorkoutDayPicker({
             scrolled all the way back down. Offset below both header
             heights (top-16/top-20) so it doesn't sit under the logo
             and notification bell at the very top of the page.
-            Suppressed during the guided player's own rest screen,
-            which already shows this same countdown as its main
-            content - no need for both at once. */}
-        {restTimer && !(effectiveMode === 'guided' && guidedPhase === 'rest') && (
+            Suppressed during the guided player's own rest screen (shows
+            this same countdown as its main content) and while the
+            guided player's big in-card timer panel is showing this
+            exact exercise's own running timer (renderExerciseCard,
+            large mode) - both would otherwise duplicate this same
+            countdown on screen at once. Still shown for every other
+            case: list view, a custom preset timer, etc. */}
+        {restTimer &&
+          !(effectiveMode === 'guided' && guidedPhase === 'rest') &&
+          !(
+            effectiveMode === 'guided' &&
+            guidedPhase === 'exercise' &&
+            sideTimerActive?.originalName === currentEx?.originalName
+          ) && (
           <div className="fixed top-16 sm:top-20 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
             <button
               onClick={() => adjustRestTimer(-15)}

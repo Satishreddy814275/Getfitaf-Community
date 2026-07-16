@@ -1,3 +1,5 @@
+import Image from 'next/image'
+
 // Shared avatar rendering — shows the real uploaded photo when one
 // exists, falling back to the existing orange-initial circle otherwise.
 // Used anywhere a member's avatar appears (post author, comments, admin
@@ -15,12 +17,16 @@ export default function Avatar({
 
   if (avatarUrl) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
+      // Always a fixed, known square size at every call site (see
+      // callers), so next/image's required width/height fit naturally
+      // here - unlike the variable-aspect post media images, which
+      // don't have a safe fixed size to give it.
+      <Image
         src={avatarUrl}
         alt=""
+        width={size}
+        height={size}
         className="rounded-full object-cover shrink-0"
-        style={{ width: size, height: size }}
       />
     )
   }

@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
 import type { Post, LeaderboardRow } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
+type SpaceFilter = 'all' | 'premium' | 'low_ticket'
 
 export default function FeedTabs({
   posts,
@@ -38,6 +40,10 @@ export default function FeedTabs({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
   const [postNotFound, setPostNotFound] = useState(false)
   const [search, setSearch] = useState('')
+  // Admin-only - regular members' feed is already scoped to a single
+  // space by RLS, so this control would have nothing to actually
+  // filter for them.
+  const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>('all')
 
   // Drives the overlay's fade/scale transition. Kept separate from
   // selectedPost itself: opening needs a render with the "hidden"
@@ -90,16 +96,32 @@ export default function FeedTabs({
   // post text, so one box covers "find a member" and "find a keyword"
   // without a second input crowding the tab row.
   const query = search.trim().toLowerCase()
-  const filteredPosts = query
-    ? posts.filter(
-        (p) =>
-          p.content?.toLowerCase().includes(query) ||
-          p.profiles?.full_name?.toLowerCase().includes(query)
-      )
-    : posts
 
-  const announcements = filteredPosts.filter((p) => p.is_announcement)
-  const mediaPosts = filteredPosts.filter((p) => p.media_url)
+  // Memoized so typing in an unrelated input, or any other re-render
+  // that doesn't actually change posts/spaceFilter/query, doesn't
+  // re-run four filter passes over the whole post list on every
+  // render - each stage only recomputes when its own actual inputs
+  // change.
+  const spaceScopedPosts = useMemo(
+    () => (spaceFilter === 'all' ? posts : posts.filter((p) => p.space === spaceFilter)),
+    [posts, spaceFilter]
+  )
+  const filteredPosts = useMemo(
+    () =>
+      query
+        ? spaceScopedPosts.filter(
+            (p) =>
+              p.content?.toLowerCase().includes(query) ||
+              p.profiles?.full_name?.toLowerCase().includes(query)
+          )
+        : spaceScopedPosts,
+    [spaceScopedPosts, query]
+  )
+  const announcements = useMemo(
+    () => filteredPosts.filter((p) => p.is_announcement),
+    [filteredPosts]
+  )
+  const mediaPosts = useMemo(() => filteredPosts.filter((p) => p.media_url), [filteredPosts])
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'posts', label: 'Posts', count: filteredPosts.length },
@@ -147,7 +169,7 @@ export default function FeedTabs({
           ))}
         </div>
 
-        <div className="mt-2 lg:mt-0">
+        <div className="mt-2 lg:mt-0 space-y-2">
           <input
             type="text"
             value={search}
@@ -155,6 +177,29 @@ export default function FeedTabs({
             placeholder="Search members or posts..."
             className="w-full glass rounded-full px-4 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 transition"
           />
+          {isAdmin && (
+            <div className="flex items-center gap-1.5">
+              {(
+                [
+                  { key: 'all', label: 'All spaces' },
+                  { key: 'premium', label: 'Premium' },
+                  { key: 'low_ticket', label: 'Low-ticket' },
+                ] as { key: SpaceFilter; label: string }[]
+              ).map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => setSpaceFilter(opt.key)}
+                  className={
+                    spaceFilter === opt.key
+                      ? 'px-3 py-1 rounded-full text-xs font-semibold bg-orange-500 text-white transition'
+                      : 'px-3 py-1 rounded-full text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
+                  }
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -177,7 +222,7 @@ export default function FeedTabs({
         {tab === 'posts' && (
         <div className="space-y-6">
           {filteredPosts.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} />
           ))}
           {filteredPosts.length === 0 && (
             <p className="text-center text-sm text-zinc-500 py-12">
@@ -192,7 +237,7 @@ export default function FeedTabs({
       {tab === 'announcements' && (
         <div className="space-y-6">
           {announcements.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} />
+            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} />
           ))}
           {announcements.length === 0 && (
             <p className="text-center text-sm text-zinc-500 py-12">
@@ -224,8 +269,18 @@ export default function FeedTabs({
                       preload="metadata"
                     />
                   ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={post.media_url!} alt="" className="w-full h-full object-contain" />
+                    // This grid cell is a fixed aspect-square box (see the
+                    // button's className above), so fill has a real size to
+                    // fill against - unlike PostCard/AdminFeedList's full
+                    // post images, which render at their natural aspect
+                    // ratio and don't have a safe fixed box to give this.
+                    <Image
+                      src={post.media_url!}
+                      alt=""
+                      fill
+                      sizes="(max-width: 640px) 33vw, 200px"
+                      className="object-contain"
+                    />
                   )}
                   {post.media_type === 'video' && (
                     <span className="absolute inset-0 flex items-center justify-center text-white text-2xl bg-black/20 group-hover:bg-black/30 transition">
@@ -279,6 +334,7 @@ export default function FeedTabs({
               post={selectedPost}
               currentUserId={currentUserId}
               initialCommentId={activeCommentId}
+              isAdmin={isAdmin}
             />
           </div>
         </div>

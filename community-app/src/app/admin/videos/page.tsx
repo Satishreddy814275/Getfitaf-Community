@@ -25,10 +25,20 @@ export default async function AdminVideosPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  const { data: videosData } = await supabase
-    .from('exercise_videos')
-    .select('id, exercise_name, video_url, coach_notes, created_at, added_by, profiles ( full_name )')
-    .order('exercise_name')
+  // videosData is independent of generationsData/templatesData below,
+  // so all three are fetched together in one Promise.all rather than
+  // this one running as its own separate round-trip first.
+  const [{ data: videosData }, { data: generationsData }, { data: templatesData }] = await Promise.all([
+    supabase
+      .from('exercise_videos')
+      .select('id, exercise_name, video_url, coach_notes, created_at, added_by, profiles ( full_name )')
+      .order('exercise_name'),
+    createAdminClient()
+      .from('workout_generations')
+      .select('structured_plan')
+      .not('structured_plan', 'is', null),
+    supabase.from('program_templates').select('structured_plan'),
+  ])
 
   const videos = (videosData || []).map((v) => ({
     id: v.id,
@@ -64,13 +74,6 @@ export default async function AdminVideosPage() {
   // login of its own, see project memory), so the regular authenticated
   // client silently gets zero rows back instead of an error. program_templates
   // has real RLS letting admins read it directly, same as /admin/programs.
-  const [{ data: generationsData }, { data: templatesData }] = await Promise.all([
-    createAdminClient()
-      .from('workout_generations')
-      .select('structured_plan')
-      .not('structured_plan', 'is', null),
-    supabase.from('program_templates').select('structured_plan'),
-  ])
 
   // Keyed by base exercise name (round/set suffix stripped), not the
   // raw stored name - structured_plan unrolls a 3-round circuit into

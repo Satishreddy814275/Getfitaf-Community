@@ -23,10 +23,18 @@ export default async function AdminTemplatesPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  const { data: templatesData } = await supabase
-    .from('workout_templates')
-    .select('id, name, notes, exercises, created_at')
-    .order('name')
+  // templatesData is independent of programsData/videosData below, so
+  // all three are batched into one Promise.all rather than
+  // templatesData running as its own separate round-trip first.
+  const [{ data: templatesData }, { data: programsData }, { data: videosData }] = await Promise.all([
+    supabase.from('workout_templates').select('id, name, notes, exercises, created_at').order('name'),
+    // Same pool-building inputs as /admin/programs, so the "Add exercise"
+    // picker inside a template offers the exact same canonical list -
+    // every exercise already used anywhere, not a second, narrower list
+    // scoped to just templates.
+    supabase.from('program_templates').select('structured_plan'),
+    supabase.from('exercise_videos').select('id, exercise_name, video_url'),
+  ])
 
   const templates: WorkoutTemplate[] = (templatesData || []).map((t) => ({
     id: t.id,
@@ -35,15 +43,6 @@ export default async function AdminTemplatesPage() {
     exercises: t.exercises || [],
     createdAt: t.created_at,
   }))
-
-  // Same pool-building inputs as /admin/programs, so the "Add exercise"
-  // picker inside a template offers the exact same canonical list -
-  // every exercise already used anywhere, not a second, narrower list
-  // scoped to just templates.
-  const [{ data: programsData }, { data: videosData }] = await Promise.all([
-    supabase.from('program_templates').select('structured_plan'),
-    supabase.from('exercise_videos').select('id, exercise_name, video_url'),
-  ])
 
   const exercisePool = buildExercisePool(
     (programsData || []).map((p) => p.structured_plan?.days ?? []),

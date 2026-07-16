@@ -23,37 +23,40 @@ export default async function AdminProgramsPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  // Every program regardless of published state - admins see drafts
-  // too (see program_templates_select policy), same as the member
-  // picker only ever seeing is_published = true rows.
-  const { data: templatesData } = await supabase
-    .from('program_templates')
-    .select('id, name, level, equipment_tier, duration_weeks, description, is_published, structured_plan')
-    .order('created_at')
+  // These three queries are all independent of each other, so they're
+  // batched into one Promise.all rather than three sequential
+  // round-trips.
+  const [{ data: templatesData }, { data: videosData }, { data: workoutTemplatesData }] =
+    await Promise.all([
+      // Every program regardless of published state - admins see drafts
+      // too (see program_templates_select policy), same as the member
+      // picker only ever seeing is_published = true rows.
+      supabase
+        .from('program_templates')
+        .select(
+          'id, name, level, equipment_tier, duration_weeks, description, is_published, structured_plan'
+        )
+        .order('created_at'),
+
+      // Backs the day editor's "Add exercise" / swap-exercise picker -
+      // every distinct exercise name already used across ANY program (not
+      // just the one being edited) plus the video library, so admins pick
+      // from what already exists instead of retyping a name that's one
+      // typo away from silently becoming a duplicate. See exercisePool.ts.
+      supabase.from('exercise_videos').select('id, exercise_name, video_url'),
+
+      // Backs the "+ Add day" -> "Start from" dropdown and the day-editor's
+      // first-save "Save to library" prompt (see AdminProgramsList.tsx) -
+      // every reusable standalone day, independent of any program.
+      supabase.from('workout_templates').select('id, name, notes, exercises, created_at').order('name'),
+    ])
 
   const programs = templatesData || []
-
-  // Backs the day editor's "Add exercise" / swap-exercise picker -
-  // every distinct exercise name already used across ANY program (not
-  // just the one being edited) plus the video library, so admins pick
-  // from what already exists instead of retyping a name that's one
-  // typo away from silently becoming a duplicate. See exercisePool.ts.
-  const { data: videosData } = await supabase
-    .from('exercise_videos')
-    .select('id, exercise_name, video_url')
 
   const exercisePool = buildExercisePool(
     programs.map((p) => p.structured_plan?.days ?? []),
     videosData || []
   )
-
-  // Backs the "+ Add day" -> "Start from" dropdown and the day-editor's
-  // first-save "Save to library" prompt (see AdminProgramsList.tsx) -
-  // every reusable standalone day, independent of any program.
-  const { data: workoutTemplatesData } = await supabase
-    .from('workout_templates')
-    .select('id, name, notes, exercises, created_at')
-    .order('name')
 
   const templates: WorkoutTemplate[] = (workoutTemplatesData || []).map((t) => ({
     id: t.id,
