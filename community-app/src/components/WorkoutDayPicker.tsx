@@ -1274,9 +1274,24 @@ export default function WorkoutDayPicker({
             {group.map((ex, i) => {
               const rows = setsByExercise[ex.name] || []
               const row = rows[0]
+              // Suppresses the divider/top-padding below when the
+              // previous row already ended in a rest button - that
+              // button already signals "new set starts here," so a
+              // border line right underneath it was redundant, and its
+              // pt-2 was what made the gap below the rest button nearly
+              // 3x the gap above it (space-y-1's 4px on top, versus the
+              // rest button's own pb-1 *plus* this pt-2 stacking below).
+              // Removing both and leaning on space-y-1 alone keeps the
+              // rest button evenly spaced between the two sets it sits
+              // between.
+              const prevHadRest = i > 0 && group[i - 1].restSeconds != null
               return (
                 <Fragment key={ex.originalName}>
-                  <div className={`flex items-center gap-2 ${i === 0 ? '' : 'pt-2 border-t border-zinc-800/60'}`}>
+                  <div
+                    className={`flex items-center gap-2 ${
+                      i === 0 || prevHadRest ? '' : 'pt-2 border-t border-zinc-800/60'
+                    }`}
+                  >
                     {/* Rep-based (no timer) perSide exercises label their
                         two occurrences Left/Right instead of Set 1/Set 2 -
                         i here indexes across the group's actual instances,
@@ -1307,7 +1322,7 @@ export default function WorkoutDayPicker({
                     />
                   </div>
                   {ex.restSeconds != null && (
-                    <div className="flex justify-end pb-1">
+                    <div className="flex justify-end">
                       <button
                         onClick={() => startRestTimer(ex.restSeconds!)}
                         className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
