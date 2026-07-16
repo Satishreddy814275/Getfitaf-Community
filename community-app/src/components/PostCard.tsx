@@ -13,10 +13,17 @@ export default function PostCard({
   post,
   currentUserId,
   initialCommentId,
+  isAdmin,
 }: {
   post: Post
   currentUserId: string
   initialCommentId?: string | null
+  // Only admins see posts from both spaces merged into one feed
+  // (regular members' own feed is already scoped to a single space by
+  // RLS, so the label would be redundant noise for them) - this badge
+  // is what makes that merged view legible instead of "one bracket"
+  // with no way to tell which space a post actually belongs to.
+  isAdmin?: boolean
 }) {
   const [commentText, setCommentText] = useState('')
   // Opened via a notification pointing at a specific comment/reply —
@@ -65,8 +72,19 @@ export default function PostCard({
             <p className="text-[15px] font-semibold text-white">
               {post.profiles?.full_name || 'Member'}
             </p>
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-zinc-500 flex items-center gap-1.5">
               {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+              {isAdmin && (
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${
+                    post.space === 'premium'
+                      ? 'bg-zinc-800 text-zinc-400'
+                      : 'bg-orange-500/10 text-orange-400'
+                  }`}
+                >
+                  {post.space === 'premium' ? 'Premium' : 'Low-ticket'}
+                </span>
+              )}
             </p>
           </div>
         </div>

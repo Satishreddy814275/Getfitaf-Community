@@ -210,7 +210,7 @@ export default function AppNav({
       {/* Mobile bottom tab bar. Feed and Leaderboard always shown;
           Workouts/Lessons only when that member actually has access,
           so the bar never shows a tab that leads to a locked page.
-          Everything else (Edit Profile, Admin, Build My Workout, Sign
+          Everything else (Edit Profile, Admin, Choose Your Program, Sign
           out) lives behind "More" rather than crowding the bar. */}
       <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
         <BottomTab href="/feed" label="Feed" icon="home" />
