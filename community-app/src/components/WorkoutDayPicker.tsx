@@ -1518,22 +1518,22 @@ export default function WorkoutDayPicker({
             )}
 
             {guidedPhase === 'roundIntro' && (currentRound != null || introPhase != null) && (
-              <div className="glass rounded-2xl p-8 text-center">
+              <div className="glass rounded-2xl p-6 text-center">
                 <p className="text-white text-xl font-bold mb-2">
                   {introPhase ? phaseIntroText(introPhase) : `Round ${currentRound} starts`}
                 </p>
                 {introPhase && currentRound != null && (
-                  <p className="text-zinc-400 text-sm mb-6">
+                  <p className="text-zinc-400 text-sm mb-5">
                     Round {currentRound} of {totalRounds}
                   </p>
                 )}
                 {!introPhase && currentRound != null && (
-                  <p className="text-zinc-400 text-sm mb-6">
+                  <p className="text-zinc-400 text-sm mb-5">
                     {roundExercises.length} exercise{roundExercises.length === 1 ? '' : 's'} this round
                   </p>
                 )}
                 {introPhase === 'cooldown' && (
-                  <p className="text-zinc-500 text-xs mb-6">Don&apos;t ignore this.</p>
+                  <p className="text-zinc-500 text-xs mb-5">Don&apos;t ignore this.</p>
                 )}
                 <button
                   onClick={() => setGuidedPhase('exercise')}
@@ -1545,14 +1545,14 @@ export default function WorkoutDayPicker({
             )}
 
             {guidedPhase === 'rest' && restTimer && currentEx && (
-              <div className="glass rounded-2xl p-8 text-center">
+              <div className="glass rounded-2xl p-6 text-center">
                 {/* guidedIndex still points at the just-finished
                     exercise here - advanceGuided() only moves it once
                     this rest ends - so both names are available
                     exactly when someone would want to see them: right
                     as they start resting, before the next card
                     replaces this screen. */}
-                <div className="flex items-center justify-between gap-2 mb-3 text-left">
+                <div className="flex items-center justify-between gap-2 mb-2.5 text-left">
                   <span className="text-zinc-500 text-xs">Finished {currentEx.name}</span>
                   {exercises[guidedIndex + 1] && (
                     <span className="text-zinc-500 text-xs text-right">
@@ -1561,10 +1561,10 @@ export default function WorkoutDayPicker({
                   )}
                 </div>
                 <p className="text-zinc-400 text-sm mb-2">Rest</p>
-                <p className="text-white text-5xl font-bold tabular-nums mb-4">
+                <p className="text-white text-5xl font-bold tabular-nums mb-3.5">
                   {formatRestTime(restTimer.remaining)}
                 </p>
-                <div className="flex items-center justify-center gap-3 mb-4">
+                <div className="flex items-center justify-center gap-3 mb-3.5">
                   <button
                     onClick={() => adjustRestTimer(-15)}
                     className="text-xs font-medium px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-300 hover:text-white transition"
@@ -1649,7 +1649,7 @@ export default function WorkoutDayPicker({
   const doneCells = completedSet.size
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {justFinished && (
         <p className="text-sm text-orange-400">Nice work - that session&apos;s logged.</p>
       )}
@@ -1681,13 +1681,13 @@ export default function WorkoutDayPicker({
         return (
           <div
             key={week}
-            className={`rounded-2xl p-4 transition ${
+            className={`rounded-2xl p-3.5 transition ${
               isCurrentWeek
                 ? 'bg-orange-500/[0.06] border border-orange-500/30'
                 : 'bg-zinc-950/60 border border-zinc-700/60'
             }`}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-2.5">
               <span className="text-white text-sm font-medium">Week {week}</span>
               <span
                 className={`text-xs whitespace-nowrap ${
@@ -1697,7 +1697,7 @@ export default function WorkoutDayPicker({
                 {weekDone} / {weekCells.length}
               </span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {weekCells.map((cell) => {
                 const isDone = completedSet.has(cell.key)
                 const isNextDue = cell.key === nextDueKey

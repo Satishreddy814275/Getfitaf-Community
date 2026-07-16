@@ -11,13 +11,13 @@ export default function WorkoutHistoryList({ groups }: { groups: WorkoutHistoryG
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {groups.map((group) => (
         <div key={group.generationId}>
           <h3 className="text-white text-sm font-bold mb-2">
             {group.isCurrent ? 'Current Program' : 'Previous Program'}
           </h3>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {group.sessions.map((session) => {
               const isExpanded = expandedSessionId === session.id
               const byExercise = new Map<string, WorkoutHistorySet[]>()
