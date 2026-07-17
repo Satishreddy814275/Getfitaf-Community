@@ -279,6 +279,17 @@ function baseName(name: string): string {
   return name.replace(/\s\(\d+\)$/, '')
 }
 
+// Strips a trailing "(Round N)" suffix - "Push-Ups (Round 1)" ->
+// "Push-Ups". Round-tagged exercise names carry this literally in the
+// data (see workoutBlocks.ts's own ROUND_SUFFIX) so each name is
+// unique across the round pattern - useful for that, but redundant
+// clutter once an exercise is already sitting inside a box labeled
+// "Round 1" (see the round-box grouping in the day view below), so
+// display-only spots inside that box strip it back off.
+function stripRoundSuffixDisplay(name: string): string {
+  return name.replace(/\s*\(Round \d+\)$/, '')
+}
+
 function formatRestTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
@@ -1178,6 +1189,15 @@ export default function WorkoutDayPicker({
       const setRows = setsByExercise[ex.name] || []
       const checkedRows = checkedByExercise[ex.name] || []
       const allChecked = setRows.length > 0 && checkedRows.length === setRows.length && checkedRows.every(Boolean)
+      // Compact mode (boxed=false, i.e. an internal row inside a round
+      // box) strips the "(Round N)" suffix from the displayed name -
+      // the box itself already carries a "Round N" heading, so
+      // repeating it on every exercise inside was redundant clutter.
+      // Doesn't touch ex.name/ex.originalName themselves (still used
+      // for keys, swap targeting, setsByExercise lookups, etc.), only
+      // what's actually printed on screen.
+      const displayName = boxed ? ex.name : stripRoundSuffixDisplay(ex.name)
+      const displayOriginalName = boxed ? ex.originalName : stripRoundSuffixDisplay(ex.originalName)
       return (
         <div
           className={
@@ -1185,7 +1205,7 @@ export default function WorkoutDayPicker({
               ? 'glass rounded-2xl p-6 text-center'
               : boxed
                 ? 'glass rounded-2xl p-3.5'
-                : 'pt-2.5'
+                : ''
           }
         >
           <div
@@ -1195,15 +1215,19 @@ export default function WorkoutDayPicker({
                 : 'flex items-baseline justify-between mb-0.5 gap-2'
             }
           >
-            <p className={large ? 'text-white text-2xl font-bold mb-1' : 'text-white font-semibold'}>
-              {ex.name}
+            <p
+              className={
+                large ? 'text-white text-2xl font-bold mb-1' : boxed ? 'text-white font-semibold' : 'text-white text-sm font-semibold'
+              }
+            >
+              {displayName}
             </p>
             <p className={large ? 'text-zinc-400 text-sm' : 'text-zinc-500 text-xs whitespace-nowrap'}>
               Target: {ex.sets} x {ex.reps}
             </p>
           </div>
           {ex.name !== ex.originalName && (
-            <p className="text-zinc-600 text-[11px] mb-1">Swapped from {ex.originalName}</p>
+            <p className="text-zinc-600 text-[11px] mb-1">Swapped from {displayOriginalName}</p>
           )}
           {last && (
             <p className="text-zinc-500 text-xs mb-1.5">
@@ -1211,60 +1235,69 @@ export default function WorkoutDayPicker({
             </p>
           )}
           <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5'}>
-            <div className="flex items-center gap-3">
-              {video ? (
-                <a
-                  href={video.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
-                >
-                  ▶ Watch video
-                </a>
-              ) : (
-                <a
-                  href={youtubeSearchUrl(ex.name)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                >
-                  Search on YouTube ↗
-                </a>
-              )}
-              {ex.timerSeconds ? (
-                <>
-                  {/* In guided/large mode this quick-start is replaced by
-                      the bigger, more prominent timer panel at the bottom
-                      of the card (see below) - showing both would be
-                      redundant and split attention between two "start
-                      timer" controls on the same card. */}
-                  {!large && (
+            {/* Compact rows (boxed=false, inside a round box) fold every
+                secondary action - video, timer, custom timer, check all -
+                behind the single "..." menu instead of laying them all
+                out inline, so a round box reads as a tight list of
+                exercises rather than several mini cards stacked up. Every
+                action is still one tap away, just tucked out of the way
+                until asked for. */}
+            {boxed && (
+              <div className="flex items-center gap-3">
+                {video ? (
+                  <a
+                    href={video.videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                  >
+                    ▶ Watch video
+                  </a>
+                ) : (
+                  <a
+                    href={youtubeSearchUrl(ex.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                  >
+                    Search on YouTube ↗
+                  </a>
+                )}
+                {ex.timerSeconds ? (
+                  <>
+                    {/* In guided/large mode this quick-start is replaced by
+                        the bigger, more prominent timer panel at the bottom
+                        of the card (see below) - showing both would be
+                        redundant and split attention between two "start
+                        timer" controls on the same card. */}
+                    {!large && (
+                      <button
+                        onClick={() => startSideTimer(ex, false)}
+                        className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                      >
+                        ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                      </button>
+                    )}
                     <button
-                      onClick={() => startSideTimer(ex, false)}
-                      className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
+                      onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
+                      className="text-xs font-medium text-zinc-400 hover:text-white transition"
                     >
-                      ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                      ⏱ custom
                     </button>
-                  )}
+                  </>
+                ) : (
                   <button
                     onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
                     className="text-xs font-medium text-zinc-400 hover:text-white transition"
                   >
-                    ⏱ custom
+                    ⏱ Timer
                   </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
-                >
-                  ⏱ Timer
-                </button>
-              )}
-            </div>
+                )}
+              </div>
+            )}
 
-            <div className="flex items-center gap-2 shrink-0">
-              {setRows.length > 0 && (
+            <div className={`flex items-center gap-2 shrink-0 ${boxed ? '' : 'ml-auto'}`}>
+              {boxed && setRows.length > 0 && (
                 <button
                   onClick={() => toggleAllChecked(ex.name, setRows.length)}
                   className={`text-xs font-medium transition ${
@@ -1285,7 +1318,51 @@ export default function WorkoutDayPicker({
               {overflowOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
-                  <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                  <div className="absolute right-0 top-full mt-1 min-w-[180px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                    {!boxed && (
+                      <>
+                        <a
+                          href={video ? video.videoUrl : youtubeSearchUrl(ex.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setOverflowOpenFor(null)}
+                          className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                        >
+                          {video ? '▶ Watch video' : 'Search on YouTube ↗'}
+                        </a>
+                        {ex.timerSeconds != null && (
+                          <button
+                            onClick={() => {
+                              startSideTimer(ex, false)
+                              setOverflowOpenFor(null)
+                            }}
+                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                          >
+                            ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setRestPickerFor(restPickerOpen ? null : ex.originalName)
+                            setOverflowOpenFor(null)
+                          }}
+                          className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                        >
+                          ⏱ Custom timer
+                        </button>
+                        {setRows.length > 0 && (
+                          <button
+                            onClick={() => {
+                              toggleAllChecked(ex.name, setRows.length)
+                              setOverflowOpenFor(null)
+                            }}
+                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                          >
+                            {allChecked ? '✓ All checked' : 'Check all sets'}
+                          </button>
+                        )}
+                      </>
+                    )}
                     {!video && (
                       <button
                         onClick={() => {
@@ -2014,22 +2091,32 @@ export default function WorkoutDayPicker({
                         </p>
                       )}
                       {isRoundBox ? (
-                        <div className="glass rounded-2xl p-3.5 divide-y divide-zinc-800">
+                        <div className="glass rounded-2xl p-3.5 space-y-1.5">
                           {box.map((group, idx) => {
                             const ex = group[0]
+                            // Same divider-suppression idea as the
+                            // straight-set grouped card's prevHadRest
+                            // (see renderGroupedCard) - a rest button
+                            // right above already signals "next exercise
+                            // starts here," so stacking a border line
+                            // underneath it too was the redundant third
+                            // line Satish flagged. Only exercises that
+                            // *don't* follow a rest button get their own
+                            // top divider.
+                            const prevHadRest = idx > 0 && box[idx - 1][0].restSeconds != null
                             return (
                               <Fragment key={ex.originalName}>
-                                {renderExerciseCard(ex, { boxed: false })}
+                                <div className={idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60'}>
+                                  {renderExerciseCard(ex, { boxed: false })}
+                                </div>
                                 {ex.restSeconds != null && idx < box.length - 1 && (
-                                  <div className="flex items-center gap-2 py-2">
-                                    <div className="flex-1 h-px bg-zinc-800" />
+                                  <div className="flex justify-end">
                                     <button
                                       onClick={() => startRestTimer(ex.restSeconds!)}
-                                      className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
+                                      className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
                                     >
                                       ▶ Rest {formatDurationLabel(ex.restSeconds)}
                                     </button>
-                                    <div className="flex-1 h-px bg-zinc-800" />
                                   </div>
                                 )}
                               </Fragment>
