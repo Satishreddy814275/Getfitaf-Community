@@ -553,6 +553,22 @@ export default function WorkoutDayPicker({
   const [viewMode, setViewMode] = useState<'guided' | 'list'>('list')
   const [guidedIndex, setGuidedIndex] = useState(0)
   const [guidedPhase, setGuidedPhase] = useState<'roundIntro' | 'exercise' | 'rest' | 'done'>('exercise')
+  // True once Done has been tapped with nothing logged for the current
+  // guided step and the "No values logged" nudge is showing - a second
+  // tap on Done (now relabeled "Continue anyway") proceeds regardless.
+  // Reset below whenever guidedIndex changes, so it never carries over
+  // and silently pre-confirms the next exercise.
+  const [confirmEmptyDone, setConfirmEmptyDone] = useState(false)
+  useEffect(() => {
+    // Legitimate use of an effect here - this is syncing local UI state
+    // to an external-ish signal (which guided step we're on), not
+    // computable during render, and setting it to the same `false` it
+    // already was on every non-step-changing render is a harmless
+    // no-op bailout. Same category of exception as the file's other
+    // known set-state-in-effect baseline below.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setConfirmEmptyDone(false)
+  }, [guidedIndex])
   // Tracks the previous render's restTimer so the effect below can
   // tell "a running timer just reached zero on its own" apart from
   // "there was never a timer running" - only the former should
@@ -701,6 +717,7 @@ export default function WorkoutDayPicker({
   // never gates moving on. A single round exercise still starts its
   // configured rest and shows the rest screen, exactly as before.
   function handleGuidedDone(group: CellExercise[]) {
+    markGroupChecked(group)
     if (group.length > 1) {
       advanceGuided()
       return
@@ -1027,6 +1044,55 @@ export default function WorkoutDayPicker({
       const allChecked = rows.length === count && rows.every(Boolean)
       return { ...prev, [exerciseName]: Array.from({ length: count }, () => !allChecked) }
     })
+  }
+
+  // Unconditionally marks every set row of every exercise in a guided
+  // step as checked (not a toggle) - called whenever Done is tapped, so
+  // the top progress bar (driven entirely by checkedByExercise, see
+  // progressFraction above) always advances when you move past an
+  // exercise in guided mode, regardless of whether any checkmark was
+  // ever manually tapped. Needed because single-row guided screens (a
+  // round instance, or a straight-set exercise with just one set) no
+  // longer show a checkmark UI at all - Done is the only "I finished
+  // this" signal there is for those now, so it has to be the thing that
+  // sets this state, or progress silently never moves (the bug Satish
+  // flagged). Also quietly closes a latent gap on multi-row guided
+  // screens, where someone could fill in every set's numbers without
+  // ever tapping the individual checkmarks.
+  function markGroupChecked(group: CellExercise[]) {
+    setCheckedByExercise((prev) => {
+      const next = { ...prev }
+      for (const ex of group) {
+        const count = setsByExercise[ex.name]?.length ?? 1
+        next[ex.name] = Array.from({ length: count }, () => true)
+      }
+      return next
+    })
+  }
+
+  // True only when EVERY row of EVERY exercise in this guided step has
+  // neither a weight nor a reps value - a partial entry (e.g. reps
+  // filled in but weight left blank, common for bodyweight work) never
+  // triggers the nudge, only a genuinely untouched screen does.
+  function groupHasNoValues(group: CellExercise[]): boolean {
+    return group.every((ex) => {
+      const rows = setsByExercise[ex.name] || []
+      return rows.every((row) => !row.weight && !row.reps)
+    })
+  }
+
+  // Wraps handleGuidedDone with the "you haven't logged anything" soft
+  // nudge - Satish's ask: not a hard block, just a visible check so a
+  // genuinely empty tap isn't silent. First tap on an empty screen
+  // shows the inline banner and relabels Done to "Continue anyway"
+  // instead of advancing; the second tap (confirmEmptyDone already
+  // true) goes through exactly like a normal Done tap.
+  function handleDoneClick(group: CellExercise[]) {
+    if (!confirmEmptyDone && groupHasNoValues(group)) {
+      setConfirmEmptyDone(true)
+      return
+    }
+    handleGuidedDone(group)
   }
 
   // "Start Workout" inside an expanded day row opens the mode-choice
@@ -1640,7 +1706,26 @@ export default function WorkoutDayPicker({
           >
             {(setsByExercise[ex.name] || []).map((row, i) => (
               <div key={i} className="flex items-center gap-2">
+                {/* "Set N" is a plain label, not an input like Weight/
+                    Reps - it deliberately does NOT get a matching
+                    visible label above it (that would wrongly imply
+                    it's a third field you fill in, per Satish's
+                    correction). The invisible spacer line below reuses
+                    the exact same text-xs/mb-1 classes as the real
+                    Weight/Reps labels (just with `invisible`, which
+                    hides it visually but keeps its layout height) so
+                    it's guaranteed to occupy identical space rather
+                    than an eyeballed pixel value - "Set N" ends up
+                    lined up with the input boxes themselves instead of
+                    sitting centered against their taller (label +
+                    input) height. aria-hidden since it's purely a
+                    spacing trick, nothing to announce. */}
                 <span className={`text-zinc-500 shrink-0 ${large ? 'text-sm w-12' : 'text-xs w-11'}`}>
+                  {large && (
+                    <span className="block text-xs mb-1 invisible" aria-hidden="true">
+                      Set
+                    </span>
+                  )}
                   Set {i + 1}
                 </span>
                 {ex.trackWeight !== false && (
@@ -1763,20 +1848,34 @@ export default function WorkoutDayPicker({
                   <p className="text-orange-400 text-sm font-medium mb-3">
                     First side done - now the other side
                   </p>
-                  <button
-                    onClick={() => startSideTimer(ex, true)}
-                    className="w-full bg-orange-500 hover:bg-orange-400 text-black text-base font-semibold py-3.5 rounded-xl transition"
-                  >
-                    ▶ Start other side
-                  </button>
+                  {/* Bordered pill, not a solid fill - Satish flagged
+                      this button, Done, and Finish Workout all being
+                      identical solid-orange blocks as visually noisy,
+                      hard to tell apart. This is a helper action (starts
+                      this exercise's own optional work timer), not the
+                      thing that actually advances the guided player, so
+                      it gets the same "secondary action" bordered-pill
+                      treatment as the guided/list view toggle - orange
+                      border, no fill, auto-width instead of w-full so it
+                      doesn't compete in size with Done right below it. */}
+                  <div className="flex justify-center">
+                    <button
+                      onClick={() => startSideTimer(ex, true)}
+                      className="border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-sm font-semibold px-5 py-2 rounded-full transition"
+                    >
+                      ▶ Start other side
+                    </button>
+                  </div>
                 </>
               ) : (
-                <button
-                  onClick={() => startSideTimer(ex, false)}
-                  className="w-full bg-orange-500 hover:bg-orange-400 text-black text-base font-semibold py-3.5 rounded-xl transition"
-                >
-                  ▶ Start {formatDurationLabel(ex.timerSeconds)} timer
-                </button>
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => startSideTimer(ex, false)}
+                    className="border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-sm font-semibold px-5 py-2 rounded-full transition"
+                  >
+                    ▶ Start {formatDurationLabel(ex.timerSeconds)} timer
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -2527,8 +2626,18 @@ export default function WorkoutDayPicker({
                 {isGroupedGuidedStep
                   ? renderGroupedCard(currentGroup, { large: true })
                   : renderExerciseCard(currentEx, { large: true })}
+                {/* Soft nudge, not a hard block - Satish's ask. Shows
+                    once, the first time Done is tapped on a genuinely
+                    empty screen; a second tap always goes through. */}
+                {confirmEmptyDone && (
+                  <div className="mt-3 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2 text-center">
+                    <p className="text-orange-400 text-xs font-medium">
+                      No values logged for this exercise
+                    </p>
+                  </div>
+                )}
                 <button
-                  onClick={() => handleGuidedDone(currentGroup)}
+                  onClick={() => handleDoneClick(currentGroup)}
                   // Kept the same size/color as Finish Workout on
                   // purpose (Satish's call: shrinking Done - by far the
                   // most-tapped button in the app, once per exercise all
@@ -2544,11 +2653,13 @@ export default function WorkoutDayPicker({
                       (see handleGuidedDone) - each set's own optional
                       rest button, and the shared timer, stay available
                       right on this same card instead. */}
-                  {!isGroupedGuidedStep && currentEx.restSeconds != null
-                    ? `Done - start ${formatDurationLabel(currentEx.restSeconds)} rest`
-                    : guidedIndex === listGroups.length - 1
-                      ? 'Done'
-                      : 'Done - next exercise'}
+                  {confirmEmptyDone
+                    ? 'Continue anyway'
+                    : !isGroupedGuidedStep && currentEx.restSeconds != null
+                      ? `Done - start ${formatDurationLabel(currentEx.restSeconds)} rest`
+                      : guidedIndex === listGroups.length - 1
+                        ? 'Done'
+                        : 'Done - next exercise'}
                   <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               </>
