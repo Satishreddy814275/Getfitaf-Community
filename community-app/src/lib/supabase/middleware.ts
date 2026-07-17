@@ -39,7 +39,14 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith('/auth') ||
     // /join is the low-ticket community's public landing page — has to
     // be reachable by people who don't have an account yet.
-    request.nextUrl.pathname.startsWith('/join')
+    request.nextUrl.pathname.startsWith('/join') ||
+    // /api/beta-checkout is meant to work as a plain link clicked from
+    // an acceptance email — possibly on a different device, or with an
+    // expired browser session — so it can't depend on an active login.
+    // It doesn't need the session at all: it only reads the `email`
+    // query param to prefill Stripe checkout, same as it would for
+    // anyone visiting cold.
+    request.nextUrl.pathname.startsWith('/api/beta-checkout')
 
   if (!user && !isPublicRoute) {
     // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
