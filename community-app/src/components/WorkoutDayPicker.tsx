@@ -553,11 +553,12 @@ export default function WorkoutDayPicker({
   const [viewMode, setViewMode] = useState<'guided' | 'list'>('list')
   const [guidedIndex, setGuidedIndex] = useState(0)
   const [guidedPhase, setGuidedPhase] = useState<'roundIntro' | 'exercise' | 'rest' | 'done'>('exercise')
-  // True once Done has been tapped with nothing logged for the current
-  // guided step and the "No values logged" nudge is showing - a second
-  // tap on Done (now relabeled "Continue anyway") proceeds regardless.
-  // Reset below whenever guidedIndex changes, so it never carries over
-  // and silently pre-confirms the next exercise.
+  // True once Done has been tapped while something's still missing for
+  // the current guided step (a whole exercise untouched, or just one
+  // set among several) and the "some values are missing" nudge is
+  // showing - a second tap on Done (now relabeled "Continue anyway")
+  // proceeds regardless. Reset below whenever guidedIndex changes, so
+  // it never carries over and silently pre-confirms the next exercise.
   const [confirmEmptyDone, setConfirmEmptyDone] = useState(false)
   useEffect(() => {
     // Legitimate use of an effect here - this is syncing local UI state
@@ -1070,25 +1071,32 @@ export default function WorkoutDayPicker({
     })
   }
 
-  // True only when EVERY row of EVERY exercise in this guided step has
-  // neither a weight nor a reps value - a partial entry (e.g. reps
-  // filled in but weight left blank, common for bodyweight work) never
-  // triggers the nudge, only a genuinely untouched screen does.
-  function groupHasNoValues(group: CellExercise[]): boolean {
-    return group.every((ex) => {
+  // True when at least one row across the group is missing a value it
+  // should have - weight (if this exercise tracks weight) and/or reps.
+  // Catches a partial miss (set 1 logged, set 2 left blank - easy to do
+  // on a multi-set grouped screen) as well as a completely untouched
+  // screen, not just the all-or-nothing case. Satish's correction: the
+  // original version only ever caught a fully empty exercise, which
+  // missed the more common case of forgetting just one set among
+  // several.
+  function groupHasMissingValues(group: CellExercise[]): boolean {
+    return group.some((ex) => {
       const rows = setsByExercise[ex.name] || []
-      return rows.every((row) => !row.weight && !row.reps)
+      if (rows.length === 0) return true
+      return rows.some((row) => (ex.trackWeight !== false && !row.weight) || !row.reps)
     })
   }
 
-  // Wraps handleGuidedDone with the "you haven't logged anything" soft
-  // nudge - Satish's ask: not a hard block, just a visible check so a
-  // genuinely empty tap isn't silent. First tap on an empty screen
-  // shows the inline banner and relabels Done to "Continue anyway"
+  // Wraps handleGuidedDone with the "some values are missing" soft
+  // nudge - Satish's ask: not a hard block, just a visible check so an
+  // incomplete tap isn't silent. First tap while anything's missing
+  // shows the inline banner (and, via the border-highlight logic in
+  // renderExerciseCard/renderGroupedCard's inputs, highlights exactly
+  // which fields are empty) and relabels Done to "Continue anyway"
   // instead of advancing; the second tap (confirmEmptyDone already
   // true) goes through exactly like a normal Done tap.
   function handleDoneClick(group: CellExercise[]) {
-    if (!confirmEmptyDone && groupHasNoValues(group)) {
+    if (!confirmEmptyDone && groupHasMissingValues(group)) {
       setConfirmEmptyDone(true)
       return
     }
@@ -1749,10 +1757,15 @@ export default function WorkoutDayPicker({
                       // of the upsized card (2xl title, Target line) -
                       // the inputs were the one thing left at list-view
                       // size, which is likely why they didn't read as
-                      // "the main thing to interact with here."
-                      className={`w-full bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-600 ${
+                      // "the main thing to interact with here." Border
+                      // goes orange once confirmEmptyDone is showing
+                      // (the "some values are missing" nudge) AND this
+                      // specific field is still empty - points at
+                      // exactly what's missing rather than a generic
+                      // "something's wrong" banner with no location.
+                      className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
                         large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                      }`}
+                      } ${large && confirmEmptyDone && !row.weight ? 'border-orange-500/60' : 'border-zinc-800'}`}
                     />
                   </div>
                 )}
@@ -1764,9 +1777,9 @@ export default function WorkoutDayPicker({
                     placeholder={ex.reps || 'reps'}
                     value={row.reps}
                     onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
-                    className={`w-full bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-600 ${
+                    className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
                       large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                    }`}
+                    } ${large && confirmEmptyDone && !row.reps ? 'border-orange-500/60' : 'border-zinc-800'}`}
                   />
                 </div>
                 {/* Hidden in large/guided mode - see the matching Check
@@ -2172,6 +2185,11 @@ export default function WorkoutDayPicker({
                     <span className="text-zinc-500 text-xs w-11 shrink-0">
                       {ex.perSide && !ex.timerSeconds && i < 2 ? (i === 0 ? 'Left' : 'Right') : `Set ${i + 1}`}
                     </span>
+                    {/* Same missing-field highlight as the single-row
+                        card (renderExerciseCard) - `large` here means
+                        this is the guided player's multi-set grouped
+                        screen, so the same confirmEmptyDone nudge from
+                        the shared Done button applies to it too. */}
                     {ex.trackWeight !== false && (
                       <input
                         type="number"
@@ -2179,7 +2197,9 @@ export default function WorkoutDayPicker({
                         placeholder={last?.weight != null ? String(last.weight) : 'weight'}
                         value={row?.weight ?? ''}
                         onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                        className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
+                          large && confirmEmptyDone && !row?.weight ? 'border-orange-500/60' : 'border-zinc-800'
+                        }`}
                       />
                     )}
                     <input
@@ -2188,7 +2208,9 @@ export default function WorkoutDayPicker({
                       placeholder={ex.reps || 'reps'}
                       value={row?.reps ?? ''}
                       onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                      className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
+                        large && confirmEmptyDone && !row?.reps ? 'border-orange-500/60' : 'border-zinc-800'
+                      }`}
                     />
                     <button
                       onClick={() => toggleSetChecked(ex.name, 0)}
@@ -2627,12 +2649,18 @@ export default function WorkoutDayPicker({
                   ? renderGroupedCard(currentGroup, { large: true })
                   : renderExerciseCard(currentEx, { large: true })}
                 {/* Soft nudge, not a hard block - Satish's ask. Shows
-                    once, the first time Done is tapped on a genuinely
-                    empty screen; a second tap always goes through. */}
+                    the first time Done is tapped while anything's
+                    missing (a whole exercise untouched, or just one set
+                    among several); a second tap always goes through.
+                    The specific empty field(s) also get an orange
+                    border via the inputs themselves (see
+                    renderExerciseCard/renderGroupedCard) so this isn't
+                    just a vague "something's wrong" message with no
+                    location to act on. */}
                 {confirmEmptyDone && (
                   <div className="mt-3 mb-3 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2 text-center">
                     <p className="text-orange-400 text-xs font-medium">
-                      No values logged for this exercise
+                      Some values are missing for this exercise
                     </p>
                   </div>
                 )}
