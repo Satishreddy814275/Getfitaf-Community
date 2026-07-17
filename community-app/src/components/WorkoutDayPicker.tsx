@@ -2501,8 +2501,15 @@ export default function WorkoutDayPicker({
                     already underway by the time anyone sees list view
                     (see the day-preview Start buttons) - that wording
                     wrongly implied nothing had happened yet. This is
-                    purely a view switch now, so it says so. */}
-                ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue' : 'Switch to guided view'}
+                    purely a view switch now, so it says so. Bare
+                    "Continue" (mid-session resume case) was ambiguous
+                    while bouncing between list/guided views - it read
+                    like "continue in list view" rather than naming
+                    where the tap actually goes. "Continue to guided
+                    view" keeps the resume signal but says the
+                    destination explicitly, matching the "Switch to
+                    guided view" wording used the rest of the time. */}
+                ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue to guided view' : 'Switch to guided view'}
               </button>
             ) : (
               <button
