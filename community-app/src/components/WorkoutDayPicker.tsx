@@ -5,7 +5,7 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { Timer, Play, BicepsFlexed } from 'lucide-react'
+import { Timer, Play, BicepsFlexed, Check } from 'lucide-react'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap } from '@/types'
 
 interface SetRow {
@@ -839,6 +839,63 @@ export default function WorkoutDayPicker({
     })
   }
 
+  // Straight-set groups (renderGroupedCard) don't get the same per-row
+  // add/remove as a round exercise (see removeSetRow above) - each
+  // position in the group is its own distinct CellExercise entry (a
+  // unique originalName, e.g. "Squats (1)", "(2)", "(3)"), not another
+  // row against one shared name. Adding a set here means synthesizing a
+  // new entry and splicing it into activeCell.exercises itself, right
+  // after the group's current last member - finishWorkout only ever
+  // saves setsByExercise rows for names that actually exist in
+  // activeCell.exercises, so a row added any other way would silently
+  // never save.
+  function addStraightSet(group: CellExercise[]) {
+    const last = group[group.length - 1]
+    const newName = `${baseName(last.name)} (${group.length + 1})`
+    const newExercise: CellExercise = {
+      originalName: newName,
+      name: newName,
+      sets: '1',
+      reps: last.reps,
+      trackWeight: last.trackWeight,
+      restSeconds: last.restSeconds,
+      timerSeconds: last.timerSeconds,
+      phase: last.phase,
+      perSide: last.perSide,
+    }
+    setActiveCell((prev) => {
+      if (!prev) return prev
+      const index = prev.exercises.findIndex((e) => e.originalName === last.originalName)
+      if (index === -1) return prev
+      const exercises = [...prev.exercises]
+      exercises.splice(index + 1, 0, newExercise)
+      return { ...prev, exercises }
+    })
+    setSetsByExercise((prev) => ({ ...prev, [newName]: [{ weight: '', reps: '' }] }))
+    setCheckedByExercise((prev) => ({ ...prev, [newName]: [false] }))
+  }
+
+  // Undoes the most recent addStraightSet - removes the group's current
+  // last member entirely (not just its logged values), same as how it
+  // was added. Never removes the only remaining set in the group.
+  function removeStraightSet(group: CellExercise[]) {
+    if (group.length <= 1) return
+    const last = group[group.length - 1]
+    setActiveCell((prev) =>
+      prev ? { ...prev, exercises: prev.exercises.filter((e) => e.originalName !== last.originalName) } : prev
+    )
+    setSetsByExercise((prev) => {
+      const next = { ...prev }
+      delete next[last.name]
+      return next
+    })
+    setCheckedByExercise((prev) => {
+      const next = { ...prev }
+      delete next[last.name]
+      return next
+    })
+  }
+
   // Purely visual progress markers - see checkedByExercise above.
   // toggleAllChecked checks every set at once if any are unchecked, or
   // unchecks all of them if every set was already checked (so tapping
@@ -1537,29 +1594,37 @@ export default function WorkoutDayPicker({
                 <button
                   onClick={() => toggleSetChecked(ex.name, i)}
                   aria-label={checkedRows[i] ? 'Mark set incomplete' : 'Mark set complete'}
-                  className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                    checkedRows[i]
-                      ? 'bg-orange-500 text-black'
-                      : 'border border-zinc-700 text-transparent hover:border-zinc-500'
+                  className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
+                    checkedRows[i] ? 'bg-orange-500' : 'bg-zinc-800 hover:bg-zinc-700'
                   }`}
                 >
-                  ✓
+                  <Check className={`w-3.5 h-3.5 ${checkedRows[i] ? 'text-black' : 'text-zinc-500'}`} aria-hidden="true" />
                 </button>
-                <button
-                  onClick={() => removeSetRow(ex.name, i)}
-                  aria-label="Remove set"
-                  className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
-                >
-                  ✕
-                </button>
+                {/* A round exercise is already exactly one fixed slot per
+                    round - the round count itself is what repeats it, so
+                    add/remove never meant anything here and just
+                    cluttered the row. Straight sets (ex.round == null)
+                    keep this, since those genuinely can run short or long
+                    of what was prescribed. */}
+                {ex.round == null && (
+                  <button
+                    onClick={() => removeSetRow(ex.name, i)}
+                    aria-label="Remove set"
+                    className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
-            <button
-              onClick={() => addSetRow(ex.name)}
-              className="text-xs text-orange-400 hover:text-orange-300 transition"
-            >
-              + Add set
-            </button>
+            {ex.round == null && (
+              <button
+                onClick={() => addSetRow(ex.name)}
+                className="text-xs text-orange-400 hover:text-orange-300 transition"
+              >
+                + Add set
+              </button>
+            )}
           </div>
 
           {/* Big, centered timer panel - guided/large mode only. This
@@ -1921,19 +1986,36 @@ export default function WorkoutDayPicker({
                     <button
                       onClick={() => toggleSetChecked(ex.name, 0)}
                       aria-label={(checkedByExercise[ex.name] || [])[0] ? 'Mark set incomplete' : 'Mark set complete'}
-                      className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                        (checkedByExercise[ex.name] || [])[0]
-                          ? 'bg-orange-500 text-black'
-                          : 'border border-zinc-700 text-transparent hover:border-zinc-500'
+                      className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
+                        (checkedByExercise[ex.name] || [])[0] ? 'bg-orange-500' : 'bg-zinc-800 hover:bg-zinc-700'
                       }`}
                     >
-                      ✓
+                      <Check
+                        className={`w-3.5 h-3.5 ${(checkedByExercise[ex.name] || [])[0] ? 'text-black' : 'text-zinc-500'}`}
+                        aria-hidden="true"
+                      />
                     </button>
                   </div>
                   {ex.restSeconds != null && renderRestPill(ex.restSeconds)}
                 </Fragment>
               )
             })}
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                onClick={() => addStraightSet(group)}
+                className="text-xs text-orange-400 hover:text-orange-300 transition"
+              >
+                + Add set
+              </button>
+              {group.length > 1 && (
+                <button
+                  onClick={() => removeStraightSet(group)}
+                  className="text-xs text-zinc-600 hover:text-red-400 transition"
+                >
+                  Remove last set
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )
