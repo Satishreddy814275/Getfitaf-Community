@@ -5,7 +5,7 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X, ArrowRight } from 'lucide-react'
+import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X, ArrowRight, AlertTriangle } from 'lucide-react'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup } from '@/types'
 
 interface SetRow {
@@ -570,6 +570,19 @@ export default function WorkoutDayPicker({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setConfirmEmptyDone(false)
   }, [guidedIndex])
+  // Whole-day counterpart to confirmEmptyDone, for Finish Workout
+  // rather than a single guided step. True once Finish Workout has been
+  // tapped while anything in the day is still missing - forces list
+  // view (so the warning banner and per-card highlights below are
+  // actually visible, since guided mode only ever shows one exercise at
+  // a time) and scrolls back to the top so the banner isn't landed on
+  // mid-scroll and missed. A second tap (either the bottom Finish
+  // Workout bar, now relabeled, or the "Finish anyway" button inside
+  // the banner itself) proceeds regardless. Reset on session
+  // start/discard (see startCell/handleCloseSession), not on any
+  // per-step change - this one persists across the whole day on
+  // purpose.
+  const [missingValuesFlagged, setMissingValuesFlagged] = useState(false)
   // Tracks the previous render's restTimer so the effect below can
   // tell "a running timer just reached zero on its own" apart from
   // "there was never a timer running" - only the former should
@@ -861,6 +874,7 @@ export default function WorkoutDayPicker({
     setRestTimer(null)
     setCollapsedPhases(new Set(['warmup', 'cooldown']))
     setGuidedIndex(0)
+    setMissingValuesFlagged(false)
     const groups = buildListGroups(cell.exercises)
     setGuidedPhase(isFirstOfRoundGroups(groups, 0) || isFirstOfPhaseGroups(groups, 0) ? 'roundIntro' : 'exercise')
     setViewMode(cell.exercises.length > 1 ? mode : 'list')
@@ -893,6 +907,7 @@ export default function WorkoutDayPicker({
     setGuidedIndex(0)
     setGuidedPhase('exercise')
     setViewMode('list')
+    setMissingValuesFlagged(false)
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -1071,8 +1086,18 @@ export default function WorkoutDayPicker({
     })
   }
 
-  // True when at least one row across the group is missing a value it
-  // should have - weight (if this exercise tracks weight) and/or reps.
+  // True when a single exercise has a row missing a value it should
+  // have - weight (if this exercise tracks weight) and/or reps. Shared
+  // by both the per-exercise Done nudge (groupHasMissingValues below)
+  // and the whole-day Finish Workout check (getMissingExercises below)
+  // so there's exactly one definition of "incomplete" in the file.
+  function exerciseIsMissingValues(ex: CellExercise): boolean {
+    const rows = setsByExercise[ex.name] || []
+    if (rows.length === 0) return true
+    return rows.some((row) => (ex.trackWeight !== false && !row.weight) || !row.reps)
+  }
+
+  // True when at least one exercise in the group is missing a value.
   // Catches a partial miss (set 1 logged, set 2 left blank - easy to do
   // on a multi-set grouped screen) as well as a completely untouched
   // screen, not just the all-or-nothing case. Satish's correction: the
@@ -1080,11 +1105,15 @@ export default function WorkoutDayPicker({
   // missed the more common case of forgetting just one set among
   // several.
   function groupHasMissingValues(group: CellExercise[]): boolean {
-    return group.some((ex) => {
-      const rows = setsByExercise[ex.name] || []
-      if (rows.length === 0) return true
-      return rows.some((row) => (ex.trackWeight !== false && !row.weight) || !row.reps)
-    })
+    return group.some(exerciseIsMissingValues)
+  }
+
+  // Whole-day version, used by Finish Workout - every exercise across
+  // every phase/round, not just the current guided step. Returns the
+  // actual exercises (not just a boolean) so the warning banner can
+  // name them and their cards can be highlighted in list view.
+  function getMissingExercises(list: CellExercise[]): CellExercise[] {
+    return list.filter(exerciseIsMissingValues)
   }
 
   // Wraps handleGuidedDone with the "some values are missing" soft
@@ -1142,6 +1171,29 @@ export default function WorkoutDayPicker({
       setJustFinished(true)
       setRestTimer(null)
     })
+  }
+
+  // Wraps finishWorkout with the same soft-nudge shape as Done, but
+  // scoped to the whole day rather than one guided step. First tap
+  // while anything's missing doesn't finish at all - it switches to
+  // list view (guided mode only shows one exercise at a time, so
+  // there's nothing useful to highlight there), scrolls back to the
+  // top so the warning banner is immediately visible instead of
+  // wherever the scroll happened to be, and flags missingValuesFlagged
+  // so the banner and per-card highlights render. Second tap (or the
+  // banner's own "Finish anyway" button, which calls finishWorkout
+  // directly) goes through.
+  function handleFinishClick() {
+    if (!activeCell) return
+    if (!missingValuesFlagged && getMissingExercises(activeCell.exercises).length > 0) {
+      setViewMode('list')
+      setMissingValuesFlagged(true)
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+      return
+    }
+    finishWorkout()
   }
 
   if (activeCell) {
@@ -1940,14 +1992,22 @@ export default function WorkoutDayPicker({
       // consistent, slightly roomier padding reads better than it does
       // packed into the list alongside other cards.
       const lastEntryHasRest = group[group.length - 1].restSeconds != null
+      // Orange ring around the whole card once Finish Workout has flagged
+      // missing values (see handleFinishClick/missingValuesFlagged above)
+      // and this specific group is one of the incomplete ones - only in
+      // list view's normal (non-large) rendering, since large is the
+      // guided player's single-exercise screen and Finish Workout always
+      // redirects to list view first anyway, so large+flagged never
+      // actually happens together.
+      const flaggedMissing = !large && missingValuesFlagged && groupHasMissingValues(group)
       return (
         <div
           className={
-            large
+            (large
               ? 'glass rounded-2xl p-5'
               : lastEntryHasRest
                 ? 'glass rounded-2xl pt-3.5 px-3.5 pb-2'
-                : 'glass rounded-2xl p-3.5'
+                : 'glass rounded-2xl p-3.5') + (flaggedMissing ? ' ring-2 ring-orange-500/60' : '')
           }
         >
           <div className="flex items-baseline justify-between mb-0.5 gap-2">
@@ -2456,6 +2516,51 @@ export default function WorkoutDayPicker({
 
         {effectiveMode === 'list' ? (
           <div className="mt-4">
+            {/* Whole-day missing-values warning - only ever shown after
+                Finish Workout has been tapped once with something still
+                missing (see handleFinishClick above, which is also what
+                forces list view if this got triggered from guided mode -
+                nothing to usefully highlight one exercise at a time
+                there). Deliberately more "flashy" than the per-exercise
+                Done nudge below each card (Satish's ask): a full bordered
+                banner with a warning icon, not just an inline line of
+                text. Its own "Finish anyway" button is the guaranteed-
+                visible path regardless of scroll position or device -
+                unlike the bottom Finish Workout bar, which is only
+                `fixed` (always on-screen) on mobile and scrolls out of
+                view on desktop (`sm:static`). Calls finishWorkout()
+                directly, not handleFinishClick, since being on this
+                banner already means the check's been satisfied - a
+                second click here should always go through. */}
+            {missingValuesFlagged &&
+              (() => {
+                const missing = getMissingExercises(exercises)
+                if (missing.length === 0) return null
+                const names = Array.from(new Set(missing.map((ex) => normalizeExerciseIdentity(ex.name))))
+                const namesText =
+                  names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2} more`
+                return (
+                  <div className="mb-4 rounded-2xl border border-orange-500/50 bg-orange-500/10 p-4">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="text-orange-300 text-sm font-semibold">Some values are missing</p>
+                        <p className="text-orange-200/80 text-xs mt-1">
+                          {namesText} {names.length === 1 ? 'has' : 'have'} a missing weight or reps - check the
+                          highlighted exercises below.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => finishWorkout()}
+                      disabled={isPending}
+                      className="w-full mt-3 bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-2.5 rounded-xl transition"
+                    >
+                      {isPending ? 'Saving...' : 'Finish anyway'}
+                    </button>
+                  </div>
+                )
+              })()}
             <div className="space-y-3">
               {phaseSections.map((section, sectionIndex) => {
                 const sectionExerciseCount = section.boxes.reduce((sum, box) => sum + box.length, 0)
@@ -2471,7 +2576,21 @@ export default function WorkoutDayPicker({
                         </p>
                       )}
                       {isRoundBox ? (
-                        <div className="glass rounded-2xl p-3.5 space-y-1.5">
+                        <div
+                          className={
+                            'glass rounded-2xl p-3.5 space-y-1.5' +
+                            // Same flagged-missing highlight as
+                            // renderGroupedCard, but on the whole round box
+                            // rather than a single card - a round box has
+                            // no per-exercise card boundary inside it (see
+                            // its rows below), so the whole box is what
+                            // gets the ring if anything within it is
+                            // incomplete.
+                            (missingValuesFlagged && box.some((group) => groupHasMissingValues(group))
+                              ? ' ring-2 ring-orange-500/60'
+                              : '')
+                          }
+                        >
                           {box.map((group, idx) => {
                             const ex = group[0]
                             // Same divider-suppression idea as the
@@ -2725,13 +2844,23 @@ export default function WorkoutDayPicker({
             <p className="text-zinc-500 text-[11px] text-center mb-2">
               Only tap this once every exercise is logged
             </p>
+            {/* onClick goes through handleFinishClick's missing-values
+                check now, not finishWorkout directly - see its comment
+                above. Relabels to "Finish anyway" once flagged, mainly
+                for consistency with Done's identical pattern; the
+                banner's own "Finish anyway" button (see the list-view
+                warning banner) is the actually-guaranteed-visible path,
+                this is just a second way to trigger the same thing for
+                anyone who does scroll down here instead. */}
             <button
-              onClick={finishWorkout}
+              onClick={handleFinishClick}
               disabled={isPending}
               className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2.5"
             >
               {isPending ? (
                 'Saving...'
+              ) : missingValuesFlagged ? (
+                'Finish anyway'
               ) : (
                 <>
                   <BicepsFlexed className="w-6 h-6" aria-hidden="true" />
