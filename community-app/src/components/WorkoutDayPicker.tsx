@@ -2076,21 +2076,35 @@ export default function WorkoutDayPicker({
           ))}
         </datalist>
 
-        {/* Combined fixed bar, visible for the whole time a day is
-            open - a thicker progress track (per exercise, once every
-            one of its sets is checked off - see progressFraction and
-            the checkmark UI in renderExerciseCard/renderGroupedCard),
-            the elapsed session clock, and a one-tap Discard. Replaces
-            what used to be a plain "4/9 exercises" text count with
-            something that's actually glanceable while scrolled deep
-            into a long day, and gives Discard a permanent, predictable
-            spot instead of only the small ✕ in the header below (still
-            there too - this is just the always-visible version).
-            Positioned right under the app header, with the rest-timer
-            pill (below) pushed down further so the two never overlap. */}
-        <div className="fixed top-14 sm:top-16 inset-x-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-zinc-800">
+        {/* Combined bar, visible for the whole time a day is open - a
+            thicker progress track (per exercise, once every one of its
+            sets is checked off - see progressFraction and the checkmark
+            UI in renderExerciseCard/renderGroupedCard), the elapsed
+            session clock, and a one-tap Discard. Replaces what used to
+            be a plain "4/9 exercises" text count with something that's
+            actually glanceable while scrolled deep into a long day, and
+            gives Discard a permanent, predictable spot instead of only
+            the small ✕ in the header below (still there too - this is
+            just the always-visible version).
+            `sticky` (NOT `fixed`) on purpose - the app's own header
+            (AppNav) isn't actually pinned to the viewport, it's normal
+            page content that scrolls away like anything else, so a
+            `fixed` bar here had nothing real to sit "under": it just
+            always occupied the same screen position regardless of
+            scroll, which meant it permanently covered page.tsx's "Back
+            to Community" link and page title the moment a session
+            started (Satish caught this - "hidden behind the progress
+            card"). `sticky` sits in its natural place in the page (below
+            that header/link/title, since this component renders after
+            them in the DOM) until scrolled past, and only then pins to
+            the top - so it never overlaps anything at the start, and
+            still stays visible while scrolling deep into a long day's
+            exercise list, which was the actual point of pinning it at
+            all. No spacer needed either (unlike `fixed`, `sticky` keeps
+            its own layout space, so nothing needs pushing down under it). */}
+        <div className="sticky top-0 z-40 -mx-4 sm:mx-0 bg-[#0a0a0a]/95 backdrop-blur border-b border-zinc-800">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-3">
-            <span className="text-zinc-400 text-xs font-semibold tabular-nums shrink-0">
+            <span className="border border-zinc-700 text-zinc-400 text-xs font-semibold tabular-nums rounded-full px-2.5 py-1 shrink-0">
               {formatRestTime(elapsedSeconds)}
             </span>
             <div className="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -2101,30 +2115,32 @@ export default function WorkoutDayPicker({
             </div>
             <button
               onClick={handleCloseSession}
-              className="text-zinc-500 hover:text-red-400 text-xs font-semibold shrink-0 transition"
+              className="border border-red-500/40 text-red-400 hover:text-red-300 hover:border-red-500/60 text-xs font-semibold rounded-full px-2.5 py-1 shrink-0 transition"
             >
               Discard
             </button>
           </div>
         </div>
-        {/* Spacer so page content starts below the fixed bar above
-            instead of tucked underneath it. */}
-        <div className="pt-12" />
 
         {/* Fixed to the viewport, not the page - stays visible no
             matter how far into the exercise list you've scrolled,
             unlike the old version which lived inside the sticky
             Finish Workout bar and only came into view once you'd
-            scrolled all the way back down. Offset below both the app
-            header and the combined progress bar above, so it doesn't
-            sit under either. Suppressed during the guided player's own
-            rest screen (shows this same countdown as its main content)
-            and while the guided player's big in-card timer panel is
-            showing this exact exercise's own running timer
-            (renderExerciseCard, large mode) - both would otherwise
-            duplicate this same countdown on screen at once. Still
-            shown for every other case: list view, a custom preset
-            timer, etc. */}
+            scrolled all the way back down. Offset assumes the combined
+            bar above has already stuck to the top (its usual state
+            whenever a rest timer's actually running, since that means
+            you're at least one exercise into the session) - genuinely
+            unscrolled-to-the-very-top-with-a-timer-running is a rare
+            enough combination that a small, harmless overlap with the
+            page title there isn't worth the complexity of tracking the
+            sticky bar's actual stuck/unstuck state just for this.
+            Suppressed during the guided player's own rest screen (shows
+            this same countdown as its main content) and while the
+            guided player's big in-card timer panel is showing this
+            exact exercise's own running timer (renderExerciseCard,
+            large mode) - both would otherwise duplicate this same
+            countdown on screen at once. Still shown for every other
+            case: list view, a custom preset timer, etc. */}
         {restTimer &&
           !(effectiveMode === 'guided' && guidedPhase === 'rest') &&
           !(
