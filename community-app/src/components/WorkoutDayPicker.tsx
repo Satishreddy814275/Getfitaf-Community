@@ -5,6 +5,7 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
+import { Timer, Play, BicepsFlexed } from 'lucide-react'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap } from '@/types'
 
 interface SetRow {
@@ -1163,6 +1164,33 @@ export default function WorkoutDayPicker({
     }).length
     const progressFraction = exercises.length > 0 ? completedExerciseUnits / exercises.length : 0
 
+    // Standard "rest between two sets/exercises" prompt - a plain label
+    // (icon + "Rest for Xmin") on the left, separate from the actual
+    // "Start" action on the right, rather than making the label text
+    // itself the tap target. Splitting these apart is what Satish
+    // pointed to in Trainerize's own rest row as the clearer pattern -
+    // no ambiguity about whether the text is informational or a
+    // button, since only "Start" is. Used for every "rest between
+    // things" spot: straight-set cards, inside a round box, and
+    // between two round boxes.
+    function renderRestPill(seconds: number) {
+      return (
+        <div className="flex items-center justify-between gap-2 bg-zinc-900/60 rounded-lg px-2.5 py-1.5">
+          <div className="flex items-center gap-1.5 text-zinc-400 text-xs">
+            <Timer className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>Rest for {formatDurationLabel(seconds)}</span>
+          </div>
+          <button
+            onClick={() => startRestTimer(seconds)}
+            className="flex items-center gap-1 shrink-0 text-orange-400 hover:text-orange-300 text-xs font-medium border border-orange-500/40 rounded-full px-2.5 py-1 transition"
+          >
+            <Play className="w-3 h-3" fill="currentColor" aria-hidden="true" />
+            Start
+          </button>
+        </div>
+      )
+    }
+
     // The interactive body of a single exercise - video/timer/overflow
     // row, swap panel, rest picker, and the set-logging inputs. Shared
     // between the list view (one per card, all shown at once) and the
@@ -1280,17 +1308,17 @@ export default function WorkoutDayPicker({
                     )}
                     <button
                       onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                      className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                      className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition"
                     >
-                      ⏱ custom
+                      <Timer className="w-3.5 h-3.5" aria-hidden="true" /> custom
                     </button>
                   </>
                 ) : (
                   <button
                     onClick={() => setRestPickerFor(restPickerOpen ? null : ex.originalName)}
-                    className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                    className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition"
                   >
-                    ⏱ Timer
+                    <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Timer
                   </button>
                 )}
               </div>
@@ -1346,9 +1374,9 @@ export default function WorkoutDayPicker({
                             setRestPickerFor(restPickerOpen ? null : ex.originalName)
                             setOverflowOpenFor(null)
                           }}
-                          className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                          className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
                         >
-                          ⏱ Custom timer
+                          <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Custom timer
                         </button>
                         {setRows.length > 0 && (
                           <button
@@ -1691,17 +1719,17 @@ export default function WorkoutDayPicker({
                   </button>
                   <button
                     onClick={() => setRestPickerFor(restPickerOpen ? null : rep.originalName)}
-                    className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                    className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition"
                   >
-                    ⏱ custom
+                    <Timer className="w-3.5 h-3.5" aria-hidden="true" /> custom
                   </button>
                 </>
               ) : (
                 <button
                   onClick={() => setRestPickerFor(restPickerOpen ? null : rep.originalName)}
-                  className="text-xs font-medium text-zinc-400 hover:text-white transition"
+                  className="flex items-center gap-1 text-xs font-medium text-zinc-400 hover:text-white transition"
                 >
-                  ⏱ Timer
+                  <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Timer
                 </button>
               )}
             </div>
@@ -1902,16 +1930,7 @@ export default function WorkoutDayPicker({
                       ✓
                     </button>
                   </div>
-                  {ex.restSeconds != null && (
-                    <div className="flex justify-end">
-                      <button
-                        onClick={() => startRestTimer(ex.restSeconds!)}
-                        className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
-                      >
-                        ▶ Rest {formatDurationLabel(ex.restSeconds)}
-                      </button>
-                    </div>
-                  )}
+                  {ex.restSeconds != null && renderRestPill(ex.restSeconds)}
                 </Fragment>
               )
             })}
@@ -2109,16 +2128,9 @@ export default function WorkoutDayPicker({
                                 <div className={idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60'}>
                                   {renderExerciseCard(ex, { boxed: false })}
                                 </div>
-                                {ex.restSeconds != null && idx < box.length - 1 && (
-                                  <div className="flex justify-end">
-                                    <button
-                                      onClick={() => startRestTimer(ex.restSeconds!)}
-                                      className="text-orange-400 hover:text-orange-300 text-xs font-medium transition"
-                                    >
-                                      ▶ Rest {formatDurationLabel(ex.restSeconds)}
-                                    </button>
-                                  </div>
-                                )}
+                                {ex.restSeconds != null &&
+                                  idx < box.length - 1 &&
+                                  renderRestPill(ex.restSeconds)}
                               </Fragment>
                             )
                           })}
@@ -2126,18 +2138,10 @@ export default function WorkoutDayPicker({
                       ) : (
                         renderGroupedCard(box[0])
                       )}
-                      {isRoundBox && lastInBox.restSeconds != null && exercises.indexOf(lastInBox) < exercises.length - 1 && (
-                        <div className="flex items-center gap-2 -mt-2">
-                          <div className="flex-1 h-px bg-zinc-800" />
-                          <button
-                            onClick={() => startRestTimer(lastInBox.restSeconds!)}
-                            className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
-                          >
-                            ▶ Rest {formatDurationLabel(lastInBox.restSeconds)}
-                          </button>
-                          <div className="flex-1 h-px bg-zinc-800" />
-                        </div>
-                      )}
+                      {isRoundBox &&
+                        lastInBox.restSeconds != null &&
+                        exercises.indexOf(lastInBox) < exercises.length - 1 &&
+                        renderRestPill(lastInBox.restSeconds)}
                     </Fragment>
                   )
                 })
@@ -2318,9 +2322,16 @@ export default function WorkoutDayPicker({
           <button
             onClick={finishWorkout}
             disabled={isPending}
-            className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition"
+            className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2.5"
           >
-            {isPending ? 'Saving...' : 'Finish Workout'}
+            {isPending ? (
+              'Saving...'
+            ) : (
+              <>
+                <BicepsFlexed className="w-6 h-6" aria-hidden="true" />
+                Finish Workout
+              </>
+            )}
           </button>
         </div>
       </div>
