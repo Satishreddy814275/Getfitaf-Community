@@ -58,6 +58,7 @@ export default function WorkoutsTabs({
           days={days}
           completedCells={completedCells}
           lastByExercise={lastByExercise}
+          history={history}
           videos={videos}
           swaps={swaps}
         />

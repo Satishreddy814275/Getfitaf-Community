@@ -5,8 +5,8 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { Timer, Play, BicepsFlexed, Check } from 'lucide-react'
-import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap } from '@/types'
+import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X } from 'lucide-react'
+import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup } from '@/types'
 
 interface SetRow {
   weight: string
@@ -284,6 +284,31 @@ function stripRoundSuffixDisplay(name: string): string {
   return name.replace(/\s*\(Round \d+\)$/, '')
 }
 
+// Collapses a logged/displayed exercise name down to its "history
+// identity" - strips both the straight-set "(N)" and round "(Round N)"
+// suffixes so "Squats (1)"/"(2)"/"(3)" and "Push-Ups (Round 1)"/
+// "(Round 2)" all roll up into one history thread per exercise,
+// matching how workout_logged_sets stores them (see
+// migration-workout-logging.sql - exercise_name is a plain text column,
+// matched by exact string, no separate stable exercise ID). Deliberately
+// does NOT try to reconcile a swapped exercise back to whatever it
+// replaced - "Goblet Squat" and "Barbell Squat" stay two separate
+// threads, since they're genuinely different lifts with different
+// loads (Satish's explicit call).
+function normalizeExerciseIdentity(name: string): string {
+  return stripRoundSuffixDisplay(baseName(name))
+}
+
+interface ExerciseHistoryEntry {
+  sessionId: string
+  week: number
+  day: number
+  label: string | null
+  completedAt: string
+  isCurrent: boolean
+  sets: { setNumber: number; weight: number | null; reps: number | null }[]
+}
+
 function formatRestTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60)
   const s = totalSeconds % 60
@@ -349,6 +374,7 @@ export default function WorkoutDayPicker({
   days,
   completedCells,
   lastByExercise,
+  history,
   videos,
   swaps,
 }: {
@@ -356,6 +382,7 @@ export default function WorkoutDayPicker({
   days: WorkoutPlanDay[]
   completedCells: string[]
   lastByExercise: Record<string, LastLoggedSet>
+  history: WorkoutHistoryGroup[]
   videos: ExerciseVideo[]
   swaps: WorkoutExerciseSwap[]
 }) {
@@ -415,6 +442,11 @@ export default function WorkoutDayPicker({
   // Which exercise's "..." overflow menu (Request video / Swap
   // exercise) is open, also keyed by originalName.
   const [overflowOpenFor, setOverflowOpenFor] = useState<string | null>(null)
+  // Which exercise's History modal is open - stores the exact
+  // currently-displayed name (post-swap, if swapped) plus a display
+  // label, since that's what computeExerciseHistory below matches
+  // against. Null when closed.
+  const [historyFor, setHistoryFor] = useState<{ name: string; label: string } | null>(null)
   // Which exercise's rest-timer preset picker is open (per-card
   // trigger), vs. the timer itself, which is global - only one rest
   // period happens at a time regardless of which card started it, so
@@ -585,6 +617,38 @@ export default function WorkoutDayPicker({
     startTransition(() => {
       requestExerciseVideo(exerciseName)
     })
+  }
+
+  // Every completed session's sets, across every program, are already
+  // fetched for the Completed Workouts tab (see the `history` prop,
+  // sourced from workouts/page.tsx) - no separate query needed here,
+  // just re-slice that same data exercise-first instead of session-
+  // first. Matches by normalizeExerciseIdentity so straight-set/round
+  // suffix variants roll up, but a swapped-to name stays its own
+  // separate thread (see normalizeExerciseIdentity's comment). Sorted
+  // most-recent-first, same convention as WorkoutHistoryList.
+  function computeExerciseHistory(exerciseName: string): ExerciseHistoryEntry[] {
+    const target = normalizeExerciseIdentity(exerciseName)
+    const entries: ExerciseHistoryEntry[] = []
+    for (const group of history) {
+      for (const session of group.sessions) {
+        const sets = session.sets
+          .filter((s) => normalizeExerciseIdentity(s.exerciseName) === target)
+          .sort((a, b) => a.setNumber - b.setNumber)
+        if (sets.length === 0) continue
+        entries.push({
+          sessionId: session.id,
+          week: session.week,
+          day: session.day,
+          label: session.label,
+          completedAt: session.completedAt,
+          isCurrent: group.isCurrent,
+          sets,
+        })
+      }
+    }
+    entries.sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+    return entries
   }
 
   // Moves the guided player forward one exercise, landing on
@@ -995,6 +1059,20 @@ export default function WorkoutDayPicker({
     // immediately watch a demo.
     const exerciseSuggestions = Array.from(new Set(videos.map((v) => v.exerciseName))).sort()
 
+    // Only computed while the History modal is actually open - cheap
+    // either way (history is already in memory, see the `history` prop
+    // comment above computeExerciseHistory), but no point re-deriving
+    // the chart's min/max on every render otherwise.
+    const historyEntries = historyFor ? computeExerciseHistory(historyFor.name) : []
+    const historyChartPoints = historyEntries
+      .slice()
+      .reverse() // entries are most-recent-first; chart reads oldest -> newest, left to right
+      .filter((e) => e.sets.some((s) => s.weight != null))
+      .map((e) => ({
+        date: e.completedAt,
+        weight: Math.max(...e.sets.map((s) => s.weight ?? 0)),
+      }))
+
     const exercises = activeCell.exercises
     // The guided player isn't circuit-specific - stepping through one
     // thing at a time with a rest screen in between works just as
@@ -1119,6 +1197,55 @@ export default function WorkoutDayPicker({
       )
     }
 
+    // Minimal hand-rolled SVG line chart for the History modal - top
+    // weight logged per session, oldest to newest left-to-right. No
+    // charting library added for this (the app has none so far); a
+    // plain polyline is all "top weight over time" needs. Callers
+    // should only invoke this with 2+ points - a single point has no
+    // line to draw and isn't worth a chart.
+    function renderWeightChart(points: { date: string; weight: number }[]) {
+      const width = 300
+      const height = 90
+      const padX = 10
+      const padY = 14
+      const weights = points.map((p) => p.weight)
+      const minW = Math.min(...weights)
+      const maxW = Math.max(...weights)
+      const range = maxW - minW || 1
+      const stepX = points.length > 1 ? (width - padX * 2) / (points.length - 1) : 0
+      const coords = points.map((p, i) => ({
+        x: padX + i * stepX,
+        y: padY + (1 - (p.weight - minW) / range) * (height - padY * 2),
+      }))
+      const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ')
+      return (
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-zinc-500 text-[11px] uppercase tracking-wider font-semibold">
+              Top weight over time
+            </span>
+            <span className="text-zinc-500 text-[11px]">
+              {minW === maxW ? minW : `${minW}–${maxW}`}
+            </span>
+          </div>
+          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24" preserveAspectRatio="none">
+            <path
+              d={pathD}
+              fill="none"
+              stroke="#f97316"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+              vectorEffect="non-scaling-stroke"
+            />
+            {coords.map((c, i) => (
+              <circle key={i} cx={c.x} cy={c.y} r="2.5" fill="#f97316" />
+            ))}
+          </svg>
+        </div>
+      )
+    }
+
     // The interactive body of a single exercise - video/timer/overflow
     // row, swap panel, rest picker, and the set-logging inputs. Shared
     // between the list view (one per card, all shown at once) and the
@@ -1236,6 +1363,15 @@ export default function WorkoutDayPicker({
                   className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
                 >
                   ⇄ Swap exercise
+                </button>
+                <button
+                  onClick={() => {
+                    setHistoryFor({ name: ex.name, label: displayName })
+                    setOverflowOpenFor(null)
+                  }}
+                  className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                >
+                  <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
                 </button>
               </div>
             </>
@@ -1731,6 +1867,15 @@ export default function WorkoutDayPicker({
                         className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
                       >
                         ⇄ Swap exercise
+                      </button>
+                      <button
+                        onClick={() => {
+                          setHistoryFor({ name: rep.name, label })
+                          setOverflowOpenFor(null)
+                        }}
+                        className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                      >
+                        <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
                       </button>
                     </div>
                   </>
@@ -2312,6 +2457,57 @@ export default function WorkoutDayPicker({
             )}
           </button>
         </div>
+
+        {/* Per-exercise History modal - opened from the "⋯" menu on any
+            exercise card (renderExerciseCard/renderGroupedCard both set
+            historyFor). Shows a weight-over-time chart (2+ numeric data
+            points only) plus the full chronological list below it,
+            drawn from the `history` prop that's already fetched for the
+            Completed Workouts tab - no separate query. */}
+        {historyFor && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="glass rounded-2xl p-5 max-w-md w-full max-h-[80vh] overflow-y-auto">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <p className="text-white font-semibold text-sm">{historyFor.label}</p>
+                <button
+                  onClick={() => setHistoryFor(null)}
+                  aria-label="Close"
+                  className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+
+              {historyEntries.length === 0 ? (
+                <p className="text-zinc-500 text-sm py-6 text-center">
+                  No history logged for this exercise yet.
+                </p>
+              ) : (
+                <>
+                  {historyChartPoints.length >= 2 && renderWeightChart(historyChartPoints)}
+                  <div className="space-y-2">
+                    {historyEntries.map((entry) => (
+                      <div key={entry.sessionId} className="glass rounded-xl px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="text-white text-xs font-medium">
+                            Week {entry.week}, Day {entry.day}
+                            {entry.label ? `: ${entry.label}` : ''}
+                          </span>
+                          <span className="text-zinc-500 text-[11px] whitespace-nowrap">
+                            {new Date(entry.completedAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <p className="text-zinc-400 text-xs">
+                          {entry.sets.map((s) => `${s.weight ?? '-'}x${s.reps ?? '-'}`).join(', ')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     )
   }
