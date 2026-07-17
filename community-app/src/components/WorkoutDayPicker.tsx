@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, useTransition } from 'react'
 import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/workouts/actions'
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
+import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap } from '@/types'
 
 interface SetRow {
@@ -94,6 +95,61 @@ function resolveExercises(
 
 const DRAFT_KEY_PREFIX = 'workout-draft-'
 
+// Set once someone dismisses the List-vs-Guided explainer shown the
+// first time they tap either Start button on a day preview - a plain
+// device-local flag (not a new profiles column) since "don't show me
+// this again" only ever needs to hold on the one device/browser it was
+// dismissed on.
+const MODE_EXPLAINER_SEEN_KEY = 'workout-mode-explainer-seen'
+
+const PHASE_LABELS_PREVIEW: Record<'warmup' | 'main' | 'cooldown', string> = {
+  warmup: 'Warm-up',
+  main: 'Main workout',
+  cooldown: 'Cool-down',
+}
+const PHASE_ORDER_PREVIEW: Array<'warmup' | 'main' | 'cooldown'> = ['warmup', 'main', 'cooldown']
+
+// Read-only preview grouping for a day, shown before someone commits to
+// List or Guided mode - phase-sectioned, with round patterns collapsed
+// into one "Round x N" block covering every repeat (mirrors the admin
+// editor's DayReadOnlyView, which Satish specifically pointed to as the
+// format to match), rather than the live logging view's one-card-per-
+// round-occurrence (see buildListGroups above) which is right for
+// actually logging sets but way too repetitive for a glance-at-it
+// preview.
+function buildPreviewSections(exercises: CellExercise[]) {
+  const blocks: EditableBlock[] = collapseExercisesToBlocks(
+    exercises.map((ex, i) => ({ ...ex, order: i }))
+  )
+  return PHASE_ORDER_PREVIEW.map((phase) => ({
+    phase,
+    items: groupPreviewBlocks(blocks.filter((b) => b.phase === phase)),
+  })).filter((section) => section.items.length > 0)
+}
+
+type PreviewItem =
+  | { type: 'single'; block: EditableBlock }
+  | { type: 'round'; groupId: string; blocks: EditableBlock[] }
+
+// Same idea as admin's itemsForPhase (AdminProgramsList.tsx) - a
+// standalone block is its own row, and every block sharing a groupId
+// (one full round pattern, already collapsed to a single setsCount by
+// collapseExercisesToBlocks) becomes one boxed "Round x N" item.
+function groupPreviewBlocks(blocks: EditableBlock[]): PreviewItem[] {
+  const items: PreviewItem[] = []
+  const seenGroups = new Set<string>()
+  for (const b of blocks) {
+    if (b.groupId == null) {
+      items.push({ type: 'single', block: b })
+      continue
+    }
+    if (seenGroups.has(b.groupId)) continue
+    seenGroups.add(b.groupId)
+    items.push({ type: 'round', groupId: b.groupId, blocks: blocks.filter((x) => x.groupId === b.groupId) })
+  }
+  return items
+}
+
 interface Draft {
   cell: Cell
   sets: Record<string, SetRow[]>
@@ -101,6 +157,12 @@ interface Draft {
   // on roughly the right exercise instead of restarting at the top.
   // Optional so old drafts saved before this existed still parse fine.
   guidedIndex?: number
+  // Per-set checkmarks (visual progress only, see checkedByExercise) -
+  // optional for the same reason as guidedIndex, plus the elapsed-timer
+  // start time so resuming a closed tab keeps counting from when the
+  // session actually started rather than restarting the clock.
+  checked?: Record<string, boolean[]>
+  startedAt?: number
 }
 
 // A session isn't saved to the server at all until "Finish Workout" -
@@ -119,10 +181,20 @@ function loadDraft(generationId: string): Draft | null {
   }
 }
 
-function saveDraft(generationId: string, cell: Cell, sets: Record<string, SetRow[]>, guidedIndex: number) {
+function saveDraft(
+  generationId: string,
+  cell: Cell,
+  sets: Record<string, SetRow[]>,
+  guidedIndex: number,
+  checked: Record<string, boolean[]>,
+  startedAt: number
+) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(DRAFT_KEY_PREFIX + generationId, JSON.stringify({ cell, sets, guidedIndex }))
+    window.localStorage.setItem(
+      DRAFT_KEY_PREFIX + generationId,
+      JSON.stringify({ cell, sets, guidedIndex, checked, startedAt })
+    )
   } catch {
     // Storage full/unavailable - worst case the draft just doesn't
     // resume, logging itself still works fine.
@@ -138,26 +210,49 @@ function clearDraft(generationId: string) {
   }
 }
 
-// True when this index is the first exercise of its round - i.e. the
-// round number here differs from the previous exercise's. Derived
-// straight from the array position rather than tracked through
-// session state, so it works identically whether arriving here via
-// normal forward progress or resuming a draft partway through.
-function isFirstOfRound(exercises: CellExercise[], index: number): boolean {
-  const round = exercises[index]?.round
-  if (round == null) return false
-  return exercises[index - 1]?.round !== round
+// Groups a day's flat exercise list the same way the list view's cards
+// are grouped: consecutive non-round entries sharing a base name
+// (matched on originalName, not the possibly-swapped display name, so
+// a mid-run swap never breaks the grouping) become one array, and
+// round-tagged entries are always their own singleton array. Extracted
+// to module scope (rather than computed inline once per render) since
+// both the guided player's step order and startCell/the draft-restore
+// effect need this exact same grouping - the guided player literally
+// walks this array one step at a time now, so it and the list view's
+// cards agree on where one "exercise" ends and the next begins.
+function buildListGroups(exercises: CellExercise[]): CellExercise[][] {
+  const groups: CellExercise[][] = []
+  for (const ex of exercises) {
+    const prev = groups[groups.length - 1]
+    if (
+      prev &&
+      ex.round == null &&
+      prev[0].round == null &&
+      baseName(ex.originalName) === baseName(prev[0].originalName)
+    ) {
+      prev.push(ex)
+    } else {
+      groups.push([ex])
+    }
+  }
+  return groups
 }
 
-// Same idea as isFirstOfRound, one level up - true the moment the
-// phase changes (warmup -> main -> cooldown), so a phase screen shows
-// at most 2-3 times across a whole day no matter how many rounds or
-// sets "main" contains. Content that never sets phase never triggers
-// this.
-function isFirstOfPhase(exercises: CellExercise[], index: number): boolean {
-  const phase = exercises[index]?.phase
+// Group-array counterparts to isFirstOfRound/isFirstOfPhase above - same
+// idea, just indexing into buildListGroups' output (one entry per
+// guided step) instead of the raw flat exercises array, since the
+// guided player now advances one step (a round exercise, or a whole
+// straight-set group) at a time rather than one raw row at a time.
+function isFirstOfRoundGroups(groups: CellExercise[][], index: number): boolean {
+  const round = groups[index]?.[0]?.round
+  if (round == null) return false
+  return groups[index - 1]?.[0]?.round !== round
+}
+
+function isFirstOfPhaseGroups(groups: CellExercise[][], index: number): boolean {
+  const phase = groups[index]?.[0]?.phase
   if (phase == null) return false
-  return exercises[index - 1]?.phase !== phase
+  return groups[index - 1]?.[0]?.phase !== phase
 }
 
 function phaseIntroText(phase: 'warmup' | 'main' | 'cooldown'): string {
@@ -261,8 +356,36 @@ export default function WorkoutDayPicker({
 }) {
   const [activeCell, setActiveCell] = useState<Cell | null>(null)
   const [setsByExercise, setSetsByExercise] = useState<Record<string, SetRow[]>>({})
+  // Boostcamp-style per-set checkmarks - purely a visual "I did this"
+  // marker for the member's own benefit (and what drives the top
+  // progress bar, see below), never a gate on what actually saves.
+  // finishWorkout still saves every row with a value in it regardless
+  // of whether it's checked. Keyed by ex.name, same convention as
+  // setsByExercise, and kept in lockstep with it by addSetRow/
+  // removeSetRow below.
+  const [checkedByExercise, setCheckedByExercise] = useState<Record<string, boolean[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
+  // The day someone tapped from the program grid, shown as a read-only
+  // preview (see buildPreviewSections) before they've committed to
+  // List or Guided - not the same as activeCell, which only gets set
+  // once they've actually tapped Start. Cleared the moment startCell
+  // runs, so the preview and the live session are never both on screen
+  // at once.
+  const [previewCell, setPreviewCell] = useState<Cell | null>(null)
+  // One-time List-vs-Guided explainer, shown the first time either
+  // Start button is tapped (see handleRequestStart) - dismissing it
+  // sets MODE_EXPLAINER_SEEN_KEY in localStorage so it never shows
+  // again on this device. pendingStart holds what to actually start
+  // once it's dismissed.
+  const [showModeExplainer, setShowModeExplainer] = useState(false)
+  const [pendingStart, setPendingStart] = useState<{ cell: Cell; mode: 'list' | 'guided' } | null>(null)
+  // When the current session started - drives the fixed top bar's
+  // elapsed-time display (see elapsedSeconds below). Persisted in the
+  // draft so a resumed tab keeps counting from the real start rather
+  // than restarting at 0.
+  const [sessionStartedAt, setSessionStartedAt] = useState<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState(0)
   // Which exercise names have had a video request sent this page
   // visit - purely local feedback so the button can say "Requested"
   // right away, not a persisted "don't ask again" flag. A fresh visit
@@ -363,6 +486,28 @@ export default function WorkoutDayPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restTimer === null])
 
+  // Ticks the fixed top bar's elapsed-session clock once a second while
+  // a day is actually open - separate from restTimer's own interval
+  // above since this one runs continuously for the whole session
+  // rather than counting down a fixed amount and stopping.
+  useEffect(() => {
+    // No reset-to-0 branch here on purpose: elapsedSeconds is only ever
+    // rendered inside the active-day view, so a stale value sitting
+    // around while activeCell is null is never actually seen - the
+    // next session just overwrites it the moment this effect re-runs
+    // with a fresh sessionStartedAt.
+    if (!activeCell || sessionStartedAt == null) return
+    // Sets the display immediately (not just once the first interval
+    // tick fires a second later) - same intentional sync-setState-in-
+    // effect pattern the restTimer interval effect above already uses.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setElapsedSeconds(Math.floor((Date.now() - sessionStartedAt) / 1000))
+    const id = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - sessionStartedAt) / 1000))
+    }, 1000)
+    return () => clearInterval(id)
+  }, [activeCell, sessionStartedAt])
+
   function startRestTimer(seconds: number) {
     // Any plain/rest timer start means whatever perSide timer might
     // have been running is no longer what's running - clearing this
@@ -406,23 +551,35 @@ export default function WorkoutDayPicker({
   // below, never concurrently with itself.
   function advanceGuided() {
     if (!activeCell) return
+    const groups = buildListGroups(activeCell.exercises)
     const nextIndex = guidedIndex + 1
-    if (nextIndex >= activeCell.exercises.length) {
+    if (nextIndex >= groups.length) {
       setGuidedPhase('done')
       return
     }
     setGuidedIndex(nextIndex)
     setGuidedPhase(
-      isFirstOfRound(activeCell.exercises, nextIndex) || isFirstOfPhase(activeCell.exercises, nextIndex)
+      isFirstOfRoundGroups(groups, nextIndex) || isFirstOfPhaseGroups(groups, nextIndex)
         ? 'roundIntro'
         : 'exercise'
     )
   }
 
-  // Tapping "Done" on the current exercise either starts its rest
-  // timer (most circuit moves have one) or, for the rare exercise with
-  // no rest configured, skips straight to the next one.
-  function handleGuidedDone(ex: CellExercise) {
+  // Tapping "Done" on the current guided step. A straight-set group
+  // (more than one set shown together on the same big card, see task
+  // #30) never forces a rest interstitial between sets or before the
+  // next exercise - Satish's call was that an automatic rest screen
+  // doesn't make sense there ("it's not like a random timer... most
+  // people will just wait"); each set row keeps its own optional rest
+  // button instead (same as list view), so resting is available but
+  // never gates moving on. A single round exercise still starts its
+  // configured rest and shows the rest screen, exactly as before.
+  function handleGuidedDone(group: CellExercise[]) {
+    if (group.length > 1) {
+      advanceGuided()
+      return
+    }
+    const ex = group[0]
     if (ex.restSeconds != null) {
       startRestTimer(ex.restSeconds)
       setGuidedPhase('rest')
@@ -499,15 +656,24 @@ export default function WorkoutDayPicker({
     const draft = loadDraft(generationId)
     if (!draft) return
     if (allCells.some((c) => c.key === draft.cell.key)) {
+      // draft.startedAt is only ever missing on a draft saved before
+      // the elapsed-timer field existed - falling back to "now" just
+      // means that one old draft's clock starts over, not a crash.
+      // This whole effect only ever runs once, gated by restoredRef,
+      // so this Date.now() can't produce the "unstable across
+      // re-renders" result the purity rule is guarding against.
+      // eslint-disable-next-line react-hooks/purity
+      const resumedStartedAt = draft.startedAt ?? Date.now()
       setActiveCell(draft.cell)
       setSetsByExercise(draft.sets)
+      setCheckedByExercise(draft.checked ?? {})
+      setSessionStartedAt(resumedStartedAt)
       setCollapsedPhases(new Set(['warmup', 'cooldown']))
+      const groups = buildListGroups(draft.cell.exercises)
       const index = draft.guidedIndex ?? 0
       setGuidedIndex(index)
       setGuidedPhase(
-        isFirstOfRound(draft.cell.exercises, index) || isFirstOfPhase(draft.cell.exercises, index)
-          ? 'roundIntro'
-          : 'exercise'
+        isFirstOfRoundGroups(groups, index) || isFirstOfPhaseGroups(groups, index) ? 'roundIntro' : 'exercise'
       )
       setViewMode('list')
     } else {
@@ -521,19 +687,28 @@ export default function WorkoutDayPicker({
   // Keeps the draft in sync with every change while a session's open
   // - this is what actually makes the resume above possible.
   useEffect(() => {
-    if (!activeCell) return
-    saveDraft(generationId, activeCell, setsByExercise, guidedIndex)
-  }, [generationId, activeCell, setsByExercise, guidedIndex])
+    if (!activeCell || sessionStartedAt == null) return
+    saveDraft(generationId, activeCell, setsByExercise, guidedIndex, checkedByExercise, sessionStartedAt)
+  }, [generationId, activeCell, setsByExercise, guidedIndex, checkedByExercise, sessionStartedAt])
 
-  function startCell(cell: Cell) {
+  // mode defaults to 'list' for anywhere that isn't the new day-preview
+  // Start buttons (handleRequestStart) - every existing caller (resuming
+  // a draft, the old "Start Now" flow) keeps landing in list view first,
+  // same as before.
+  function startCell(cell: Cell, mode: 'list' | 'guided' = 'list') {
     // Pre-fill one row per target set (e.g. "3-5" -> 3 rows) - just a
     // starting point, the +/- controls below let them adjust freely.
     const initial: Record<string, SetRow[]> = {}
+    const initialChecked: Record<string, boolean[]> = {}
     for (const ex of cell.exercises) {
       const count = parseTargetSetCount(ex.sets)
       initial[ex.name] = Array.from({ length: count }, () => ({ weight: '', reps: '' }))
+      initialChecked[ex.name] = Array.from({ length: count }, () => false)
     }
     setSetsByExercise(initial)
+    setCheckedByExercise(initialChecked)
+    setSessionStartedAt(Date.now())
+    setPreviewCell(null)
     setActiveCell(cell)
     setJustFinished(false)
     setSwapPanelFor(null)
@@ -543,10 +718,9 @@ export default function WorkoutDayPicker({
     setRestTimer(null)
     setCollapsedPhases(new Set(['warmup', 'cooldown']))
     setGuidedIndex(0)
-    setGuidedPhase(
-      isFirstOfRound(cell.exercises, 0) || isFirstOfPhase(cell.exercises, 0) ? 'roundIntro' : 'exercise'
-    )
-    setViewMode('list')
+    const groups = buildListGroups(cell.exercises)
+    setGuidedPhase(isFirstOfRoundGroups(groups, 0) || isFirstOfPhaseGroups(groups, 0) ? 'roundIntro' : 'exercise')
+    setViewMode(cell.exercises.length > 1 ? mode : 'list')
   }
 
   // Single close action for the session - replaces what used to be
@@ -567,6 +741,7 @@ export default function WorkoutDayPicker({
     }
     clearDraft(generationId)
     setActiveCell(null)
+    setSessionStartedAt(null)
     setSwapPanelFor(null)
     setSwapInput('')
     setOverflowOpenFor(null)
@@ -633,6 +808,10 @@ export default function WorkoutDayPicker({
       ...prev,
       [exerciseName]: [...(prev[exerciseName] || []), { weight: '', reps: '' }],
     }))
+    setCheckedByExercise((prev) => ({
+      ...prev,
+      [exerciseName]: [...(prev[exerciseName] || []), false],
+    }))
   }
 
   function removeSetRow(exerciseName: string, index: number) {
@@ -641,6 +820,69 @@ export default function WorkoutDayPicker({
       rows.splice(index, 1)
       return { ...prev, [exerciseName]: rows }
     })
+    setCheckedByExercise((prev) => {
+      const rows = [...(prev[exerciseName] || [])]
+      rows.splice(index, 1)
+      return { ...prev, [exerciseName]: rows }
+    })
+  }
+
+  // Purely visual progress markers - see checkedByExercise above.
+  // toggleAllChecked checks every set at once if any are unchecked, or
+  // unchecks all of them if every set was already checked (so tapping
+  // it a second time is an easy undo rather than a dead end).
+  function toggleSetChecked(exerciseName: string, index: number) {
+    setCheckedByExercise((prev) => {
+      const rows = [...(prev[exerciseName] || [])]
+      rows[index] = !rows[index]
+      return { ...prev, [exerciseName]: rows }
+    })
+  }
+
+  function toggleAllChecked(exerciseName: string, count: number) {
+    setCheckedByExercise((prev) => {
+      const rows = prev[exerciseName] || []
+      const allChecked = rows.length === count && rows.every(Boolean)
+      return { ...prev, [exerciseName]: Array.from({ length: count }, () => !allChecked) }
+    })
+  }
+
+  // A day-preview Start button was tapped (see handleRequestStart in
+  // the render below) and the explainer was either already seen or has
+  // just been dismissed - actually enter the session.
+  function commitStart(cell: Cell, mode: 'list' | 'guided') {
+    setPreviewCell(null)
+    startCell(cell, mode)
+  }
+
+  // First stop for both Start buttons on the day preview - shows the
+  // one-time List-vs-Guided explainer if it hasn't been seen on this
+  // device yet, otherwise goes straight into the session.
+  function handleRequestStart(cell: Cell, mode: 'list' | 'guided') {
+    const alreadySeen =
+      typeof window !== 'undefined' && window.localStorage.getItem(MODE_EXPLAINER_SEEN_KEY) === '1'
+    if (!alreadySeen) {
+      setPendingStart({ cell, mode })
+      setShowModeExplainer(true)
+      return
+    }
+    commitStart(cell, mode)
+  }
+
+  function dismissModeExplainer() {
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(MODE_EXPLAINER_SEEN_KEY, '1')
+      } catch {
+        // Storage unavailable - worst case the explainer just shows
+        // again next time, not a big deal either way.
+      }
+    }
+    setShowModeExplainer(false)
+    if (pendingStart) {
+      commitStart(pendingStart.cell, pendingStart.mode)
+      setPendingStart(null)
+    }
   }
 
   function finishWorkout() {
@@ -669,6 +911,143 @@ export default function WorkoutDayPicker({
     })
   }
 
+  // Read-only preview of a day - tapped from the program grid below,
+  // shown before committing to List or Guided (task #27). Phase-
+  // sectioned, round patterns collapsed to one "Round x N" box each
+  // (see buildPreviewSections), modeled directly on the admin editor's
+  // DayReadOnlyView, which is the format Satish pointed to as "pretty
+  // solid" for a member-facing glance-at-it view. Both sets and reps
+  // are always shown (never hidden behind a round's multiplier) per his
+  // explicit ask not to leave that out.
+  if (previewCell && !activeCell) {
+    const sections = buildPreviewSections(previewCell.exercises)
+    const canGuide = previewCell.exercises.length > 1
+    return (
+      <div>
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <h2 className="text-white text-lg font-bold">
+              Week {previewCell.week}, Day {previewCell.day}: {previewCell.label}
+            </h2>
+            <p className="text-zinc-500 text-xs mt-0.5">
+              {previewCell.exercises.length} exercise{previewCell.exercises.length === 1 ? '' : 's'}
+            </p>
+            {previewCell.notes && <p className="text-orange-400/80 text-xs mt-1">{previewCell.notes}</p>}
+          </div>
+          <button
+            onClick={() => setPreviewCell(null)}
+            aria-label="Back to program"
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <line x1="3" y1="3" x2="13" y2="13" strokeLinecap="round" />
+              <line x1="13" y1="3" x2="3" y2="13" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-3">
+          {sections.map((section) => (
+            <div key={section.phase}>
+              <p className="text-orange-400 text-xs font-bold uppercase tracking-wider mb-2">
+                {PHASE_LABELS_PREVIEW[section.phase]}
+              </p>
+              <div className="space-y-1.5">
+                {section.items.map((item) =>
+                  item.type === 'single' ? (
+                    <div
+                      key={item.block.id}
+                      className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3"
+                    >
+                      <span className="text-white text-sm">{item.block.name}</span>
+                      <span className="text-zinc-500 text-xs text-right shrink-0">
+                        {item.block.setsCount} x {item.block.reps}
+                        {item.block.restSeconds ? (
+                          <span className="text-zinc-600"> · rest {formatDurationLabel(item.block.restSeconds)}</span>
+                        ) : null}
+                        {item.block.timerSeconds ? (
+                          <span className="text-zinc-600"> · {formatDurationLabel(item.block.timerSeconds)} timer</span>
+                        ) : null}
+                      </span>
+                    </div>
+                  ) : (
+                    <div key={item.groupId} className="glass rounded-xl px-3 py-2.5">
+                      <p className="text-zinc-400 text-xs font-medium mb-1.5">
+                        Round x {item.blocks[0].setsCount}
+                      </p>
+                      <div className="space-y-1">
+                        {item.blocks.map((b) => (
+                          <div key={b.id} className="flex items-center justify-between gap-3">
+                            <span className="text-white text-sm">{b.name}</span>
+                            <span className="text-zinc-500 text-xs text-right shrink-0">
+                              {b.reps}
+                              {b.restSeconds ? (
+                                <span className="text-zinc-600"> · rest {formatDurationLabel(b.restSeconds)}</span>
+                              ) : null}
+                              {b.timerSeconds ? (
+                                <span className="text-zinc-600"> · {formatDurationLabel(b.timerSeconds)} timer</span>
+                              ) : null}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 space-y-2">
+          <button
+            onClick={() => handleRequestStart(previewCell, 'list')}
+            className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
+          >
+            Start (List)
+          </button>
+          {canGuide && (
+            <button
+              onClick={() => handleRequestStart(previewCell, 'guided')}
+              className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold py-3 rounded-xl transition"
+            >
+              Start (Guided)
+            </button>
+          )}
+        </div>
+
+        {/* One-time List-vs-Guided explainer (task #28) - descriptive
+            only, no links per Satish's answer, dismissing it commits
+            whichever Start button triggered it (see dismissModeExplainer)
+            and never shows again on this device. */}
+        {showModeExplainer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="glass rounded-2xl p-5 max-w-sm w-full">
+              <p className="text-white font-semibold mb-2">List or Guided?</p>
+              <p className="text-zinc-400 text-sm leading-relaxed mb-2">
+                List shows every exercise on one screen - log sets at your own pace and jump around
+                freely.
+              </p>
+              <p className="text-zinc-400 text-sm leading-relaxed mb-4">
+                Guided walks you through one exercise (or one round) at a time, with rest between each
+                one - better if you&apos;d rather be led through it.
+              </p>
+              <p className="text-zinc-600 text-xs mb-4">
+                You can still switch between the two at any point during a session.
+              </p>
+              <button
+                onClick={dismissModeExplainer}
+                className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-2.5 rounded-xl transition"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   if (activeCell) {
     // Suggestions only, not a restriction - the input still accepts
     // free text, this just surfaces exercises we already have videos
@@ -693,25 +1072,42 @@ export default function WorkoutDayPicker({
     const totalRounds = new Set(
       exercises.map((ex) => ex.round).filter((r): r is number => r != null)
     ).size
-    const currentEx: CellExercise | undefined = exercises[guidedIndex]
-    const currentRound = currentEx?.round ?? null
-    const roundExercises = currentRound != null ? exercises.filter((ex) => ex.round === currentRound) : []
-    const posInRound = currentEx ? roundExercises.indexOf(currentEx) + 1 : 0
     // List-view-only grouping: consecutive non-round entries sharing a
     // base name (Squats (1), (2), (3)) are one visual card with
     // stacked set rows, instead of three near-identical cards in a
     // row. Round-tagged entries never merge (their names carry "Round
     // N", not a bare "(N)"), so they always come through as their own
-    // singleton group and render exactly as before. Guided view still
-    // walks the raw exercises array one entry at a time regardless -
-    // this grouping is purely cosmetic for the list.
-    const listGroups: CellExercise[][] = []
-    for (const ex of exercises) {
-      const prev = listGroups[listGroups.length - 1]
-      if (prev && ex.round == null && prev[0].round == null && baseName(ex.originalName) === baseName(prev[0].originalName)) {
-        prev.push(ex)
+    // singleton group and render exactly as before. The guided player
+    // now walks this exact same grouping one step at a time (see
+    // buildListGroups) rather than the raw exercises array, so a
+    // straight-set run is one guided screen too (task #30) instead of
+    // three near-identical ones in a row.
+    const listGroups = buildListGroups(exercises)
+    // This step's group in the guided player - a single round exercise
+    // (length 1) or a whole straight-set run shown together (length >
+    // 1, see renderGroupedCard's large mode below).
+    const currentGroup: CellExercise[] = listGroups[guidedIndex] ?? []
+    const currentEx: CellExercise | undefined = currentGroup[0]
+    const isGroupedGuidedStep = currentGroup.length > 1
+    const currentRound = currentEx?.round ?? null
+    const roundExercises = currentRound != null ? exercises.filter((ex) => ex.round === currentRound) : []
+    const posInRound = currentEx ? roundExercises.indexOf(currentEx) + 1 : 0
+    // One outer box per round occurrence (task #29) - consecutive
+    // listGroups sharing the same round number (each already a
+    // singleton, since round-tagged entries never merge in listGroups
+    // above) collapse into one array here, rendered as one glass card
+    // with every exercise in that round as an internal row instead of
+    // several near-identical stacked cards. Straight-set groups
+    // (round == null) are left exactly as they are - this only ever
+    // touches round-tagged content.
+    const roundBoxes: CellExercise[][][] = []
+    for (const group of listGroups) {
+      const round = group[0].round
+      const prevBox = roundBoxes[roundBoxes.length - 1]
+      if (round != null && prevBox && prevBox[0][0].round === round) {
+        prevBox.push(group)
       } else {
-        listGroups.push([ex])
+        roundBoxes.push([group])
       }
     }
     // List-view-only phase sectioning, one level up from listGroups
@@ -722,15 +1118,17 @@ export default function WorkoutDayPicker({
     // sets phase (phase undefined on every exercise) collapses to a
     // single null-phase section with no header/toggle at all, so older
     // programs that don't use warmup/main/cooldown render exactly as
-    // they did before this existed.
-    const phaseSections: { phase: 'warmup' | 'main' | 'cooldown' | null; groups: CellExercise[][] }[] = []
-    for (const group of listGroups) {
-      const phase = group[0].phase ?? null
+    // they did before this existed. Built from roundBoxes rather than
+    // listGroups directly so a round box is never split across two
+    // phase sections.
+    const phaseSections: { phase: 'warmup' | 'main' | 'cooldown' | null; boxes: CellExercise[][][] }[] = []
+    for (const box of roundBoxes) {
+      const phase = box[0][0].phase ?? null
       const prevSection = phaseSections[phaseSections.length - 1]
       if (prevSection && prevSection.phase === phase) {
-        prevSection.groups.push(group)
+        prevSection.boxes.push(box)
       } else {
-        phaseSections.push({ phase, groups: [group] })
+        phaseSections.push({ phase, boxes: [box] })
       }
     }
     // Only rendered while the roundIntro screen is showing - whether
@@ -739,8 +1137,20 @@ export default function WorkoutDayPicker({
     // main). Phase takes headline priority when both happen at once
     // (main phase's round 1), since "Time for the main workout" says
     // more than "Round 1 starts" would on its own.
-    const introIsPhaseFirst = isFirstOfPhase(exercises, guidedIndex)
+    const introIsPhaseFirst = isFirstOfPhaseGroups(listGroups, guidedIndex)
     const introPhase = introIsPhaseFirst ? currentEx?.phase ?? null : null
+    // Drives the fixed top bar's progress fill (task #32) - one unit
+    // per exercise instance (matches setsByExercise/checkedByExercise's
+    // keying), "done" meaning every one of that exercise's sets is
+    // checked off, not just logged. Deliberately per-exercise rather
+    // than per-set: a round with 3 exercises and a straight-set run
+    // with 3 sets should both read as "3 things to get through," not
+    // wildly different granularities.
+    const completedExerciseUnits = exercises.filter((ex) => {
+      const rows = checkedByExercise[ex.name]
+      return !!rows && rows.length > 0 && rows.every(Boolean)
+    }).length
+    const progressFraction = exercises.length > 0 ? completedExerciseUnits / exercises.length : 0
 
     // The interactive body of a single exercise - video/timer/overflow
     // row, swap panel, rest picker, and the set-logging inputs. Shared
@@ -750,16 +1160,34 @@ export default function WorkoutDayPicker({
     // this logic. Rest is deliberately not shown inline here anymore -
     // list view surfaces it as a strip between cards instead (see
     // below), and guided view's "Done" button already states it.
-    function renderExerciseCard(ex: CellExercise, options?: { large?: boolean }) {
+    function renderExerciseCard(ex: CellExercise, options?: { large?: boolean; boxed?: boolean }) {
       const large = options?.large ?? false
+      // boxed=false is used inside a round box (see the "one box per
+      // round" grouping above) - the outer glass/rounded/padding treatment
+      // is owned by the round box itself in that case, so this just
+      // renders its own content flush, with a lighter top divider taking
+      // the place of a full separate card. Every other control on the
+      // card (video, timer, swap, set inputs, checkmarks) is unchanged.
+      const boxed = options?.boxed ?? true
       const last = lastByExercise[ex.name]
       const video = findExerciseVideo(ex.name, videos)
       const alreadyRequested = requestedVideos.has(ex.name)
       const swapOpen = swapPanelFor === ex.originalName
       const overflowOpen = overflowOpenFor === ex.originalName
       const restPickerOpen = restPickerFor === ex.originalName
+      const setRows = setsByExercise[ex.name] || []
+      const checkedRows = checkedByExercise[ex.name] || []
+      const allChecked = setRows.length > 0 && checkedRows.length === setRows.length && checkedRows.every(Boolean)
       return (
-        <div className={large ? 'glass rounded-2xl p-6 text-center' : 'glass rounded-2xl p-3.5'}>
+        <div
+          className={
+            large
+              ? 'glass rounded-2xl p-6 text-center'
+              : boxed
+                ? 'glass rounded-2xl p-3.5'
+                : 'pt-2.5'
+          }
+        >
           <div
             className={
               large
@@ -835,7 +1263,18 @@ export default function WorkoutDayPicker({
               )}
             </div>
 
-            <div className="relative">
+            <div className="flex items-center gap-2 shrink-0">
+              {setRows.length > 0 && (
+                <button
+                  onClick={() => toggleAllChecked(ex.name, setRows.length)}
+                  className={`text-xs font-medium transition ${
+                    allChecked ? 'text-orange-400 hover:text-orange-300' : 'text-zinc-500 hover:text-white'
+                  }`}
+                >
+                  {allChecked ? '✓ All checked' : 'Check all'}
+                </button>
+              )}
+              <div className="relative">
               <button
                 onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
                 aria-label="More options"
@@ -872,6 +1311,7 @@ export default function WorkoutDayPicker({
                   </div>
                 </>
               )}
+              </div>
             </div>
           </div>
 
@@ -990,6 +1430,17 @@ export default function WorkoutDayPicker({
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
                 />
                 <button
+                  onClick={() => toggleSetChecked(ex.name, i)}
+                  aria-label={checkedRows[i] ? 'Mark set incomplete' : 'Mark set complete'}
+                  className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition ${
+                    checkedRows[i]
+                      ? 'bg-orange-500 text-black'
+                      : 'border border-zinc-700 text-transparent hover:border-zinc-500'
+                  }`}
+                >
+                  ✓
+                </button>
+                <button
                   onClick={() => removeSetRow(ex.name, i)}
                   aria-label="Remove set"
                   className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
@@ -1073,7 +1524,8 @@ export default function WorkoutDayPicker({
     // Add/remove-set is deliberately omitted here (unlike the plain
     // card) since each entry in the group is already exactly one
     // predetermined set, not an open-ended list to extend.
-    function renderGroupedCard(group: CellExercise[]) {
+    function renderGroupedCard(group: CellExercise[], options?: { large?: boolean }) {
+      const large = options?.large ?? false
       const rep = group[0]
       const last = lastByExercise[rep.name]
       const video = findExerciseVideo(rep.name, videos)
@@ -1082,6 +1534,16 @@ export default function WorkoutDayPicker({
       const overflowOpen = overflowOpenFor === rep.originalName
       const restPickerOpen = restPickerFor === rep.originalName
       const label = baseName(rep.name)
+      const allChecked = group.every((ex) => (checkedByExercise[ex.name] || [])[0])
+      function toggleAllCheckedForGroup() {
+        setCheckedByExercise((prev) => {
+          const next = { ...prev }
+          for (const ex of group) {
+            next[ex.name] = [!allChecked]
+          }
+          return next
+        })
+      }
       // When the last set's rest button is the final thing in the card,
       // the card's normal p-3.5 bottom padding (matched to its top/side
       // padding) reads as noticeably more open than the ~4px gap above
@@ -1089,12 +1551,24 @@ export default function WorkoutDayPicker({
       // visual weight a full input row does, so the standard padding
       // looks uneven trailing it specifically. Tightening just the
       // bottom edge in that one case keeps every other card (ending in
-      // a normal set row) at the standard padding.
+      // a normal set row) at the standard padding. Large mode (the
+      // guided player's collapsed straight-set screen, task #30) skips
+      // this micro-adjustment - it's the only thing on screen there, so
+      // consistent, slightly roomier padding reads better than it does
+      // packed into the list alongside other cards.
       const lastEntryHasRest = group[group.length - 1].restSeconds != null
       return (
-        <div className={lastEntryHasRest ? 'glass rounded-2xl pt-3.5 px-3.5 pb-2' : 'glass rounded-2xl p-3.5'}>
+        <div
+          className={
+            large
+              ? 'glass rounded-2xl p-5'
+              : lastEntryHasRest
+                ? 'glass rounded-2xl pt-3.5 px-3.5 pb-2'
+                : 'glass rounded-2xl p-3.5'
+          }
+        >
           <div className="flex items-baseline justify-between mb-0.5 gap-2">
-            <p className="text-white font-semibold">{label}</p>
+            <p className={large ? 'text-white text-xl font-bold' : 'text-white font-semibold'}>{label}</p>
             <p className="text-zinc-500 text-xs whitespace-nowrap">
               Target: {group.length} x {rep.reps}
             </p>
@@ -1155,43 +1629,53 @@ export default function WorkoutDayPicker({
               )}
             </div>
 
-            <div className="relative">
+            <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => setOverflowOpenFor(overflowOpen ? null : rep.originalName)}
-                aria-label="More options"
-                className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+                onClick={toggleAllCheckedForGroup}
+                className={`text-xs font-medium transition ${
+                  allChecked ? 'text-orange-400 hover:text-orange-300' : 'text-zinc-500 hover:text-white'
+                }`}
               >
-                ⋯
+                {allChecked ? '✓ All checked' : 'Check all'}
               </button>
-              {overflowOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
-                  <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
-                    {!video && (
+              <div className="relative">
+                <button
+                  onClick={() => setOverflowOpenFor(overflowOpen ? null : rep.originalName)}
+                  aria-label="More options"
+                  className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+                >
+                  ⋯
+                </button>
+                {overflowOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
+                    <div className="absolute right-0 top-full mt-1 min-w-[170px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                      {!video && (
+                        <button
+                          onClick={() => {
+                            handleRequestVideo(rep.name)
+                            setOverflowOpenFor(null)
+                          }}
+                          disabled={alreadyRequested}
+                          className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                        >
+                          {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                        </button>
+                      )}
                       <button
                         onClick={() => {
-                          handleRequestVideo(rep.name)
+                          setSwapPanelFor(rep.originalName)
+                          setSwapInput('')
                           setOverflowOpenFor(null)
                         }}
-                        disabled={alreadyRequested}
-                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
                       >
-                        {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                        ⇄ Swap exercise
                       </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setSwapPanelFor(rep.originalName)
-                        setSwapInput('')
-                        setOverflowOpenFor(null)
-                      }}
-                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                    >
-                      ⇄ Swap exercise
-                    </button>
-                  </div>
-                </>
-              )}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1329,6 +1813,17 @@ export default function WorkoutDayPicker({
                       onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
                       className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
                     />
+                    <button
+                      onClick={() => toggleSetChecked(ex.name, 0)}
+                      aria-label={(checkedByExercise[ex.name] || [])[0] ? 'Mark set incomplete' : 'Mark set complete'}
+                      className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition ${
+                        (checkedByExercise[ex.name] || [])[0]
+                          ? 'bg-orange-500 text-black'
+                          : 'border border-zinc-700 text-transparent hover:border-zinc-500'
+                      }`}
+                    >
+                      ✓
+                    </button>
                   </div>
                   {ex.restSeconds != null && (
                     <div className="flex justify-end">
@@ -1356,20 +1851,55 @@ export default function WorkoutDayPicker({
           ))}
         </datalist>
 
+        {/* Combined fixed bar, visible for the whole time a day is
+            open - a thicker progress track (per exercise, once every
+            one of its sets is checked off - see progressFraction and
+            the checkmark UI in renderExerciseCard/renderGroupedCard),
+            the elapsed session clock, and a one-tap Discard. Replaces
+            what used to be a plain "4/9 exercises" text count with
+            something that's actually glanceable while scrolled deep
+            into a long day, and gives Discard a permanent, predictable
+            spot instead of only the small ✕ in the header below (still
+            there too - this is just the always-visible version).
+            Positioned right under the app header, with the rest-timer
+            pill (below) pushed down further so the two never overlap. */}
+        <div className="fixed top-14 sm:top-16 inset-x-0 z-40 bg-[#0a0a0a]/95 backdrop-blur border-b border-zinc-800">
+          <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-3">
+            <span className="text-zinc-400 text-xs font-semibold tabular-nums shrink-0">
+              {formatRestTime(elapsedSeconds)}
+            </span>
+            <div className="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-orange-500 rounded-full transition-all"
+                style={{ width: `${Math.round(progressFraction * 100)}%` }}
+              />
+            </div>
+            <button
+              onClick={handleCloseSession}
+              className="text-zinc-500 hover:text-red-400 text-xs font-semibold shrink-0 transition"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+        {/* Spacer so page content starts below the fixed bar above
+            instead of tucked underneath it. */}
+        <div className="pt-12" />
+
         {/* Fixed to the viewport, not the page - stays visible no
             matter how far into the exercise list you've scrolled,
             unlike the old version which lived inside the sticky
             Finish Workout bar and only came into view once you'd
-            scrolled all the way back down. Offset below both header
-            heights (top-16/top-20) so it doesn't sit under the logo
-            and notification bell at the very top of the page.
-            Suppressed during the guided player's own rest screen (shows
-            this same countdown as its main content) and while the
-            guided player's big in-card timer panel is showing this
-            exact exercise's own running timer (renderExerciseCard,
-            large mode) - both would otherwise duplicate this same
-            countdown on screen at once. Still shown for every other
-            case: list view, a custom preset timer, etc. */}
+            scrolled all the way back down. Offset below both the app
+            header and the combined progress bar above, so it doesn't
+            sit under either. Suppressed during the guided player's own
+            rest screen (shows this same countdown as its main content)
+            and while the guided player's big in-card timer panel is
+            showing this exact exercise's own running timer
+            (renderExerciseCard, large mode) - both would otherwise
+            duplicate this same countdown on screen at once. Still
+            shown for every other case: list view, a custom preset
+            timer, etc. */}
         {restTimer &&
           !(effectiveMode === 'guided' && guidedPhase === 'rest') &&
           !(
@@ -1377,7 +1907,7 @@ export default function WorkoutDayPicker({
             guidedPhase === 'exercise' &&
             sideTimerActive?.originalName === currentEx?.originalName
           ) && (
-          <div className="fixed top-16 sm:top-20 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
+          <div className="fixed top-28 sm:top-32 right-4 z-40 flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full shadow-lg pl-3 pr-2 py-2">
             {/* sideTimerActive is only ever set by startSideTimer (an
                 exercise's own work timer, e.g. a 30s plank) - every other
                 way this pill's countdown gets started goes through
@@ -1466,30 +1996,57 @@ export default function WorkoutDayPicker({
             )}
             <div className="space-y-3">
               {phaseSections.map((section, sectionIndex) => {
-                const groupsJsx = section.groups.map((group) => {
-                  const first = group[0]
+                const sectionExerciseCount = section.boxes.reduce((sum, box) => sum + box.length, 0)
+                const boxesJsx = section.boxes.map((box) => {
+                  const isRoundBox = box[0][0].round != null
+                  const first = box[0][0]
                   const i = exercises.indexOf(first)
-                  const isRoundCard = first.round != null
+                  // Rest after the round box's very last exercise leads
+                  // into the next round/phase, not another exercise
+                  // inside this same box - shown outside the box, same
+                  // as before, rather than as one more internal row.
+                  const lastInBox = box[box.length - 1][0]
                   return (
                     <Fragment key={first.originalName}>
-                      {isRoundCard && isFirstOfRound(exercises, i) && (
-                        <p
-                          className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${
-                            i === 0 ? '' : 'pt-3 border-t border-zinc-800'
-                          }`}
-                        >
+                      {isRoundBox && (
+                        <p className={`text-orange-400 text-xs font-bold uppercase tracking-wider ${i === 0 ? '' : 'pt-3 border-t border-zinc-800'}`}>
                           Round {first.round}
                         </p>
                       )}
-                      {isRoundCard ? renderExerciseCard(first) : renderGroupedCard(group)}
-                      {isRoundCard && first.restSeconds != null && i < exercises.length - 1 && (
+                      {isRoundBox ? (
+                        <div className="glass rounded-2xl p-3.5 divide-y divide-zinc-800">
+                          {box.map((group, idx) => {
+                            const ex = group[0]
+                            return (
+                              <Fragment key={ex.originalName}>
+                                {renderExerciseCard(ex, { boxed: false })}
+                                {ex.restSeconds != null && idx < box.length - 1 && (
+                                  <div className="flex items-center gap-2 py-2">
+                                    <div className="flex-1 h-px bg-zinc-800" />
+                                    <button
+                                      onClick={() => startRestTimer(ex.restSeconds!)}
+                                      className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
+                                    >
+                                      ▶ Rest {formatDurationLabel(ex.restSeconds)}
+                                    </button>
+                                    <div className="flex-1 h-px bg-zinc-800" />
+                                  </div>
+                                )}
+                              </Fragment>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        renderGroupedCard(box[0])
+                      )}
+                      {isRoundBox && lastInBox.restSeconds != null && exercises.indexOf(lastInBox) < exercises.length - 1 && (
                         <div className="flex items-center gap-2 -mt-2">
                           <div className="flex-1 h-px bg-zinc-800" />
                           <button
-                            onClick={() => startRestTimer(first.restSeconds!)}
+                            onClick={() => startRestTimer(lastInBox.restSeconds!)}
                             className="text-orange-400 hover:text-orange-300 text-xs font-medium whitespace-nowrap transition"
                           >
-                            ▶ Rest {formatDurationLabel(first.restSeconds)}
+                            ▶ Rest {formatDurationLabel(lastInBox.restSeconds)}
                           </button>
                           <div className="flex-1 h-px bg-zinc-800" />
                         </div>
@@ -1504,7 +2061,7 @@ export default function WorkoutDayPicker({
                 if (section.phase == null) {
                   return (
                     <div key={`section-${sectionIndex}`} className="space-y-3">
-                      {groupsJsx}
+                      {boxesJsx}
                     </div>
                   )
                 }
@@ -1521,14 +2078,14 @@ export default function WorkoutDayPicker({
                       className="w-full flex items-center justify-between gap-2 mb-3"
                     >
                       <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
-                        {phaseSectionLabel(phase)} · {section.groups.length} exercise
-                        {section.groups.length === 1 ? '' : 's'}
+                        {phaseSectionLabel(phase)} · {sectionExerciseCount} exercise
+                        {sectionExerciseCount === 1 ? '' : 's'}
                       </span>
                       <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
                         {collapsed ? 'Show ▾' : 'Hide ▴'}
                       </span>
                     </button>
-                    {!collapsed && <div className="space-y-3">{groupsJsx}</div>}
+                    {!collapsed && <div className="space-y-3">{boxesJsx}</div>}
                   </div>
                 )
               })}
@@ -1547,7 +2104,7 @@ export default function WorkoutDayPicker({
               <p className="text-zinc-500 text-xs text-center">
                 {currentRound != null
                   ? `Round ${currentRound} of ${totalRounds} · Exercise ${posInRound} of ${roundExercises.length}`
-                  : `Exercise ${guidedIndex + 1} of ${exercises.length}`}
+                  : `Exercise ${guidedIndex + 1} of ${listGroups.length}`}
               </p>
             )}
 
@@ -1587,10 +2144,10 @@ export default function WorkoutDayPicker({
                     as they start resting, before the next card
                     replaces this screen. */}
                 <div className="flex items-center justify-between gap-2 mb-2.5 text-left">
-                  <span className="text-zinc-500 text-xs">Finished {currentEx.name}</span>
-                  {exercises[guidedIndex + 1] && (
+                  <span className="text-zinc-500 text-xs">Finished {baseName(currentEx.name)}</span>
+                  {listGroups[guidedIndex + 1] && (
                     <span className="text-zinc-500 text-xs text-right">
-                      Up next: {exercises[guidedIndex + 1].name}
+                      Up next: {baseName(listGroups[guidedIndex + 1][0].name)}
                     </span>
                   )}
                 </div>
@@ -1623,14 +2180,25 @@ export default function WorkoutDayPicker({
 
             {guidedPhase === 'exercise' && currentEx && (
               <>
-                {renderExerciseCard(currentEx, { large: true })}
+                {/* A straight-set run (more than one set) collapses to
+                    one big card showing every set together, same as the
+                    list view's grouped card just sized up - task #30.
+                    A single round exercise still gets its own full-focus
+                    card exactly as before. */}
+                {isGroupedGuidedStep
+                  ? renderGroupedCard(currentGroup, { large: true })
+                  : renderExerciseCard(currentEx, { large: true })}
                 <button
-                  onClick={() => handleGuidedDone(currentEx)}
+                  onClick={() => handleGuidedDone(currentGroup)}
                   className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
                 >
-                  {currentEx.restSeconds != null
+                  {/* Straight-set groups never force a rest interstitial
+                      (see handleGuidedDone) - each set's own optional
+                      rest button, and the shared timer, stay available
+                      right on this same card instead. */}
+                  {!isGroupedGuidedStep && currentEx.restSeconds != null
                     ? `Done - start ${formatDurationLabel(currentEx.restSeconds)} rest`
-                    : guidedIndex === exercises.length - 1
+                    : guidedIndex === listGroups.length - 1
                       ? 'Done'
                       : 'Done - next exercise'}
                 </button>
@@ -1707,6 +2275,34 @@ export default function WorkoutDayPicker({
         </span>
       </div>
 
+      {/* Horizontal week-jump bar - scrolls with the page (not pinned),
+          just a fast way to hop to a week's card below instead of
+          scrolling past everything in between on a long program.
+          Highlights the "up next" week the same way its card below
+          does, so both agree on where you'd naturally look first. */}
+      {weekNumbers.length > 1 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          {weekNumbers.map((week) => {
+            const isCurrentWeek = week === currentWeek && !programComplete
+            return (
+              <button
+                key={week}
+                onClick={() =>
+                  document.getElementById(`week-${week}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }
+                className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border transition ${
+                  isCurrentWeek
+                    ? 'bg-orange-500/10 border-orange-500/40 text-orange-400'
+                    : 'border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500'
+                }`}
+              >
+                Week {week}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {weekNumbers.map((week) => {
         const weekCells = allCells.filter((c) => c.week === week)
         const weekDone = weekCells.filter((c) => completedSet.has(c.key)).length
@@ -1715,7 +2311,8 @@ export default function WorkoutDayPicker({
         return (
           <div
             key={week}
-            className={`rounded-2xl p-3.5 transition ${
+            id={`week-${week}`}
+            className={`rounded-2xl p-3.5 transition scroll-mt-20 ${
               isCurrentWeek
                 ? 'bg-orange-500/[0.06] border border-orange-500/30'
                 : 'bg-zinc-950/60 border border-zinc-700/60'
@@ -1738,7 +2335,7 @@ export default function WorkoutDayPicker({
                 return (
                   <button
                     key={cell.key}
-                    onClick={() => startCell(cell)}
+                    onClick={() => setPreviewCell(cell)}
                     className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                       isNextDue
                         ? 'bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15'
