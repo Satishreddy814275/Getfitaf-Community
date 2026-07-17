@@ -1283,6 +1283,94 @@ export default function WorkoutDayPicker({
       // what's actually printed on screen.
       const displayName = boxed ? ex.name : stripRoundSuffixDisplay(ex.name)
       const displayOriginalName = boxed ? ex.originalName : stripRoundSuffixDisplay(ex.originalName)
+      // Extracted to a variable so it can sit in two different spots
+      // depending on boxed - inline with Target on a compact round-box
+      // row (so "..." isn't left stranded alone on its own line below),
+      // or in its usual place in the full actions row otherwise.
+      const overflowMenuButton = (
+        <div className="relative">
+          <button
+            onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
+            aria-label="More options"
+            className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
+          >
+            ⋯
+          </button>
+          {overflowOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
+              <div className="absolute right-0 top-full mt-1 min-w-[180px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
+                {!boxed && (
+                  <>
+                    <a
+                      href={video ? video.videoUrl : youtubeSearchUrl(ex.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setOverflowOpenFor(null)}
+                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                    >
+                      {video ? '▶ Watch video' : 'Search on YouTube ↗'}
+                    </a>
+                    {ex.timerSeconds != null && (
+                      <button
+                        onClick={() => {
+                          startSideTimer(ex, false)
+                          setOverflowOpenFor(null)
+                        }}
+                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                      >
+                        ▶ {formatDurationLabel(ex.timerSeconds)} timer
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setRestPickerFor(restPickerOpen ? null : ex.originalName)
+                        setOverflowOpenFor(null)
+                      }}
+                      className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                    >
+                      <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Custom timer
+                    </button>
+                    {setRows.length > 0 && (
+                      <button
+                        onClick={() => {
+                          toggleAllChecked(ex.name, setRows.length)
+                          setOverflowOpenFor(null)
+                        }}
+                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                      >
+                        {allChecked ? '✓ All checked' : 'Check all sets'}
+                      </button>
+                    )}
+                  </>
+                )}
+                {!video && (
+                  <button
+                    onClick={() => {
+                      handleRequestVideo(ex.name)
+                      setOverflowOpenFor(null)
+                    }}
+                    disabled={alreadyRequested}
+                    className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
+                  >
+                    {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setSwapPanelFor(ex.originalName)
+                    setSwapInput('')
+                    setOverflowOpenFor(null)
+                  }}
+                  className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                >
+                  ⇄ Swap exercise
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )
       return (
         <div
           className={
@@ -1307,9 +1395,23 @@ export default function WorkoutDayPicker({
             >
               {displayName}
             </p>
-            <p className={large ? 'text-zinc-400 text-sm' : 'text-zinc-500 text-xs whitespace-nowrap'}>
-              Target: {ex.sets} x {ex.reps}
-            </p>
+            {large ? (
+              <p className="text-zinc-400 text-sm">
+                Target: {ex.sets} x {ex.reps}
+              </p>
+            ) : (
+              // Compact rows put "..." right here, on the same line as
+              // Target, instead of leaving it stranded alone on the
+              // actions row below (which otherwise had nothing else on
+              // it in compact mode - see boxed-only actions row further
+              // down).
+              <div className="flex items-center gap-2 shrink-0">
+                <p className="text-zinc-500 text-xs whitespace-nowrap">
+                  Target: {ex.sets} x {ex.reps}
+                </p>
+                {!boxed && overflowMenuButton}
+              </div>
+            )}
           </div>
           {ex.name !== ex.originalName && (
             <p className="text-zinc-600 text-[11px] mb-1">Swapped from {displayOriginalName}</p>
@@ -1319,15 +1421,13 @@ export default function WorkoutDayPicker({
               Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
             </p>
           )}
-          <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5'}>
-            {/* Compact rows (boxed=false, inside a round box) fold every
-                secondary action - video, timer, custom timer, check all -
-                behind the single "..." menu instead of laying them all
-                out inline, so a round box reads as a tight list of
-                exercises rather than several mini cards stacked up. Every
-                action is still one tap away, just tucked out of the way
-                until asked for. */}
-            {boxed && (
+          {/* Compact rows (boxed=false, inside a round box) fold every
+              secondary action - video, timer, custom timer, check all,
+              "..." - into the header row above (Target line) or the
+              "..." menu itself, so this whole row simply doesn't exist
+              for them - nothing left to show once "..." moved up. */}
+          {boxed && (
+            <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5'}>
               <div className="flex items-center gap-3">
                 {video ? (
                   <a
@@ -1379,103 +1479,22 @@ export default function WorkoutDayPicker({
                   </button>
                 )}
               </div>
-            )}
 
-            <div className={`flex items-center gap-2 shrink-0 ${boxed ? '' : 'ml-auto'}`}>
-              {boxed && setRows.length > 0 && (
-                <button
-                  onClick={() => toggleAllChecked(ex.name, setRows.length)}
-                  className={`text-xs font-medium transition ${
-                    allChecked ? 'text-orange-400 hover:text-orange-300' : 'text-zinc-500 hover:text-white'
-                  }`}
-                >
-                  {allChecked ? '✓ All checked' : 'Check all'}
-                </button>
-              )}
-              <div className="relative">
-              <button
-                onClick={() => setOverflowOpenFor(overflowOpen ? null : ex.originalName)}
-                aria-label="More options"
-                className="text-zinc-600 hover:text-white transition px-1.5 leading-none"
-              >
-                ⋯
-              </button>
-              {overflowOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
-                  <div className="absolute right-0 top-full mt-1 min-w-[180px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
-                    {!boxed && (
-                      <>
-                        <a
-                          href={video ? video.videoUrl : youtubeSearchUrl(ex.name)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => setOverflowOpenFor(null)}
-                          className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                        >
-                          {video ? '▶ Watch video' : 'Search on YouTube ↗'}
-                        </a>
-                        {ex.timerSeconds != null && (
-                          <button
-                            onClick={() => {
-                              startSideTimer(ex, false)
-                              setOverflowOpenFor(null)
-                            }}
-                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                          >
-                            ▶ {formatDurationLabel(ex.timerSeconds)} timer
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setRestPickerFor(restPickerOpen ? null : ex.originalName)
-                            setOverflowOpenFor(null)
-                          }}
-                          className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                        >
-                          <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Custom timer
-                        </button>
-                        {setRows.length > 0 && (
-                          <button
-                            onClick={() => {
-                              toggleAllChecked(ex.name, setRows.length)
-                              setOverflowOpenFor(null)
-                            }}
-                            className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                          >
-                            {allChecked ? '✓ All checked' : 'Check all sets'}
-                          </button>
-                        )}
-                      </>
-                    )}
-                    {!video && (
-                      <button
-                        onClick={() => {
-                          handleRequestVideo(ex.name)
-                          setOverflowOpenFor(null)
-                        }}
-                        disabled={alreadyRequested}
-                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-40 transition"
-                      >
-                        {alreadyRequested ? 'Video requested ✓' : 'Request a video'}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setSwapPanelFor(ex.originalName)
-                        setSwapInput('')
-                        setOverflowOpenFor(null)
-                      }}
-                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                    >
-                      ⇄ Swap exercise
-                    </button>
-                  </div>
-                </>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {setRows.length > 0 && (
+                  <button
+                    onClick={() => toggleAllChecked(ex.name, setRows.length)}
+                    className={`text-xs font-medium transition ${
+                      allChecked ? 'text-orange-400 hover:text-orange-300' : 'text-zinc-500 hover:text-white'
+                    }`}
+                  >
+                    {allChecked ? '✓ All checked' : 'Check all'}
+                  </button>
+                )}
+                {overflowMenuButton}
               </div>
             </div>
-          </div>
+          )}
 
           {/* Large/guided mode shows this same prompt inside the big
               timer panel at the bottom of the card instead - see below. */}
@@ -2179,11 +2198,6 @@ export default function WorkoutDayPicker({
                   const isRoundBox = box[0][0].round != null
                   const first = box[0][0]
                   const i = exercises.indexOf(first)
-                  // Rest after the round box's very last exercise leads
-                  // into the next round/phase, not another exercise
-                  // inside this same box - shown outside the box, same
-                  // as before, rather than as one more internal row.
-                  const lastInBox = box[box.length - 1][0]
                   return (
                     <Fragment key={first.originalName}>
                       {isRoundBox && (
@@ -2205,14 +2219,24 @@ export default function WorkoutDayPicker({
                             // *don't* follow a rest button get their own
                             // top divider.
                             const prevHadRest = idx > 0 && box[idx - 1][0].restSeconds != null
+                            // The round's last exercise still gets its
+                            // rest pill shown inside this same box (not
+                            // floated below it as a separate element) -
+                            // it's the rest leading into the next round,
+                            // but visually it belongs to the round that's
+                            // ending, same as every other in-round rest.
+                            // Only skipped if this is the very last
+                            // exercise of the entire day, since there's
+                            // nothing left to rest before.
+                            const isLastInBox = idx === box.length - 1
+                            const showRest =
+                              ex.restSeconds != null && (!isLastInBox || exercises.indexOf(ex) < exercises.length - 1)
                             return (
                               <Fragment key={ex.originalName}>
                                 <div className={idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60'}>
                                   {renderExerciseCard(ex, { boxed: false })}
                                 </div>
-                                {ex.restSeconds != null &&
-                                  idx < box.length - 1 &&
-                                  renderRestPill(ex.restSeconds)}
+                                {showRest && renderRestPill(ex.restSeconds!)}
                               </Fragment>
                             )
                           })}
@@ -2220,10 +2244,6 @@ export default function WorkoutDayPicker({
                       ) : (
                         renderGroupedCard(box[0])
                       )}
-                      {isRoundBox &&
-                        lastInBox.restSeconds != null &&
-                        exercises.indexOf(lastInBox) < exercises.length - 1 &&
-                        renderRestPill(lastInBox.restSeconds)}
                     </Fragment>
                   )
                 })
