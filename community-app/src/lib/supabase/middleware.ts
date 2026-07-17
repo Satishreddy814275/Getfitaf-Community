@@ -46,7 +46,20 @@ export async function updateSession(request: NextRequest) {
     // It doesn't need the session at all: it only reads the `email`
     // query param to prefill Stripe checkout, same as it would for
     // anyone visiting cold.
-    request.nextUrl.pathname.startsWith('/api/beta-checkout')
+    request.nextUrl.pathname.startsWith('/api/beta-checkout') ||
+    // /api/stripe-webhook is called server-to-server by Stripe, never
+    // by a browser - there's no session cookie to check and never will
+    // be. Without this exclusion, every webhook delivery was getting
+    // redirected to /login before it ever reached the webhook handler,
+    // which is why processed_stripe_events stayed empty through every
+    // test: Stripe doesn't follow redirects on webhook deliveries, so
+    // the redirect itself just counted as a failed delivery.
+    request.nextUrl.pathname.startsWith('/api/stripe-webhook') ||
+    // Same issue, same fix - Vercel Cron calls this with an
+    // Authorization: Bearer <CRON_SECRET> header (checked inside the
+    // route itself), not a session cookie, so it was also being
+    // redirected to /login before ever running.
+    request.nextUrl.pathname.startsWith('/api/cron/expire-trials')
 
   if (!user && !isPublicRoute) {
     // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
