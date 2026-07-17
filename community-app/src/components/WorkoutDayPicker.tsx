@@ -458,14 +458,39 @@ export default function WorkoutDayPicker({
       return next
     })
   }
+  // Same collapse pattern as collapsedPhases above, for the read-only
+  // day preview (see buildPreviewSections) instead of the live logging
+  // list - a separate piece of state since the preview is shown before
+  // activeCell/collapsedPhases even exist yet, and should reset to the
+  // same warmup/cooldown-collapsed default every time a different day's
+  // preview is opened (see setPreviewCell's onClick below).
+  const [collapsedPreviewPhases, setCollapsedPreviewPhases] = useState<Set<'warmup' | 'main' | 'cooldown'>>(
+    new Set(['warmup', 'cooldown'])
+  )
+  function togglePreviewPhaseCollapsed(phase: 'warmup' | 'main' | 'cooldown') {
+    setCollapsedPreviewPhases((prev) => {
+      const next = new Set(prev)
+      if (next.has(phase)) next.delete(phase)
+      else next.add(phase)
+      return next
+    })
+  }
+  // Opens the read-only day preview for a tapped day, resetting the
+  // collapse state back to the default (warmup/cooldown collapsed) each
+  // time - otherwise a previous day's expand/collapse choices would leak
+  // into whichever day is opened next.
+  function openPreview(cell: Cell) {
+    setCollapsedPreviewPhases(new Set(['warmup', 'cooldown']))
+    setPreviewCell(cell)
+  }
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
   // days (see hasGuidedFlow below) - single-exercise days ignore all of this.
   // Every day always lands on the list first (an overview of what's
   // coming, not the player) - guided mode is only ever entered by
-  // explicitly tapping "Start Now"/"Continue", never the default on
-  // arrival. guidedIndex/Phase are per-session. 'roundIntro' is the
-  // "Round N starts" interstitial shown on the first exercise of each
+  // explicitly tapping "Switch to guided view"/"Continue", never the
+  // default on arrival. guidedIndex/Phase are per-session. 'roundIntro'
+  // is the "Round N starts" interstitial shown on the first exercise of each
   // round; 'done' is reached after the last exercise (rest or not)
   // with nothing left to advance to.
   const [viewMode, setViewMode] = useState<'guided' | 'list'>('list')
@@ -1016,56 +1041,74 @@ export default function WorkoutDayPicker({
         </div>
 
         <div className="mt-4 space-y-3">
-          {sections.map((section) => (
-            <div key={section.phase}>
-              <p className="text-orange-400 text-xs font-bold uppercase tracking-wider mb-2">
-                {PHASE_LABELS_PREVIEW[section.phase]}
-              </p>
-              <div className="space-y-1.5">
-                {section.items.map((item) =>
-                  item.type === 'single' ? (
-                    <div
-                      key={item.block.id}
-                      className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3"
-                    >
-                      <span className="text-white text-sm">{item.block.name}</span>
-                      <span className="text-zinc-500 text-xs text-right shrink-0">
-                        {item.block.setsCount} x {item.block.reps}
-                        {item.block.restSeconds ? (
-                          <span className="text-zinc-600"> · rest {formatDurationLabel(item.block.restSeconds)}</span>
-                        ) : null}
-                        {item.block.timerSeconds ? (
-                          <span className="text-zinc-600"> · {formatDurationLabel(item.block.timerSeconds)} timer</span>
-                        ) : null}
-                      </span>
-                    </div>
-                  ) : (
-                    <div key={item.groupId} className="glass rounded-xl px-3 py-2.5">
-                      <p className="text-zinc-400 text-xs font-medium mb-1.5">
-                        Round x {item.blocks[0].setsCount}
-                      </p>
-                      <div className="space-y-1">
-                        {item.blocks.map((b) => (
-                          <div key={b.id} className="flex items-center justify-between gap-3">
-                            <span className="text-white text-sm">{b.name}</span>
-                            <span className="text-zinc-500 text-xs text-right shrink-0">
-                              {b.reps}
-                              {b.restSeconds ? (
-                                <span className="text-zinc-600"> · rest {formatDurationLabel(b.restSeconds)}</span>
-                              ) : null}
-                              {b.timerSeconds ? (
-                                <span className="text-zinc-600"> · {formatDurationLabel(b.timerSeconds)} timer</span>
-                              ) : null}
-                            </span>
+          {sections.map((section, sectionIndex) => {
+            const sectionExerciseCount = section.items.reduce(
+              (sum, item) => sum + (item.type === 'single' ? 1 : item.blocks.length),
+              0
+            )
+            const collapsed = collapsedPreviewPhases.has(section.phase)
+            return (
+              <div key={section.phase} className={sectionIndex === 0 ? '' : 'pt-3 border-t border-zinc-800'}>
+                <button
+                  onClick={() => togglePreviewPhaseCollapsed(section.phase)}
+                  className="w-full flex items-center justify-between gap-2 mb-2"
+                >
+                  <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
+                    {PHASE_LABELS_PREVIEW[section.phase]} · {sectionExerciseCount} exercise
+                    {sectionExerciseCount === 1 ? '' : 's'}
+                  </span>
+                  <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
+                    {collapsed ? 'Show ▾' : 'Hide ▴'}
+                  </span>
+                </button>
+                {!collapsed && (
+                  <div className="space-y-1.5">
+                    {section.items.map((item) =>
+                      item.type === 'single' ? (
+                        <div
+                          key={item.block.id}
+                          className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3"
+                        >
+                          <span className="text-white text-sm">{item.block.name}</span>
+                          <span className="text-zinc-500 text-xs text-right shrink-0">
+                            {item.block.setsCount} x {item.block.reps}
+                            {item.block.restSeconds ? (
+                              <span className="text-zinc-600"> · rest {formatDurationLabel(item.block.restSeconds)}</span>
+                            ) : null}
+                            {item.block.timerSeconds ? (
+                              <span className="text-zinc-600"> · {formatDurationLabel(item.block.timerSeconds)} timer</span>
+                            ) : null}
+                          </span>
+                        </div>
+                      ) : (
+                        <div key={item.groupId} className="glass rounded-xl px-3 py-2.5">
+                          <p className="text-zinc-400 text-xs font-medium mb-1.5">
+                            Round x {item.blocks[0].setsCount}
+                          </p>
+                          <div className="space-y-1">
+                            {item.blocks.map((b) => (
+                              <div key={b.id} className="flex items-center justify-between gap-3">
+                                <span className="text-white text-sm">{b.name}</span>
+                                <span className="text-zinc-500 text-xs text-right shrink-0">
+                                  {b.reps}
+                                  {b.restSeconds ? (
+                                    <span className="text-zinc-600"> · rest {formatDurationLabel(b.restSeconds)}</span>
+                                  ) : null}
+                                  {b.timerSeconds ? (
+                                    <span className="text-zinc-600"> · {formatDurationLabel(b.timerSeconds)} timer</span>
+                                  ) : null}
+                                </span>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
+                        </div>
+                      )
+                    )}
+                  </div>
                 )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         <div className="mt-6 space-y-2">
@@ -2188,7 +2231,12 @@ export default function WorkoutDayPicker({
                 onClick={toggleViewMode}
                 className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition mb-4"
               >
-                ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue' : 'Start Now'}
+                {/* "Start Now" used to live here, but the session's
+                    already underway by the time anyone sees list view
+                    (see the day-preview Start buttons) - that wording
+                    wrongly implied nothing had happened yet. This is
+                    purely a view switch now, so it says so. */}
+                ▶ {guidedIndex > 0 && guidedPhase !== 'done' ? 'Continue' : 'Switch to guided view'}
               </button>
             )}
             <div className="space-y-3">
@@ -2535,7 +2583,7 @@ export default function WorkoutDayPicker({
                 return (
                   <button
                     key={cell.key}
-                    onClick={() => setPreviewCell(cell)}
+                    onClick={() => openPreview(cell)}
                     className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                       isNextDue
                         ? 'bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15'
