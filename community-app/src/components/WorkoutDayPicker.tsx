@@ -5,7 +5,7 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X } from 'lucide-react'
+import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X, ArrowRight } from 'lucide-react'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup } from '@/types'
 
 interface SetRow {
@@ -1520,7 +1520,17 @@ export default function WorkoutDayPicker({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                {setRows.length > 0 && (
+                {/* Hidden in large/guided mode - this function is only
+                    ever called with large:true for a single-row guided
+                    screen (a round instance, or a straight-set exercise
+                    with just one set - renderGroupedCard handles every
+                    multi-row guided screen separately and keeps its own
+                    Check all/checkmarks unchanged). Bulk-checking one
+                    row right before tapping Done was pure busywork -
+                    Satish's call, confirmed this only applies where
+                    there's nothing to differentiate ("check all of
+                    one"). */}
+                {!large && setRows.length > 0 && (
                   <button
                     onClick={() => toggleAllChecked(ex.name, setRows.length)}
                     className={`text-xs font-medium transition ${
@@ -1630,34 +1640,67 @@ export default function WorkoutDayPicker({
           >
             {(setsByExercise[ex.name] || []).map((row, i) => (
               <div key={i} className="flex items-center gap-2">
-                <span className="text-zinc-500 text-xs w-11 shrink-0">Set {i + 1}</span>
+                <span className={`text-zinc-500 shrink-0 ${large ? 'text-sm w-12' : 'text-xs w-11'}`}>
+                  Set {i + 1}
+                </span>
                 {ex.trackWeight !== false && (
+                  <div className="flex-1">
+                    {/* Persistent label, not just a placeholder - large
+                        mode's whole point is being unmistakable about
+                        what to do, and a placeholder disappears the
+                        moment you type a number, leaving a bare digit
+                        with no indication of what it is. List/compact
+                        mode keeps relying on the placeholder alone
+                        (unchanged), since that row is already dense
+                        enough without adding label lines to every row. */}
+                    {large && <label className="block text-zinc-500 text-xs mb-1">Weight</label>}
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                      value={row.weight}
+                      onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
+                      // Scaled up in large/guided mode to match the rest
+                      // of the upsized card (2xl title, Target line) -
+                      // the inputs were the one thing left at list-view
+                      // size, which is likely why they didn't read as
+                      // "the main thing to interact with here."
+                      className={`w-full bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-600 ${
+                        large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
+                      }`}
+                    />
+                  </div>
+                )}
+                <div className="flex-1">
+                  {large && <label className="block text-zinc-500 text-xs mb-1">Reps</label>}
                   <input
                     type="number"
-                    inputMode="decimal"
-                    placeholder={last?.weight != null ? String(last.weight) : 'weight'}
-                    value={row.weight}
-                    onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
+                    inputMode="numeric"
+                    placeholder={ex.reps || 'reps'}
+                    value={row.reps}
+                    onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
+                    className={`w-full bg-zinc-900 border border-zinc-800 rounded-lg text-white placeholder-zinc-600 ${
+                      large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
+                    }`}
                   />
+                </div>
+                {/* Hidden in large/guided mode - see the matching Check
+                    all comment above. This function only ever renders
+                    large:true for a single-row guided screen, where
+                    Done (right below) is already the one completion
+                    signal - a checkmark on the only row in between was
+                    redundant clutter, not a real second confirmation. */}
+                {!large && (
+                  <button
+                    onClick={() => toggleSetChecked(ex.name, i)}
+                    aria-label={checkedRows[i] ? 'Mark set incomplete' : 'Mark set complete'}
+                    className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
+                      checkedRows[i] ? 'bg-orange-500' : 'bg-zinc-800 hover:bg-zinc-700'
+                    }`}
+                  >
+                    <Check className={`w-3.5 h-3.5 ${checkedRows[i] ? 'text-black' : 'text-zinc-500'}`} aria-hidden="true" />
+                  </button>
                 )}
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  placeholder={ex.reps || 'reps'}
-                  value={row.reps}
-                  onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600"
-                />
-                <button
-                  onClick={() => toggleSetChecked(ex.name, i)}
-                  aria-label={checkedRows[i] ? 'Mark set incomplete' : 'Mark set complete'}
-                  className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition ${
-                    checkedRows[i] ? 'bg-orange-500' : 'bg-zinc-800 hover:bg-zinc-700'
-                  }`}
-                >
-                  <Check className={`w-3.5 h-3.5 ${checkedRows[i] ? 'text-black' : 'text-zinc-500'}`} aria-hidden="true" />
-                </button>
                 {/* A round exercise is already exactly one fixed slot per
                     round - the round count itself is what repeats it, so
                     add/remove never meant anything here and just
@@ -2087,13 +2130,19 @@ export default function WorkoutDayPicker({
     }
 
     return (
-      // pb-36 (mobile only) reserves space for the Finish Workout bar
+      // pb-56 (mobile only) reserves space for the Finish Workout bar
       // below, which is now `fixed` rather than `sticky` and so no
       // longer occupies its own layout space - without this, the last
       // bit of content (or the guided player's single exercise screen)
-      // would end up hidden underneath it. Not needed on desktop, where
-      // that bar goes back to normal (sm:static) in-flow positioning.
-      <div className="pb-36 sm:pb-0">
+      // would end up hidden underneath it. Bumped up from pb-36 -
+      // Satish's flag that the last exercise card still felt too close
+      // to the bar even once it was no longer literally covered by it;
+      // this adds real visible breathing room past the bar's own
+      // footprint so the exercise content reads as a finished, separate
+      // block instead of running right up against Finish Workout. Not
+      // needed on desktop, where that bar goes back to normal
+      // (sm:static) in-flow positioning.
+      <div className="pb-56 sm:pb-0">
         <datalist id="exercise-swap-suggestions">
           {exerciseSuggestions.map((name) => (
             <option key={name} value={name} />
@@ -2480,7 +2529,16 @@ export default function WorkoutDayPicker({
                   : renderExerciseCard(currentEx, { large: true })}
                 <button
                   onClick={() => handleGuidedDone(currentGroup)}
-                  className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
+                  // Kept the same size/color as Finish Workout on
+                  // purpose (Satish's call: shrinking Done - by far the
+                  // most-tapped button in the app, once per exercise all
+                  // day - to de-emphasize a once-per-session action
+                  // would make the common case harder to hit). The
+                  // trailing arrow is the actual fix for "doesn't feel
+                  // like the natural next step" - a cheap, purely visual
+                  // cue that this moves you forward, not that it ends
+                  // anything, without touching color or size.
+                  className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2"
                 >
                   {/* Straight-set groups never force a rest interstitial
                       (see handleGuidedDone) - each set's own optional
@@ -2491,6 +2549,7 @@ export default function WorkoutDayPicker({
                     : guidedIndex === listGroups.length - 1
                       ? 'Done'
                       : 'Done - next exercise'}
+                  <ArrowRight className="w-4 h-4" aria-hidden="true" />
                 </button>
               </>
             )}
