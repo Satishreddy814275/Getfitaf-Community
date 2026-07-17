@@ -212,19 +212,15 @@ export default async function WorkoutsPage() {
     return (b.sessions[0]?.completedAt || '').localeCompare(a.sessions[0]?.completedAt || '')
   })
 
+  // The "Back to Community" link, page title/description, and the
+  // Current Program/Completed Workouts tab switcher all now live
+  // inside WorkoutsTabs (not here) so they can be hidden together
+  // while a workout is actively being logged - see the
+  // onSessionActiveChange wiring in WorkoutDayPicker/WorkoutsTabs.
+  // Satish's call: none of that is needed once you've hit Start
+  // Workout, it just takes focus away from the session itself.
   return (
     <div className="max-w-3xl mx-auto w-full py-8 px-4 sm:px-6">
-      <Link
-        href="/feed"
-        className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
-      >
-        ← Back to Community
-      </Link>
-      <h1 className="text-white text-xl font-bold mb-1">Your Workouts</h1>
-      <p className="text-zinc-400 text-sm mb-6">
-        Your 4-week program. Same split each week - tap whatever's next, or pick any session
-        out of order if you'd rather.
-      </p>
       <WorkoutsTabs
         generationId={plan.generationId}
         days={plan.days}

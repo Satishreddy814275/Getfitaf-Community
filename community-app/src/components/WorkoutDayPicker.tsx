@@ -377,6 +377,7 @@ export default function WorkoutDayPicker({
   history,
   videos,
   swaps,
+  onSessionActiveChange,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
@@ -385,8 +386,25 @@ export default function WorkoutDayPicker({
   history: WorkoutHistoryGroup[]
   videos: ExerciseVideo[]
   swaps: WorkoutExerciseSwap[]
+  // Lets the parent (WorkoutsTabs) know whether a day is currently
+  // being logged, so it can hide the page header and tab switcher
+  // while a session is active - full focus, per Satish: the program
+  // overview and Completed Workouts tab "take away from the focus of
+  // that session" and Discard/browser-back are enough of an exit.
+  // Optional since WorkoutHistoryList's sibling usage has no need for
+  // this and older callers shouldn't be forced to pass it.
+  onSessionActiveChange?: (active: boolean) => void
 }) {
   const [activeCell, setActiveCell] = useState<Cell | null>(null)
+  // Fires on every activeCell transition, including the initial mount
+  // (so a resumed draft session - restored a moment later by the
+  // effect below - still ends up hiding the header once it kicks in).
+  // Calling the parent's setter with the same boolean it already has
+  // is a harmless no-op re-render bailout, so this doesn't need to be
+  // guarded against firing more often than activeCell actually changes.
+  useEffect(() => {
+    onSessionActiveChange?.(activeCell != null)
+  }, [activeCell, onSessionActiveChange])
   const [setsByExercise, setSetsByExercise] = useState<Record<string, SetRow[]>>({})
   // Boostcamp-style per-set checkmarks - purely a visual "I did this"
   // marker for the member's own benefit (and what drives the top
@@ -2080,12 +2098,15 @@ export default function WorkoutDayPicker({
             thicker progress track (per exercise, once every one of its
             sets is checked off - see progressFraction and the checkmark
             UI in renderExerciseCard/renderGroupedCard), the elapsed
-            session clock, and a one-tap Discard. Replaces what used to
-            be a plain "4/9 exercises" text count with something that's
-            actually glanceable while scrolled deep into a long day, and
-            gives Discard a permanent, predictable spot instead of only
-            the small ✕ in the header below (still there too - this is
-            just the always-visible version).
+            session clock, and a one-tap Discard - now the ONLY way to
+            leave an active session, since the old small ✕ button in the
+            day header below was removed as redundant clutter.
+            Timer/Discard are soft filled pills (flat zinc / faint red
+            wash, no borders) rather than outlined chips - deliberately
+            still reads as a "card," distinct from plain text, since
+            Satish wants Discard in particular to keep a bit of visual
+            weight ("shouldn't be used very lightly"), just without the
+            harder bordered-chip look.
             `sticky` (NOT `fixed`) on purpose - the app's own header
             (AppNav) isn't actually pinned to the viewport, it's normal
             page content that scrolls away like anything else, so a
@@ -2104,10 +2125,10 @@ export default function WorkoutDayPicker({
             its own layout space, so nothing needs pushing down under it). */}
         <div className="sticky top-0 z-40 -mx-4 sm:mx-0 bg-[#0a0a0a]/95 backdrop-blur border-b border-zinc-800">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-3">
-            <span className="border border-zinc-700 text-zinc-400 text-xs font-semibold tabular-nums rounded-full px-2.5 py-1 shrink-0">
+            <span className="bg-zinc-900 text-zinc-300 text-xs font-semibold tabular-nums rounded-full px-2.5 py-1 shrink-0">
               {formatRestTime(elapsedSeconds)}
             </span>
-            <div className="flex-1 h-2.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="flex-1 h-2.5 bg-zinc-900 rounded-full overflow-hidden">
               <div
                 className="h-full bg-orange-500 rounded-full transition-all"
                 style={{ width: `${Math.round(progressFraction * 100)}%` }}
@@ -2115,7 +2136,7 @@ export default function WorkoutDayPicker({
             </div>
             <button
               onClick={handleCloseSession}
-              className="border border-red-500/40 text-red-400 hover:text-red-300 hover:border-red-500/60 text-xs font-semibold rounded-full px-2.5 py-1 shrink-0 transition"
+              className="bg-red-500/10 hover:bg-red-500/15 text-red-400 hover:text-red-300 text-xs font-semibold rounded-full px-2.5 py-1 shrink-0 transition"
             >
               Discard
             </button>
@@ -2193,30 +2214,23 @@ export default function WorkoutDayPicker({
           </div>
         )}
 
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <h2 className="text-white text-lg font-bold">
-              Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
-            </h2>
-            {exercises.length > 0 && (
-              <p className="text-zinc-500 text-xs mt-0.5">
-                {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
-              </p>
-            )}
-            {activeCell.notes && (
-              <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
-            )}
-          </div>
-          <button
-            onClick={handleCloseSession}
-            aria-label="Close workout"
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <line x1="3" y1="3" x2="13" y2="13" strokeLinecap="round" />
-              <line x1="13" y1="3" x2="3" y2="13" strokeLinecap="round" />
-            </svg>
-          </button>
+        {/* No close/X button here anymore - Discard on the sticky bar
+            above is the one and only way to end a session (Satish's
+            call: this button "wasn't doing much" once Discard existed,
+            and having two exits was redundant clutter, not a real
+            safety net). */}
+        <div className="mb-1">
+          <h2 className="text-white text-lg font-bold">
+            Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
+          </h2>
+          {exercises.length > 0 && (
+            <p className="text-zinc-500 text-xs mt-0.5">
+              {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
+            </p>
+          )}
+          {activeCell.notes && (
+            <p className="text-orange-400/80 text-xs mt-1">{activeCell.notes}</p>
+          )}
         </div>
 
         {effectiveMode === 'list' ? (
