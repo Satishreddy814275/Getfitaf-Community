@@ -1364,15 +1364,22 @@ export default function WorkoutDayPicker({
                 >
                   ⇄ Swap exercise
                 </button>
-                <button
-                  onClick={() => {
-                    setHistoryFor({ name: ex.name, label: displayName })
-                    setOverflowOpenFor(null)
-                  }}
-                  className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                >
-                  <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
-                </button>
+                {/* Boxed (full card) mode gets History as its own inline
+                    icon button beside the timer instead - see the boxed
+                    actions row below. Compact mode (inside a round box)
+                    has no such inline row, so it stays here as the only
+                    way to reach it there. */}
+                {!boxed && (
+                  <button
+                    onClick={() => {
+                      setHistoryFor({ name: ex.name, label: displayName })
+                      setOverflowOpenFor(null)
+                    }}
+                    className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
+                  >
+                    <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -1434,8 +1441,8 @@ export default function WorkoutDayPicker({
               "..." menu itself, so this whole row simply doesn't exist
               for them - nothing left to show once "..." moved up. */}
           {boxed && (
-            <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5'}>
-              <div className="flex items-center gap-3">
+            <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1'}>
+              <div className="flex items-center gap-3 flex-wrap gap-y-1">
                 {video ? (
                   <a
                     href={video.videoUrl}
@@ -1452,7 +1459,7 @@ export default function WorkoutDayPicker({
                     rel="noopener noreferrer"
                     className="text-xs font-medium text-zinc-400 hover:text-white transition"
                   >
-                    Search on YouTube ↗
+                    YouTube ↗
                   </a>
                 )}
                 {ex.timerSeconds ? (
@@ -1485,6 +1492,13 @@ export default function WorkoutDayPicker({
                     <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Timer
                   </button>
                 )}
+                <button
+                  onClick={() => setHistoryFor({ name: ex.name, label: displayName })}
+                  aria-label="View history"
+                  className="text-zinc-400 hover:text-white transition"
+                >
+                  <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -1777,8 +1791,8 @@ export default function WorkoutDayPicker({
               Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
             </p>
           )}
-          <div className="flex items-center justify-between gap-2 mb-0.5">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1">
+            <div className="flex items-center gap-3 flex-wrap gap-y-1">
               {video ? (
                 <a
                   href={video.videoUrl}
@@ -1795,7 +1809,7 @@ export default function WorkoutDayPicker({
                   rel="noopener noreferrer"
                   className="text-xs font-medium text-zinc-400 hover:text-white transition"
                 >
-                  Search on YouTube ↗
+                  YouTube ↗
                 </a>
               )}
               {rep.timerSeconds ? (
@@ -1823,6 +1837,13 @@ export default function WorkoutDayPicker({
                   <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Timer
                 </button>
               )}
+              <button
+                onClick={() => setHistoryFor({ name: rep.name, label })}
+                aria-label="View history"
+                className="text-zinc-400 hover:text-white transition"
+              >
+                <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
@@ -1867,15 +1888,6 @@ export default function WorkoutDayPicker({
                         className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
                       >
                         ⇄ Swap exercise
-                      </button>
-                      <button
-                        onClick={() => {
-                          setHistoryFor({ name: rep.name, label })
-                          setOverflowOpenFor(null)
-                        }}
-                        className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                      >
-                        <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
                       </button>
                     </div>
                   </>
