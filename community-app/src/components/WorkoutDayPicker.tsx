@@ -2455,10 +2455,8 @@ export default function WorkoutDayPicker({
                         expanded at once. */}
                     {isExpanded && (
                       <div
-                        className={`rounded-b-xl px-3 pt-2 pb-3 ${
-                          isNextDue
-                            ? 'bg-orange-500/10 border border-t-0 border-orange-500/40'
-                            : 'bg-zinc-900/60'
+                        className={`rounded-b-xl px-3 pt-2 pb-3 bg-black ${
+                          isNextDue ? 'border border-t-0 border-orange-500/40' : ''
                         }`}
                       >
                         <p className="text-zinc-500 text-xs mb-2">
