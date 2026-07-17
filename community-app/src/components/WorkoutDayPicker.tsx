@@ -96,13 +96,6 @@ function resolveExercises(
 
 const DRAFT_KEY_PREFIX = 'workout-draft-'
 
-// Set once someone dismisses the List-vs-Guided explainer shown the
-// first time they tap either Start button on a day preview - a plain
-// device-local flag (not a new profiles column) since "don't show me
-// this again" only ever needs to hold on the one device/browser it was
-// dismissed on.
-const MODE_EXPLAINER_SEEN_KEY = 'workout-mode-explainer-seen'
-
 const PHASE_LABELS_PREVIEW: Record<'warmup' | 'main' | 'cooldown', string> = {
   warmup: 'Warm-up',
   main: 'Main workout',
@@ -378,20 +371,31 @@ export default function WorkoutDayPicker({
   const [checkedByExercise, setCheckedByExercise] = useState<Record<string, boolean[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
-  // The day someone tapped from the program grid, shown as a read-only
-  // preview (see buildPreviewSections) before they've committed to
-  // List or Guided - not the same as activeCell, which only gets set
-  // once they've actually tapped Start. Cleared the moment startCell
-  // runs, so the preview and the live session are never both on screen
-  // at once.
-  const [previewCell, setPreviewCell] = useState<Cell | null>(null)
-  // One-time List-vs-Guided explainer, shown the first time either
-  // Start button is tapped (see handleRequestStart) - dismissing it
-  // sets MODE_EXPLAINER_SEEN_KEY in localStorage so it never shows
-  // again on this device. pendingStart holds what to actually start
-  // once it's dismissed.
-  const [showModeExplainer, setShowModeExplainer] = useState(false)
-  const [pendingStart, setPendingStart] = useState<{ cell: Cell; mode: 'list' | 'guided' } | null>(null)
+  // Which day rows are expanded inline in the program grid below (task
+  // #50+) - a day tapped in its Week N card no longer navigates to a
+  // separate screen, it expands in place. A Set (not a single value) so
+  // more than one day can stay open at once, per Satish's explicit call
+  // ("if they click on another day, that day can also stay elaborate,
+  // that is not an issue"). Keyed by Cell.key.
+  const [expandedDayKeys, setExpandedDayKeys] = useState<Set<string>>(new Set())
+  // Per-day collapse state for that day's phase sections (warmup/main/
+  // cooldown), same collapsible-triangle pattern as the live logging
+  // list - keyed by Cell.key since more than one day's expanded content
+  // can be on screen simultaneously, unlike the old single previewCell
+  // approach. Populated with the warmup/cooldown-collapsed default the
+  // moment a day is expanded (see toggleDayExpanded).
+  const [expandedDayPhases, setExpandedDayPhases] = useState<
+    Record<string, Set<'warmup' | 'main' | 'cooldown'>>
+  >({})
+  // Which day's Start-mode popup ("Start as a list" / "Start as
+  // guided", each with its own short explanation) is currently open -
+  // replaces the old one-time-only List-vs-Guided explainer modal.
+  // Tapping "Start Workout" inside an expanded day row opens this;
+  // tapping either mode inside it is what actually commits into
+  // startCell. Shown every time now (not gated to first use), since the
+  // explanation living inside the choice itself is the point - "why
+  // would anyone click something they don't understand" (Satish).
+  const [startPopupCell, setStartPopupCell] = useState<Cell | null>(null)
   // When the current session started - drives the fixed top bar's
   // elapsed-time display (see elapsedSeconds below). Persisted in the
   // draft so a resumed tab keeps counting from the real start rather
@@ -458,30 +462,33 @@ export default function WorkoutDayPicker({
       return next
     })
   }
-  // Same collapse pattern as collapsedPhases above, for the read-only
-  // day preview (see buildPreviewSections) instead of the live logging
-  // list - a separate piece of state since the preview is shown before
-  // activeCell/collapsedPhases even exist yet, and should reset to the
-  // same warmup/cooldown-collapsed default every time a different day's
-  // preview is opened (see setPreviewCell's onClick below).
-  const [collapsedPreviewPhases, setCollapsedPreviewPhases] = useState<Set<'warmup' | 'main' | 'cooldown'>>(
-    new Set(['warmup', 'cooldown'])
-  )
-  function togglePreviewPhaseCollapsed(phase: 'warmup' | 'main' | 'cooldown') {
-    setCollapsedPreviewPhases((prev) => {
-      const next = new Set(prev)
+  // Expands/collapses a day row inline in the program grid. Reads
+  // expandedDayKeys directly rather than inside a setState updater
+  // (this only ever runs from a click handler, not during render) so it
+  // can also seed that day's phase-collapse defaults the moment it's
+  // opened - mirrors the old openPreview's reset-on-open behavior, just
+  // per-day now instead of a single shared previewCell.
+  function toggleDayExpanded(cell: Cell) {
+    const isExpanded = expandedDayKeys.has(cell.key)
+    if (isExpanded) {
+      setExpandedDayKeys((prev) => {
+        const next = new Set(prev)
+        next.delete(cell.key)
+        return next
+      })
+    } else {
+      setExpandedDayKeys((prev) => new Set(prev).add(cell.key))
+      setExpandedDayPhases((prev) => ({ ...prev, [cell.key]: new Set(['warmup', 'cooldown']) }))
+    }
+  }
+  function toggleDayPhaseCollapsed(cellKey: string, phase: 'warmup' | 'main' | 'cooldown') {
+    setExpandedDayPhases((prev) => {
+      const current = prev[cellKey] ?? new Set(['warmup', 'cooldown'])
+      const next = new Set(current)
       if (next.has(phase)) next.delete(phase)
       else next.add(phase)
-      return next
+      return { ...prev, [cellKey]: next }
     })
-  }
-  // Opens the read-only day preview for a tapped day, resetting the
-  // collapse state back to the default (warmup/cooldown collapsed) each
-  // time - otherwise a previous day's expand/collapse choices would leak
-  // into whichever day is opened next.
-  function openPreview(cell: Cell) {
-    setCollapsedPreviewPhases(new Set(['warmup', 'cooldown']))
-    setPreviewCell(cell)
   }
   const restoredRef = useRef(false)
   // Guided one-at-a-time player state, only relevant on round-based
@@ -728,8 +735,8 @@ export default function WorkoutDayPicker({
     saveDraft(generationId, activeCell, setsByExercise, guidedIndex, checkedByExercise, sessionStartedAt)
   }, [generationId, activeCell, setsByExercise, guidedIndex, checkedByExercise, sessionStartedAt])
 
-  // mode defaults to 'list' for anywhere that isn't the new day-preview
-  // Start buttons (handleRequestStart) - every existing caller (resuming
+  // mode defaults to 'list' for anywhere that isn't the Start-mode
+  // popup's two buttons (commitStart) - every existing caller (resuming
   // a draft, the old "Start Now" flow) keeps landing in list view first,
   // same as before.
   function startCell(cell: Cell, mode: 'list' | 'guided' = 'list') {
@@ -745,7 +752,6 @@ export default function WorkoutDayPicker({
     setSetsByExercise(initial)
     setCheckedByExercise(initialChecked)
     setSessionStartedAt(Date.now())
-    setPreviewCell(null)
     setActiveCell(cell)
     setJustFinished(false)
     setSwapPanelFor(null)
@@ -941,42 +947,19 @@ export default function WorkoutDayPicker({
     })
   }
 
-  // A day-preview Start button was tapped (see handleRequestStart in
-  // the render below) and the explainer was either already seen or has
-  // just been dismissed - actually enter the session.
+  // "Start Workout" inside an expanded day row opens the mode-choice
+  // popup - doesn't start anything itself.
+  function openStartPopup(cell: Cell) {
+    setStartPopupCell(cell)
+  }
+  function closeStartPopup() {
+    setStartPopupCell(null)
+  }
+  // Either mode inside the popup was tapped - this is what actually
+  // enters the session.
   function commitStart(cell: Cell, mode: 'list' | 'guided') {
-    setPreviewCell(null)
+    setStartPopupCell(null)
     startCell(cell, mode)
-  }
-
-  // First stop for both Start buttons on the day preview - shows the
-  // one-time List-vs-Guided explainer if it hasn't been seen on this
-  // device yet, otherwise goes straight into the session.
-  function handleRequestStart(cell: Cell, mode: 'list' | 'guided') {
-    const alreadySeen =
-      typeof window !== 'undefined' && window.localStorage.getItem(MODE_EXPLAINER_SEEN_KEY) === '1'
-    if (!alreadySeen) {
-      setPendingStart({ cell, mode })
-      setShowModeExplainer(true)
-      return
-    }
-    commitStart(cell, mode)
-  }
-
-  function dismissModeExplainer() {
-    if (typeof window !== 'undefined') {
-      try {
-        window.localStorage.setItem(MODE_EXPLAINER_SEEN_KEY, '1')
-      } catch {
-        // Storage unavailable - worst case the explainer just shows
-        // again next time, not a big deal either way.
-      }
-    }
-    setShowModeExplainer(false)
-    if (pendingStart) {
-      commitStart(pendingStart.cell, pendingStart.mode)
-      setPendingStart(null)
-    }
   }
 
   function finishWorkout() {
@@ -1003,161 +986,6 @@ export default function WorkoutDayPicker({
       setJustFinished(true)
       setRestTimer(null)
     })
-  }
-
-  // Read-only preview of a day - tapped from the program grid below,
-  // shown before committing to List or Guided (task #27). Phase-
-  // sectioned, round patterns collapsed to one "Round x N" box each
-  // (see buildPreviewSections), modeled directly on the admin editor's
-  // DayReadOnlyView, which is the format Satish pointed to as "pretty
-  // solid" for a member-facing glance-at-it view. Both sets and reps
-  // are always shown (never hidden behind a round's multiplier) per his
-  // explicit ask not to leave that out.
-  if (previewCell && !activeCell) {
-    const sections = buildPreviewSections(previewCell.exercises)
-    const canGuide = previewCell.exercises.length > 1
-    return (
-      <div>
-        <div className="flex items-start justify-between mb-1">
-          <div>
-            <h2 className="text-white text-lg font-bold">
-              Week {previewCell.week}, Day {previewCell.day}: {previewCell.label}
-            </h2>
-            <p className="text-zinc-500 text-xs mt-0.5">
-              {previewCell.exercises.length} exercise{previewCell.exercises.length === 1 ? '' : 's'}
-            </p>
-            {previewCell.notes && <p className="text-orange-400/80 text-xs mt-1">{previewCell.notes}</p>}
-          </div>
-          <button
-            onClick={() => setPreviewCell(null)}
-            aria-label="Back to program"
-            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <line x1="3" y1="3" x2="13" y2="13" strokeLinecap="round" />
-              <line x1="13" y1="3" x2="3" y2="13" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-
-        <div className="mt-4 space-y-3">
-          {sections.map((section, sectionIndex) => {
-            const sectionExerciseCount = section.items.reduce(
-              (sum, item) => sum + (item.type === 'single' ? 1 : item.blocks.length),
-              0
-            )
-            const collapsed = collapsedPreviewPhases.has(section.phase)
-            return (
-              <div key={section.phase} className={sectionIndex === 0 ? '' : 'pt-3 border-t border-zinc-800'}>
-                <button
-                  onClick={() => togglePreviewPhaseCollapsed(section.phase)}
-                  className="w-full flex items-center justify-between gap-2 mb-2"
-                >
-                  <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
-                    {PHASE_LABELS_PREVIEW[section.phase]} · {sectionExerciseCount} exercise
-                    {sectionExerciseCount === 1 ? '' : 's'}
-                  </span>
-                  <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
-                    {collapsed ? 'Show ▾' : 'Hide ▴'}
-                  </span>
-                </button>
-                {!collapsed && (
-                  <div className="space-y-1.5">
-                    {section.items.map((item) =>
-                      item.type === 'single' ? (
-                        <div
-                          key={item.block.id}
-                          className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3"
-                        >
-                          <span className="text-white text-sm">{item.block.name}</span>
-                          <span className="text-zinc-500 text-xs text-right shrink-0">
-                            {item.block.setsCount} x {item.block.reps}
-                            {item.block.restSeconds ? (
-                              <span className="text-zinc-600"> · rest {formatDurationLabel(item.block.restSeconds)}</span>
-                            ) : null}
-                            {item.block.timerSeconds ? (
-                              <span className="text-zinc-600"> · {formatDurationLabel(item.block.timerSeconds)} timer</span>
-                            ) : null}
-                          </span>
-                        </div>
-                      ) : (
-                        <div key={item.groupId} className="glass rounded-xl px-3 py-2.5">
-                          <p className="text-zinc-400 text-xs font-medium mb-1.5">
-                            Round x {item.blocks[0].setsCount}
-                          </p>
-                          <div className="space-y-1">
-                            {item.blocks.map((b) => (
-                              <div key={b.id} className="flex items-center justify-between gap-3">
-                                <span className="text-white text-sm">{b.name}</span>
-                                <span className="text-zinc-500 text-xs text-right shrink-0">
-                                  {b.reps}
-                                  {b.restSeconds ? (
-                                    <span className="text-zinc-600"> · rest {formatDurationLabel(b.restSeconds)}</span>
-                                  ) : null}
-                                  {b.timerSeconds ? (
-                                    <span className="text-zinc-600"> · {formatDurationLabel(b.timerSeconds)} timer</span>
-                                  ) : null}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="mt-6 space-y-2">
-          <button
-            onClick={() => handleRequestStart(previewCell, 'list')}
-            className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
-          >
-            Start (List)
-          </button>
-          {canGuide && (
-            <button
-              onClick={() => handleRequestStart(previewCell, 'guided')}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-semibold py-3 rounded-xl transition"
-            >
-              Start (Guided)
-            </button>
-          )}
-        </div>
-
-        {/* One-time List-vs-Guided explainer (task #28) - descriptive
-            only, no links per Satish's answer, dismissing it commits
-            whichever Start button triggered it (see dismissModeExplainer)
-            and never shows again on this device. */}
-        {showModeExplainer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-            <div className="glass rounded-2xl p-5 max-w-sm w-full">
-              <p className="text-white font-semibold mb-2">List or Guided?</p>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-2">
-                List shows every exercise on one screen - log sets at your own pace and jump around
-                freely.
-              </p>
-              <p className="text-zinc-400 text-sm leading-relaxed mb-4">
-                Guided walks you through one exercise (or one round) at a time, with rest between each
-                one - better if you&apos;d rather be led through it.
-              </p>
-              <p className="text-zinc-600 text-xs mb-4">
-                You can still switch between the two at any point during a session.
-              </p>
-              <button
-                onClick={dismissModeExplainer}
-                className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-2.5 rounded-xl transition"
-              >
-                Got it
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    )
   }
 
   if (activeCell) {
@@ -2580,42 +2408,218 @@ export default function WorkoutDayPicker({
               {weekCells.map((cell) => {
                 const isDone = completedSet.has(cell.key)
                 const isNextDue = cell.key === nextDueKey
+                const isExpanded = expandedDayKeys.has(cell.key)
+                // Only build the (moderately expensive) preview
+                // sections for days that are actually expanded - no
+                // point doing this work for every collapsed row.
+                const sections = isExpanded ? buildPreviewSections(cell.exercises) : []
+                const dayPhaseCollapse = expandedDayPhases[cell.key] ?? new Set(['warmup', 'cooldown'])
+                const dayButtonClass = isNextDue
+                  ? `bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15${
+                      isExpanded ? ' rounded-b-none border-b-0' : ''
+                    }`
+                  : `hover:bg-zinc-900/60${isExpanded ? ' bg-zinc-900/60' : ''}`
                 return (
-                  <button
-                    key={cell.key}
-                    onClick={() => openPreview(cell)}
-                    className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                      isNextDue
-                        ? 'bg-orange-500/10 border border-orange-500/40 hover:bg-orange-500/15'
-                        : 'hover:bg-zinc-900/60'
-                    }`}
-                  >
-                    <span
-                      className={`w-4 h-4 rounded-full shrink-0 ${
-                        isDone
-                          ? 'bg-orange-500'
-                          : isNextDue
-                            ? 'border-2 border-orange-500'
-                            : 'border-2 border-zinc-700'
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-medium flex-1 ${isDone ? 'text-zinc-500' : 'text-white'}`}
+                  <div key={cell.key}>
+                    <button
+                      onClick={() => toggleDayExpanded(cell)}
+                      className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${dayButtonClass}`}
                     >
-                      Day {cell.day}: {cell.label}
-                    </span>
-                    {isNextDue && (
-                      <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
-                        Up next
+                      <span
+                        className={`w-4 h-4 rounded-full shrink-0 ${
+                          isDone
+                            ? 'bg-orange-500'
+                            : isNextDue
+                              ? 'border-2 border-orange-500'
+                              : 'border-2 border-zinc-700'
+                        }`}
+                      />
+                      <span
+                        className={`text-sm font-medium flex-1 ${isDone ? 'text-zinc-500' : 'text-white'}`}
+                      >
+                        Day {cell.day}: {cell.label}
                       </span>
+                      {isNextDue && !isExpanded && (
+                        <span className="text-orange-500 text-xs font-semibold whitespace-nowrap">
+                          Up next
+                        </span>
+                      )}
+                      <span className="text-zinc-500 text-xs shrink-0" aria-hidden="true">
+                        {isExpanded ? '▴' : '▾'}
+                      </span>
+                    </button>
+
+                    {/* Inline day preview - expands in place instead of
+                        navigating to a separate screen, per Satish's
+                        explicit ask, and more than one day can stay
+                        expanded at once. */}
+                    {isExpanded && (
+                      <div
+                        className={`rounded-b-xl px-3 pt-2 pb-3 ${
+                          isNextDue
+                            ? 'bg-orange-500/10 border border-t-0 border-orange-500/40'
+                            : 'bg-zinc-900/60'
+                        }`}
+                      >
+                        <p className="text-zinc-500 text-xs mb-2">
+                          {cell.exercises.length} exercise{cell.exercises.length === 1 ? '' : 's'}
+                        </p>
+                        {cell.notes && <p className="text-orange-400/80 text-xs mb-2">{cell.notes}</p>}
+                        <div className="space-y-3">
+                          {sections.map((section, sectionIndex) => {
+                            const sectionExerciseCount = section.items.reduce(
+                              (sum, item) => sum + (item.type === 'single' ? 1 : item.blocks.length),
+                              0
+                            )
+                            const collapsed = dayPhaseCollapse.has(section.phase)
+                            return (
+                              <div
+                                key={section.phase}
+                                className={sectionIndex === 0 ? '' : 'pt-3 border-t border-zinc-800'}
+                              >
+                                <button
+                                  onClick={() => toggleDayPhaseCollapsed(cell.key, section.phase)}
+                                  className="w-full flex items-center justify-between gap-2 mb-2"
+                                >
+                                  <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
+                                    {PHASE_LABELS_PREVIEW[section.phase]} · {sectionExerciseCount} exercise
+                                    {sectionExerciseCount === 1 ? '' : 's'}
+                                  </span>
+                                  <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
+                                    {collapsed ? 'Show ▾' : 'Hide ▴'}
+                                  </span>
+                                </button>
+                                {!collapsed && (
+                                  <div className="space-y-1.5">
+                                    {section.items.map((item) =>
+                                      item.type === 'single' ? (
+                                        <div
+                                          key={item.block.id}
+                                          className="glass rounded-xl px-3 py-2 flex items-center justify-between gap-3"
+                                        >
+                                          <span className="text-white text-sm">{item.block.name}</span>
+                                          <span className="text-zinc-500 text-xs text-right shrink-0">
+                                            {item.block.setsCount} x {item.block.reps}
+                                            {item.block.restSeconds ? (
+                                              <span className="text-zinc-600">
+                                                {' '}
+                                                · rest {formatDurationLabel(item.block.restSeconds)}
+                                              </span>
+                                            ) : null}
+                                            {item.block.timerSeconds ? (
+                                              <span className="text-zinc-600">
+                                                {' '}
+                                                · {formatDurationLabel(item.block.timerSeconds)} timer
+                                              </span>
+                                            ) : null}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div key={item.groupId} className="glass rounded-xl px-3 py-2.5">
+                                          <p className="text-zinc-400 text-xs font-medium mb-1.5">
+                                            Round x {item.blocks[0].setsCount}
+                                          </p>
+                                          <div className="space-y-1">
+                                            {item.blocks.map((b) => (
+                                              <div key={b.id} className="flex items-center justify-between gap-3">
+                                                <span className="text-white text-sm">{b.name}</span>
+                                                <span className="text-zinc-500 text-xs text-right shrink-0">
+                                                  {b.reps}
+                                                  {b.restSeconds ? (
+                                                    <span className="text-zinc-600">
+                                                      {' '}
+                                                      · rest {formatDurationLabel(b.restSeconds)}
+                                                    </span>
+                                                  ) : null}
+                                                  {b.timerSeconds ? (
+                                                    <span className="text-zinc-600">
+                                                      {' '}
+                                                      · {formatDurationLabel(b.timerSeconds)} timer
+                                                    </span>
+                                                  ) : null}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <button
+                          onClick={() => openStartPopup(cell)}
+                          className="w-full mt-3 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-2.5 rounded-xl transition"
+                        >
+                          Start Workout
+                        </button>
+                      </div>
                     )}
-                  </button>
+                  </div>
                 )
               })}
             </div>
           </div>
         )
       })}
+
+      {/* Start-mode popup - opened by "Start Workout" inside an
+          expanded day row. Replaces the old one-time-only List-vs-
+          Guided explainer: the explanation now lives inside the choice
+          itself and shows every time, since seeing it only after
+          already tapping Start (the old flow) was backwards. Tapping
+          either block is what actually commits into startCell. */}
+      {startPopupCell && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="glass rounded-2xl p-5 max-w-sm w-full">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <p className="text-white font-semibold text-sm">
+                Day {startPopupCell.day}: {startPopupCell.label}
+              </p>
+              <button
+                onClick={closeStartPopup}
+                aria-label="Cancel"
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-full text-zinc-500 hover:text-white hover:bg-zinc-800 transition"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <line x1="3" y1="3" x2="13" y2="13" strokeLinecap="round" />
+                  <line x1="13" y1="3" x2="3" y2="13" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+
+            <button
+              onClick={() => commitStart(startPopupCell, 'list')}
+              className="w-full text-left bg-orange-500 hover:bg-orange-400 text-black rounded-xl p-3.5 mb-2 transition"
+            >
+              <p className="font-semibold text-sm mb-1">Start as a list</p>
+              <p className="text-black/70 text-xs leading-relaxed">
+                See every exercise on one screen - log sets at your own pace and jump around freely.
+              </p>
+            </button>
+
+            {startPopupCell.exercises.length > 1 && (
+              <button
+                onClick={() => commitStart(startPopupCell, 'guided')}
+                className="w-full text-left bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl p-3.5 transition"
+              >
+                <p className="font-semibold text-sm mb-1">Start as guided</p>
+                <p className="text-zinc-400 text-xs leading-relaxed">
+                  Walk through one exercise (or round) at a time, with rest between each - better if
+                  you&apos;d rather be led through it.
+                </p>
+              </button>
+            )}
+
+            <p className="text-zinc-600 text-xs mt-3 text-center">
+              Don&apos;t worry - you can always switch between the two mid-workout.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
