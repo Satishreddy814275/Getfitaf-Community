@@ -2087,7 +2087,13 @@ export default function WorkoutDayPicker({
     }
 
     return (
-      <div>
+      // pb-36 (mobile only) reserves space for the Finish Workout bar
+      // below, which is now `fixed` rather than `sticky` and so no
+      // longer occupies its own layout space - without this, the last
+      // bit of content (or the guided player's single exercise screen)
+      // would end up hidden underneath it. Not needed on desktop, where
+      // that bar goes back to normal (sm:static) in-flow positioning.
+      <div className="pb-36 sm:pb-0">
         <datalist id="exercise-swap-suggestions">
           {exerciseSuggestions.map((name) => (
             <option key={name} value={name} />
@@ -2123,7 +2129,7 @@ export default function WorkoutDayPicker({
             exercise list, which was the actual point of pinning it at
             all. No spacer needed either (unlike `fixed`, `sticky` keeps
             its own layout space, so nothing needs pushing down under it). */}
-        <div className="sticky top-0 z-40 -mx-4 sm:mx-0 bg-[#0a0a0a]/95 backdrop-blur border-b border-zinc-800">
+        <div className="sticky top-0 z-40 -mx-4 sm:mx-0 bg-[#0a0a0a]/95 backdrop-blur">
           <div className="max-w-6xl mx-auto px-4 py-2 flex items-center gap-3">
             <span className="bg-zinc-900 text-zinc-300 text-xs font-semibold tabular-nums rounded-full px-2.5 py-1 shrink-0">
               {formatRestTime(elapsedSeconds)}
@@ -2218,13 +2224,18 @@ export default function WorkoutDayPicker({
             above is the one and only way to end a session (Satish's
             call: this button "wasn't doing much" once Discard existed,
             and having two exits was redundant clutter, not a real
-            safety net). */}
-        <div className="mb-1">
-          <h2 className="text-white text-lg font-bold">
-            Week {activeCell.week}, Day {activeCell.day}: {activeCell.label}
-          </h2>
+            safety net). The sticky bar above also lost its border-b,
+            and this block got real top spacing (mt-5, was 0) plus a
+            two-line eyebrow/heading split instead of one run-on "Week
+            X, Day Y: Label" line - Satish's flag that the top of the
+            screen felt "crammed" the moment a session opened. */}
+        <div className="mt-5 mb-1">
+          <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wide">
+            Week {activeCell.week} · Day {activeCell.day}
+          </p>
+          <h2 className="text-white text-lg font-bold mt-1">{activeCell.label}</h2>
           {exercises.length > 0 && (
-            <p className="text-zinc-500 text-xs mt-0.5">
+            <p className="text-zinc-500 text-xs mt-1">
               {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
             </p>
           )}
@@ -2244,7 +2255,17 @@ export default function WorkoutDayPicker({
             {hasGuidedFlow && (
               <button
                 onClick={toggleViewMode}
-                className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition mb-4"
+                // Used to be a big full-width filled button, back when
+                // this was effectively the "start" action. It isn't
+                // anymore - starting now happens in the day-preview's
+                // Start Workout popup, well before list view is ever
+                // seen - so a button this large overstated what's just
+                // a secondary view switch. Downsized to a small bordered
+                // pill, matching Switch to list view's pill below (was
+                // too small the other direction) so both ends of this
+                // toggle now read as one consistent, appropriately
+                // low-key control.
+                className="border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-xs font-semibold px-3.5 py-1.5 rounded-full transition mb-4"
               >
                 {/* "Start Now" used to live here, but the session's
                     already underway by the time anyone sees list view
@@ -2324,22 +2345,31 @@ export default function WorkoutDayPicker({
 
                 const phase = section.phase
                 const collapsed = collapsedPhases.has(phase)
+                // All three phases (not just the collapsed ones) get the
+                // same bg-zinc-900 pill-row header now, whether expanded
+                // or not - Satish's "middle option" pick: Main still
+                // starts expanded (collapsedPhases' default already only
+                // includes warmup/cooldown, unchanged - see its useState
+                // above), but every section reads as an equally tappable
+                // row instead of Main looking like a plain list with no
+                // indication Warm-up/Cool-down even exist as separate,
+                // expandable things. Dropped the "Show ▾ / Hide ▴" text
+                // label in favor of a bare chevron (the pill itself now
+                // carries enough visual weight to read as tappable) and
+                // dropped the border-t divider between sections in favor
+                // of margin - two already-boxed rows don't need a line
+                // between them too.
                 return (
-                  <div
-                    key={phase}
-                    className={sectionIndex === 0 ? '' : 'pt-3 border-t border-zinc-800'}
-                  >
+                  <div key={phase} className={sectionIndex === 0 ? '' : 'mt-4'}>
                     <button
                       onClick={() => togglePhaseCollapsed(phase)}
-                      className="w-full flex items-center justify-between gap-2 mb-3"
+                      className="w-full flex items-center justify-between gap-2 bg-zinc-900 rounded-lg px-3 py-2.5 mb-3"
                     >
                       <span className="text-orange-400 text-xs font-bold uppercase tracking-wider">
                         {phaseSectionLabel(phase)} · {sectionExerciseCount} exercise
                         {sectionExerciseCount === 1 ? '' : 's'}
                       </span>
-                      <span className="text-zinc-500 text-xs font-medium normal-case shrink-0">
-                        {collapsed ? 'Show ▾' : 'Hide ▴'}
-                      </span>
+                      <span className="text-zinc-500 text-xs shrink-0">{collapsed ? '▾' : '▴'}</span>
                     </button>
                     {!collapsed && <div className="space-y-3">{boxesJsx}</div>}
                   </div>
@@ -2349,9 +2379,14 @@ export default function WorkoutDayPicker({
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {/* Matching bordered pill to Switch to guided view above -
+                was plain unstyled text before, easy to miss next to the
+                guided player's bigger exercise content. Neutral zinc
+                border here (vs orange for the guided direction) since
+                this is the "step back" direction, not the primary one. */}
             <button
               onClick={toggleViewMode}
-              className="text-xs font-medium text-zinc-400 hover:text-white transition"
+              className="border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-600 text-xs font-medium px-3.5 py-1.5 rounded-full transition"
             >
               ← Switch to list view
             </button>
@@ -2470,34 +2505,44 @@ export default function WorkoutDayPicker({
           </div>
         )}
 
-        {/* Pinned above the mobile bottom tab bar (bottom-16 matches
-            the pb-16 clearance layout.tsx already gives page content)
-            so the primary action never requires scrolling back down
-            through a long session to reach - normal, non-sticky flow
-            on desktop (sm:static) where that isn't a concern. Extra
-            top margin (mt-10 vs the rest of the page's mt-4/mt-6) and
-            the caption right above it are both there so this doesn't
-            read as "the next step" of the guided player's rest/exercise
-            screens sitting right above it - it's a separate, rarer
-            action, not part of that flow. */}
-        <div className="sticky bottom-16 sm:static z-30 -mx-4 sm:mx-0 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 mt-10 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
-          <p className="text-zinc-500 text-[11px] text-center mb-2">
-            Only tap this once every exercise is logged
-          </p>
-          <button
-            onClick={finishWorkout}
-            disabled={isPending}
-            className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2.5"
-          >
-            {isPending ? (
-              'Saving...'
-            ) : (
-              <>
-                <BicepsFlexed className="w-6 h-6" aria-hidden="true" />
-                Finish Workout
-              </>
-            )}
-          </button>
+        {/* True fixed bottom-docked bar on mobile now (was sticky) -
+            sticky's "stuck window" depends on how much content sits
+            below it in the flow, which looked fine on a long list-view
+            day but made it look like it was floating awkwardly
+            mid-screen during guided mode's short single-exercise
+            screens (barely any content below it to keep it properly
+            anchored). Fixed always docks flush to the true bottom edge
+            regardless of content height, same as the mobile tab bar
+            below it already does - normal, non-fixed flow on desktop
+            (sm:static) where that isn't a concern. Since fixed takes
+            this out of the page's flow entirely, the outer return div
+            below now carries its own pb-36 (mobile only) so exercise
+            content never ends up hidden underneath this bar - fixed
+            elements don't reserve their own layout space the way
+            sticky ones do. inset-x-0 + an inner max-w-3xl wrapper
+            reproduce the page's own centering/width, since fixed
+            positions relative to the viewport, not this component's
+            parent. */}
+        <div className="fixed inset-x-0 bottom-16 sm:static z-30 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 sm:mt-10 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+          <div className="max-w-3xl mx-auto">
+            <p className="text-zinc-500 text-[11px] text-center mb-2">
+              Only tap this once every exercise is logged
+            </p>
+            <button
+              onClick={finishWorkout}
+              disabled={isPending}
+              className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition flex items-center justify-center gap-2.5"
+            >
+              {isPending ? (
+                'Saving...'
+              ) : (
+                <>
+                  <BicepsFlexed className="w-6 h-6" aria-hidden="true" />
+                  Finish Workout
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Per-exercise History modal - opened from the "⋯" menu on any
