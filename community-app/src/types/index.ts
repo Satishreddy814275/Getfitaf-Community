@@ -224,3 +224,14 @@ export interface WorkoutExerciseSwap {
   sets: string
   reps: string
 }
+
+// One row per member per calendar day (see migration-body-weight.sql -
+// unique on profile_id + logged_date, upserted). weightKg is always
+// canonical kg, same storage pattern as workout_logged_sets.weight -
+// conversion to the member's preferred unit happens only at
+// display/input via weightUnit.ts.
+export interface BodyWeightEntry {
+  id: string
+  loggedDate: string
+  weightKg: number
+}

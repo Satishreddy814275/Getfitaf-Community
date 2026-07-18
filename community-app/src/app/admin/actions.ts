@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { buildLogAsDurationLookup } from '@/lib/workoutBlocks'
 import { revalidatePath } from 'next/cache'
-import type { WorkoutExercise, WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
+import type { WorkoutExercise, WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay, BodyWeightEntry } from '@/types'
 import {
   collapseExercisesToBlocks,
   expandBlocksToExercises,
@@ -842,6 +842,39 @@ export async function getMemberWorkoutHistory(
   const logAsDurationByExercise = buildLogAsDurationLookup(activePlan?.days ?? [])
 
   return { history, weightUnit, logAsDurationByExercise }
+}
+
+// Coach-visible body-weight trend for one member - same
+// admin-can-read-any-profile pattern as getMemberWorkoutHistory above,
+// including using the member's own weight_unit rather than the admin's.
+export async function getMemberBodyWeightHistory(
+  memberId: string
+): Promise<{ entries: BodyWeightEntry[]; weightUnit: 'kg' | 'lbs' }> {
+  const { isAdmin } = await requireAdmin()
+  if (!isAdmin) return { entries: [], weightUnit: 'kg' }
+
+  const admin = createAdminClient()
+
+  const { data: memberProfile } = await admin
+    .from('profiles')
+    .select('weight_unit')
+    .eq('id', memberId)
+    .single()
+  const weightUnit: 'kg' | 'lbs' = memberProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg'
+
+  const { data: rows } = await admin
+    .from('body_weight_logs')
+    .select('id, weight_kg, logged_date')
+    .eq('profile_id', memberId)
+    .order('logged_date', { ascending: true })
+
+  const entries: BodyWeightEntry[] = (rows || []).map((r) => ({
+    id: r.id,
+    loggedDate: r.logged_date,
+    weightKg: r.weight_kg,
+  }))
+
+  return { entries, weightUnit }
 }
 
 // "Tier 1" exercise editor - lets an admin tweak the numbers on an

@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import ProfileForm from '@/components/ProfileForm'
 import InstallAppRow from '@/components/InstallAppRow'
+import BodyWeightCard from '@/components/BodyWeightCard'
+import type { BodyWeightEntry } from '@/types'
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -16,6 +18,20 @@ export default async function ProfilePage() {
     .select('full_name, avatar_url, weight_unit')
     .eq('id', user.id)
     .single()
+
+  const weightUnit: 'kg' | 'lbs' = profile?.weight_unit === 'lbs' ? 'lbs' : 'kg'
+
+  const { data: bodyWeightRows } = await supabase
+    .from('body_weight_logs')
+    .select('id, weight_kg, logged_date')
+    .eq('profile_id', user.id)
+    .order('logged_date', { ascending: true })
+
+  const bodyWeightEntries: BodyWeightEntry[] = (bodyWeightRows || []).map((r) => ({
+    id: r.id,
+    loggedDate: r.logged_date,
+    weightKg: r.weight_kg,
+  }))
 
   return (
     <div className="max-w-lg mx-auto w-full py-8 px-4 sm:px-6">
@@ -34,9 +50,11 @@ export default async function ProfilePage() {
         userId={user.id}
         initialName={profile?.full_name || ''}
         initialAvatarUrl={profile?.avatar_url || null}
-        initialWeightUnit={profile?.weight_unit === 'lbs' ? 'lbs' : 'kg'}
+        initialWeightUnit={weightUnit}
         email={user.email || null}
       />
+
+      <BodyWeightCard weightUnit={weightUnit} entries={bodyWeightEntries} />
 
       <InstallAppRow />
     </div>

@@ -7,10 +7,13 @@ import {
   grantLowTicketAccess,
   revokeLowTicketAccess,
   getMemberWorkoutHistory,
+  getMemberBodyWeightHistory,
 } from '@/app/admin/actions'
 import Avatar from './Avatar'
 import WorkoutHistoryList from './WorkoutHistoryList'
-import type { WorkoutHistoryGroup } from '@/types'
+import MiniTrendChart from './MiniTrendChart'
+import { convertWeightForDisplay } from '@/lib/weightUnit'
+import type { WorkoutHistoryGroup, BodyWeightEntry } from '@/types'
 
 type Member = {
   id: string
@@ -61,6 +64,15 @@ export default function AdminMembersList({
   >({})
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null)
 
+  // Independent accordion from the workout log above (a coach may want
+  // both open at once) - same lazy-fetch-then-cache pattern, one entry
+  // per member so re-collapsing and re-expanding doesn't re-fetch.
+  const [expandedWeightMemberId, setExpandedWeightMemberId] = useState<string | null>(null)
+  const [weightHistoryByMember, setWeightHistoryByMember] = useState<
+    Record<string, { entries: BodyWeightEntry[]; weightUnit: 'kg' | 'lbs' }>
+  >({})
+  const [loadingWeightId, setLoadingWeightId] = useState<string | null>(null)
+
   async function handleToggleHistory(member: Member) {
     if (expandedMemberId === member.id) {
       setExpandedMemberId(null)
@@ -72,6 +84,20 @@ export default function AdminMembersList({
       const result = await getMemberWorkoutHistory(member.id)
       setHistoryByMember((h) => ({ ...h, [member.id]: result }))
       setLoadingHistoryId(null)
+    }
+  }
+
+  async function handleToggleWeightHistory(member: Member) {
+    if (expandedWeightMemberId === member.id) {
+      setExpandedWeightMemberId(null)
+      return
+    }
+    setExpandedWeightMemberId(member.id)
+    if (!weightHistoryByMember[member.id]) {
+      setLoadingWeightId(member.id)
+      const result = await getMemberBodyWeightHistory(member.id)
+      setWeightHistoryByMember((h) => ({ ...h, [member.id]: result }))
+      setLoadingWeightId(null)
     }
   }
 
@@ -135,6 +161,7 @@ export default function AdminMembersList({
             const hasLowTicket = overrides[member.id] ?? member.hasLowTicket
             const summary = workoutSummaries[member.id]
             const isExpanded = expandedMemberId === member.id
+            const isWeightExpanded = expandedWeightMemberId === member.id
             return (
               <div key={member.id}>
                 <div className="flex items-center justify-between gap-3 p-4 flex-wrap">
@@ -179,6 +206,12 @@ export default function AdminMembersList({
                       </button>
                     )}
                     <button
+                      onClick={() => handleToggleWeightHistory(member)}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition"
+                    >
+                      {isWeightExpanded ? 'Hide weight' : 'Weight log'}
+                    </button>
+                    <button
                       onClick={() => handleToggleLowTicket(member)}
                       disabled={pendingId === member.id}
                       className={
@@ -213,6 +246,40 @@ export default function AdminMembersList({
                         logAsDurationByExercise={historyByMember[member.id]?.logAsDurationByExercise}
                       />
                     )}
+                  </div>
+                )}
+                {isWeightExpanded && (
+                  <div className="px-4 pb-4 bg-black/20">
+                    {loadingWeightId === member.id ? (
+                      <p className="text-xs text-zinc-500 py-4">Loading...</p>
+                    ) : (() => {
+                      const weightData = weightHistoryByMember[member.id]
+                      const entries = weightData?.entries || []
+                      const unit = weightData?.weightUnit || 'kg'
+                      const points = entries.map((e) => ({
+                        date: e.loggedDate,
+                        value: convertWeightForDisplay(e.weightKg, unit)!,
+                      }))
+                      const latest = entries[entries.length - 1]
+                      if (entries.length === 0) {
+                        return <p className="text-xs text-zinc-500 py-4">No weight logged yet.</p>
+                      }
+                      return (
+                        <div className="pt-3">
+                          <p className="text-xs text-zinc-400 mb-2">
+                            Latest: {convertWeightForDisplay(latest.weightKg, unit)}
+                            {unit} on {latest.loggedDate}
+                          </p>
+                          {points.length >= 2 ? (
+                            <MiniTrendChart points={points} label="Weight over time" unit={unit} />
+                          ) : (
+                            <p className="text-xs text-zinc-500">
+                              Only one entry so far - not enough to chart a trend yet.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
