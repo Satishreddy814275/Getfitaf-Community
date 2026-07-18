@@ -531,6 +531,19 @@ export default function WorkoutDayPicker({
   // celebration (activeCell.label, before finishWorkout nulls
   // activeCell) - used to build the "Post a win" pre-filled post text.
   const [finishedDayLabel, setFinishedDayLabel] = useState<string | null>(null)
+  // Blocking modal shown when tapping Discard with something already
+  // logged, replacing what used to be a plain window.confirm() - offers
+  // "Finish workout" (saves whatever's logged, same as finishWorkout()
+  // below) as an explicit alternative to "Discard everything", since
+  // Satish's own read was that people default to assuming Discard is
+  // the only way out of an active session and don't realize partial
+  // progress can be saved instead. Same glass/backdrop modal language
+  // already used for the celebration and switch-program modals - no new
+  // visual pattern introduced. Gated on the same hasAnyInput check the
+  // old confirm() used: nothing logged means nothing to offer to save,
+  // so handleCloseSession skips this modal entirely in that case, same
+  // as before.
+  const [discardModalOpen, setDiscardModalOpen] = useState(false)
   // Drives the inline banner's pop-in/pop-out transition - starts
   // false, flips true one frame after justFinished goes true (so the
   // CSS transition has a "before" state to animate from instead of
@@ -1042,19 +1055,25 @@ export default function WorkoutDayPicker({
   // Single close action for the session - replaces what used to be
   // two separate controls ("Back to your program" + "Discard
   // workout") that said almost the same thing in two places. Silent
-  // if nothing's been typed yet (nothing to lose), otherwise confirms
-  // with the same explicit wording every time - one unambiguous way
-  // out instead of several half-redundant ones.
+  // if nothing's been typed yet (nothing to lose - discardSession runs
+  // immediately, same as before), otherwise opens the discard/finish
+  // choice modal instead of a plain confirm() - see discardModalOpen's
+  // own comment above for why.
   function handleCloseSession() {
     const hasAnyInput = Object.values(setsByExercise).some((rows) =>
       rows.some((r) => r.weight.trim() !== '' || r.reps.trim() !== '')
     )
-    if (
-      hasAnyInput &&
-      !confirm('This is going to erase all progress in the workout. Would you like to continue?')
-    ) {
+    if (hasAnyInput) {
+      setDiscardModalOpen(true)
       return
     }
+    discardSession()
+  }
+
+  // The actual destructive action, split out from handleCloseSession so
+  // both the no-input fast path above and the discard modal's "Discard
+  // everything" button can call it directly.
+  function discardSession() {
     clearDraft(generationId)
     setActiveCell(null)
     setSessionStartedAt(null)
@@ -1067,6 +1086,7 @@ export default function WorkoutDayPicker({
     setGuidedPhase('exercise')
     setViewMode('list')
     setMissingValuesFlagged(false)
+    setDiscardModalOpen(false)
   }
 
   function handleSwap(ex: CellExercise, week: number, applyToAllWeeks: boolean) {
@@ -2212,22 +2232,23 @@ export default function WorkoutDayPicker({
       // consistent, slightly roomier padding reads better than it does
       // packed into the list alongside other cards.
       const lastEntryHasRest = group[group.length - 1].restSeconds != null
-      // Orange ring around the whole card once Finish Workout has flagged
-      // missing values (see handleFinishClick/missingValuesFlagged above)
-      // and this specific group is one of the incomplete ones - only in
-      // list view's normal (non-large) rendering, since large is the
-      // guided player's single-exercise screen and Finish Workout always
-      // redirects to list view first anyway, so large+flagged never
-      // actually happens together.
-      const flaggedMissing = !large && missingValuesFlagged && groupHasMissingValues(group)
+      // No whole-card ring here anymore once Finish Workout flags missing
+      // values - only the specific empty weight/reps input gets
+      // highlighted now (see the input className logic further down),
+      // matching what Satish asked for: "highlight that particular box
+      // that they need to enter the values in" instead of the whole row
+      // or card. Round boxes still get their own per-exercise-row
+      // highlight (rowFlaggedMissing, further down in this file) - this
+      // straight-set card previously had the coarsest highlight of the
+      // three (whole card), now it has the finest (single field).
       return (
         <div
           className={
-            (large
+            large
               ? 'glass rounded-2xl p-5'
               : lastEntryHasRest
                 ? 'glass rounded-2xl pt-3.5 px-3.5 pb-2'
-                : 'glass rounded-2xl p-3.5') + (flaggedMissing ? ' ring-2 ring-orange-500/60' : '')
+                : 'glass rounded-2xl p-3.5'
           }
         >
           <div className="flex items-baseline justify-between mb-0.5 gap-2">
@@ -2465,11 +2486,20 @@ export default function WorkoutDayPicker({
                     <span className="text-zinc-500 text-xs w-11 shrink-0">
                       {ex.perSide && !ex.timerSeconds && i < 2 ? (i === 0 ? 'Left' : 'Right') : `Set ${i + 1}`}
                     </span>
-                    {/* Same missing-field highlight as the single-row
-                        card (renderExerciseCard) - `large` here means
-                        this is the guided player's multi-set grouped
-                        screen, so the same confirmEmptyDone nudge from
-                        the shared Done button applies to it too. */}
+                    {/* Missing-field highlight, from two independent
+                        sources: `large && confirmEmptyDone` is the
+                        guided player's per-step Done nudge (unchanged);
+                        `!large && missingValuesFlagged` is the whole-day
+                        Finish Workout check - this used to ring the
+                        entire card instead, but Satish asked for just
+                        "that particular box" once he saw the round-box
+                        version was already per-row - so this now
+                        highlights only the specific empty input, same as
+                        the Done nudge already did. The two sources never
+                        overlap in practice (Finish Workout always
+                        redirects to list view first, so large+flagged
+                        never happens together), but both are checked
+                        directly rather than assumed mutually exclusive. */}
                     {ex.trackWeight !== false && (
                       <input
                         type="number"
@@ -2478,7 +2508,9 @@ export default function WorkoutDayPicker({
                         value={row?.weight ?? ''}
                         onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
                         className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
-                          large && confirmEmptyDone && !row?.weight ? 'border-orange-500/60' : 'border-zinc-800'
+                          ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.weight
+                            ? 'border-orange-500/60'
+                            : 'border-zinc-800'
                         }`}
                       />
                     )}
@@ -2489,7 +2521,9 @@ export default function WorkoutDayPicker({
                       value={row?.reps ?? ''}
                       onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
                       className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
-                        large && confirmEmptyDone && !row?.reps ? 'border-orange-500/60' : 'border-zinc-800'
+                        ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.reps
+                          ? 'border-orange-500/60'
+                          : 'border-zinc-800'
                       }`}
                     />
                     <button
@@ -2531,19 +2565,11 @@ export default function WorkoutDayPicker({
     }
 
     return (
-      // pb-56 (mobile only) reserves space for the Finish Workout bar
-      // below, which is now `fixed` rather than `sticky` and so no
-      // longer occupies its own layout space - without this, the last
-      // bit of content (or the guided player's single exercise screen)
-      // would end up hidden underneath it. Bumped up from pb-36 -
-      // Satish's flag that the last exercise card still felt too close
-      // to the bar even once it was no longer literally covered by it;
-      // this adds real visible breathing room past the bar's own
-      // footprint so the exercise content reads as a finished, separate
-      // block instead of running right up against Finish Workout. Not
-      // needed on desktop, where that bar goes back to normal
-      // (sm:static) in-flow positioning.
-      <div className="pb-56 sm:pb-0">
+      // No bottom padding reserved here anymore - Finish Workout now
+      // sits in normal document flow on mobile too (see the bar's own
+      // comment below), so nothing needs clearance space underneath it
+      // the way the old `fixed` bar did.
+      <div>
         <datalist id="exercise-swap-suggestions">
           {exerciseSuggestions.map((name) => (
             <option key={name} value={name} />
@@ -2963,16 +2989,25 @@ export default function WorkoutDayPicker({
                     exactly when someone would want to see them: right
                     as they start resting, before the next card
                     replaces this screen. */}
+                {/* "Finished X" stays muted (it's already done, nothing to
+                    draw attention to), "Up next" turns orange since it's
+                    the forward-looking piece of info - small color pass to
+                    make this screen feel less flat (Satish: "the rest page
+                    right now looks a little bit bland"). Deliberately not
+                    using ring/border-orange anywhere on this card, since
+                    that visual language already means "missing values" in
+                    this file (see missingValuesFlagged) - text-only color
+                    changes avoid that collision. */}
                 <div className="flex items-center justify-between gap-2 mb-2.5 text-left">
                   <span className="text-zinc-500 text-xs">Finished {baseName(currentEx.name)}</span>
                   {listGroups[guidedIndex + 1] && (
-                    <span className="text-zinc-500 text-xs text-right">
+                    <span className="text-orange-400 text-xs text-right">
                       Up next: {baseName(listGroups[guidedIndex + 1][0].name)}
                     </span>
                   )}
                 </div>
-                <p className="text-zinc-400 text-sm mb-2">Rest</p>
-                <p className="text-white text-5xl font-bold tabular-nums mb-3.5">
+                <p className="text-orange-400 text-sm mb-2">Rest</p>
+                <p className="text-orange-400 text-5xl font-bold tabular-nums mb-3.5">
                   {formatRestTime(restTimer.remaining)}
                 </p>
                 <div className="flex items-center justify-center gap-3 mb-3.5">
@@ -3071,37 +3106,38 @@ export default function WorkoutDayPicker({
           </div>
         )}
 
-        {/* True fixed bottom-docked bar on mobile now (was sticky) -
-            sticky's "stuck window" depends on how much content sits
-            below it in the flow, which looked fine on a long list-view
-            day but made it look like it was floating awkwardly
-            mid-screen during guided mode's short single-exercise
-            screens (barely any content below it to keep it properly
-            anchored). Fixed always docks flush to the true bottom edge
-            regardless of content height, same as the mobile tab bar
-            below it already does - normal, non-fixed flow on desktop
-            (sm:static) where that isn't a concern. Since fixed takes
-            this out of the page's flow entirely, the outer return div
-            below now carries its own pb-36 (mobile only) so exercise
-            content never ends up hidden underneath this bar - fixed
-            elements don't reserve their own layout space the way
-            sticky ones do. inset-x-0 + an inner max-w-3xl wrapper
-            reproduce the page's own centering/width, since fixed
-            positions relative to the viewport, not this component's
-            parent.
+        {/* Finish Workout now sits in normal document flow at the end
+            of the page on mobile too, matching what desktop already did
+            (sm:static, before this was ever made `fixed`). Reverted
+            away from the floating fixed-bottom-bar approach - Satish's
+            concern was that it permanently occupied screen space while
+            scrolling and had already caused repeated mis-tap issues
+            (this exact bar needed hiding during rest/round-intro below,
+            and its bottom clearance got bumped twice, both just to work
+            around it floating over content). Since Finish only makes
+            sense once everything's actually logged, scrolling to reach
+            it at the natural end of the list isn't real extra work -
+            it's the same thing desktop has always done without
+            complaint. Mid-workout reachability is now handled instead
+            by the Discard/Finish choice modal above (discardModalOpen)
+            rather than a second persistent button living in the sticky
+            top bar next to Discard - two small adjacent controls for
+            such different-weight actions read as interchangeable no
+            matter how they were colored or spaced, so that approach was
+            dropped in favor of meeting people at the moment they already
+            reach for Discard.
 
-            Hidden entirely (not just spaced out) during the guided
-            player's rest and round-intro screens - Satish's call after
-            seeing Skip rest land close to this bar on short screens
-            ("letting it disappear completely... sounds like a great
-            option"). Finishing mid-rest or mid-round-intro isn't a
-            meaningful action anyway, so removing the mis-tap target
-            entirely is cleaner than just adding clearance. Still shown
+            Still skipped entirely (not just spaced out) during the
+            guided player's rest and round-intro screens - even in
+            normal flow, guided mode's screens are short enough that a
+            bar directly following them would still land close to Skip
+            rest on short screens, the original mis-tap concern that
+            justified hiding it there in the first place. Still shown
             for 'exercise' and 'done' guided phases, and always in list
             view (effectiveMode !== 'guided' short-circuits the phase
             check there). */}
         {!(effectiveMode === 'guided' && (guidedPhase === 'rest' || guidedPhase === 'roundIntro')) && (
-        <div className="fixed inset-x-0 bottom-16 sm:static z-30 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 sm:mt-10 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
+        <div className="mt-10">
           <div className="max-w-3xl mx-auto">
             <p className="text-zinc-500 text-[11px] text-center mb-2">
               Only tap this once every exercise is logged
@@ -3133,6 +3169,69 @@ export default function WorkoutDayPicker({
           </div>
         </div>
         )}
+
+        {/* Discard/Finish choice modal - opened by handleCloseSession
+            instead of the old window.confirm() whenever something's
+            actually been logged. Names exactly what's still missing
+            (same dedup logic as the list-view warning banner above) so
+            "Finish workout" isn't a surprise, and offers it as the
+            primary path alongside the clearly-destructive "Discard
+            everything" - Satish's read was that people default to
+            assuming Discard is the only way out of a session, so this
+            meets them at that exact moment instead of adding a new,
+            easy-to-miss button elsewhere. "Keep working" (backdrop
+            click does the same) is the only way to leave without either
+            saving or erasing anything. */}
+        {discardModalOpen &&
+          (() => {
+            const missing = getMissingExercises(exercises)
+            const names = Array.from(new Set(missing.map((ex) => normalizeExerciseIdentity(ex.name))))
+            const namesText =
+              names.length <= 2 ? names.join(', ') : `${names.slice(0, 2).join(', ')} +${names.length - 2} more`
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+                onClick={() => setDiscardModalOpen(false)}
+              >
+                <div
+                  className="glass rounded-2xl p-6 max-w-sm w-full text-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <AlertTriangle className="w-7 h-7 text-orange-400 mx-auto mb-3" aria-hidden="true" />
+                  <p className="text-white font-semibold text-sm mb-1.5">You have progress logged</p>
+                  <p className="text-zinc-400 text-sm mb-5">
+                    {names.length > 0
+                      ? `${namesText} still need${names.length === 1 ? 's' : ''} values. Finish now to save what you've logged, or discard to erase everything.`
+                      : "Finish now to save what you've logged, or discard to erase everything."}
+                  </p>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => {
+                        setDiscardModalOpen(false)
+                        finishWorkout()
+                      }}
+                      disabled={isPending}
+                      className="w-full bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold py-3 rounded-xl transition"
+                    >
+                      Finish workout
+                    </button>
+                    <button
+                      onClick={discardSession}
+                      className="w-full border border-red-500/40 text-red-400 hover:bg-red-500/10 text-sm font-semibold py-3 rounded-xl transition"
+                    >
+                      Discard everything
+                    </button>
+                    <button
+                      onClick={() => setDiscardModalOpen(false)}
+                      className="w-full text-zinc-500 hover:text-zinc-300 text-xs font-medium py-1.5 transition"
+                    >
+                      Keep working
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
         {/* Per-exercise History modal - opened from the "⋯" menu on any
             exercise card (renderExerciseCard/renderGroupedCard both set

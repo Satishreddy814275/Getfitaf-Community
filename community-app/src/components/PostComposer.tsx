@@ -44,7 +44,18 @@ export default function PostComposer({
   useEffect(() => {
     if (!initialLessonTitle && !initialContent) return
     formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    textareaRef.current?.focus()
+    const textarea = textareaRef.current
+    textarea?.focus()
+    // Browsers place the cursor at the very start of a textarea's
+    // pre-filled value on focus, not the end - without this, someone
+    // continuing "Just finished leg day! 💪" would be typing in front
+    // of that text instead of after it. setSelectionRange to the
+    // content's own length moves the caret (and collapses any
+    // selection) to the end.
+    if (textarea) {
+      const end = textarea.value.length
+      textarea.setSelectionRange(end, end)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
