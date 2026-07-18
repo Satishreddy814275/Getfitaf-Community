@@ -512,7 +512,43 @@ export default function WorkoutDayPicker({
   // (celebrationModalOpen below), per Satish's ask for something more
   // immediate/deliberate than a banner someone might not even scroll
   // back up to see.
-  const [justFinished, setJustFinished] = useState(false)
+  //
+  // Root cause of an earlier bug worth remembering: logWorkoutSession
+  // (called from finishWorkout below) revalidates '/workouts', and
+  // that revalidation-driven refresh was resetting this component's
+  // in-memory state - the banner would vanish the moment someone
+  // closed the celebration modal, well before its own timer was up,
+  // because whatever triggered the refresh wiped justFinished back to
+  // its default. Rather than chase the exact React/Next reconciliation
+  // mechanism, the fix is to make the banner's state survive any
+  // remount: the actual deadline lives in sessionStorage
+  // (bannerExpiresAtRef mirrors it in memory for the timer effect
+  // below), and this initial value is read straight from storage on
+  // first render via useState's lazy initializer - not an effect, so
+  // it doesn't trip react-hooks/set-state-in-effect and doesn't need a
+  // frame to settle. Same idea as the existing localStorage draft
+  // (saveDraft/clearDraft) already used elsewhere in this file, just
+  // for "is the finish-banner window still open" instead of workout
+  // progress.
+  const [justFinished, setJustFinished] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    const stored = sessionStorage.getItem(`workout-finish-banner-${generationId}`)
+    const expiresAt = stored ? Number(stored) : NaN
+    return Number.isFinite(expiresAt) && expiresAt > Date.now()
+  })
+  // Mirrors the sessionStorage deadline in memory - a ref (not state)
+  // since it's read imperatively inside the fade-timer effect below,
+  // not something that should itself trigger a re-render. Read eagerly
+  // on every render here (useRef's initializer isn't truly lazy the
+  // way useState's is, but a single sessionStorage read is cheap and
+  // only its very first value is actually kept) so a resumed banner
+  // (justFinished restored true above) has its real remaining time
+  // available immediately, not a fresh 90s.
+  const bannerExpiresAtRef = useRef<number>(
+    typeof window !== 'undefined'
+      ? Number(sessionStorage.getItem(`workout-finish-banner-${generationId}`)) || 0
+      : 0
+  )
   // Blocking modal shown the instant Finish Workout completes - stays
   // open until one of its own two buttons is tapped (no backdrop
   // dismiss, no auto-timeout - Satish's explicit call: "I am thinking
@@ -566,22 +602,29 @@ export default function WorkoutDayPicker({
     // transition away from, so it doesn't trigger the same
     // set-state-in-effect concern the two synchronous calls above do.
     const showRaf = requestAnimationFrame(() => setCelebrationVisible(true))
-    // Starts fading at 89.5s in, fully unmounts at 90s. Originally 6s,
-    // bumped up here - Satish's flag: with the celebration modal now in
-    // the mix, someone might sit on that modal for a bit before landing
-    // back on this screen, and the old 6s window could already be gone
-    // by the time they got here. Still a deliberately fixed, generous-
-    // but-finite window (not indefinite) - the point was never to have
-    // it linger for days, just to survive realistic time spent on the
-    // modal first.
-    const hideTimer = setTimeout(() => setCelebrationVisible(false), 89500)
-    const unmountTimer = setTimeout(() => setJustFinished(false), 90000)
+    // Counts down to the actual stored deadline (bannerExpiresAtRef),
+    // not a fresh 90s every time this effect runs - matters because
+    // this effect re-fires whenever justFinished flips true, which now
+    // includes the "resumed after a remount" case (see justFinished's
+    // own lazy initializer above). Using a fixed 90s here unconditionally
+    // would silently reset the clock on every remount, which is exactly
+    // the "nagging tag that never goes away" Satish didn't want - using
+    // the real remaining time means a remount can only ever shorten what's
+    // left, never extend it.
+    const remaining = Math.max(0, bannerExpiresAtRef.current - Date.now())
+    const hideTimer = setTimeout(() => setCelebrationVisible(false), Math.max(0, remaining - 500))
+    const unmountTimer = setTimeout(() => {
+      setJustFinished(false)
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(`workout-finish-banner-${generationId}`)
+      }
+    }, remaining)
     return () => {
       cancelAnimationFrame(showRaf)
       clearTimeout(hideTimer)
       clearTimeout(unmountTimer)
     }
-  }, [justFinished])
+  }, [justFinished, generationId])
   // Which day rows are expanded inline in the program grid below (task
   // #50+) - a day tapped in its Week N card no longer navigates to a
   // separate screen, it expands in place. A Set (not a single value) so
@@ -1043,6 +1086,14 @@ export default function WorkoutDayPicker({
     setSessionStartedAt(Date.now())
     setActiveCell(cell)
     setJustFinished(false)
+    // Clears any still-open finish-banner window from a previous
+    // session before starting a new one - otherwise a stale deadline
+    // could sit in storage and (via justFinished's lazy initializer)
+    // incorrectly resurrect the old banner if this component ever
+    // remounts mid-session.
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(`workout-finish-banner-${generationId}`)
+    }
     setSwapPanelFor(null)
     setSwapInput('')
     setOverflowOpenFor(null)
@@ -1409,6 +1460,18 @@ export default function WorkoutDayPicker({
       })
       clearDraft(generationId)
       setActiveCell(null)
+      // Write the banner's deadline to sessionStorage (and mirror it in
+      // the ref the fade-timer effect reads from) before flipping
+      // justFinished true - this is what makes the banner survive the
+      // revalidatePath('/workouts')-driven refresh that logWorkoutSession
+      // just triggered above, instead of getting silently reset the
+      // moment that refresh lands. See justFinished's own state comment
+      // for the full story.
+      const expiresAt = Date.now() + 90000
+      bannerExpiresAtRef.current = expiresAt
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(`workout-finish-banner-${generationId}`, String(expiresAt))
+      }
       setJustFinished(true)
       setCelebration(celebrationPick)
       setFinishedDayLabel(dayLabel)
