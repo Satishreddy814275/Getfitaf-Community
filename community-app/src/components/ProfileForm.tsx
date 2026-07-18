@@ -11,11 +11,17 @@ export default function ProfileForm({
   initialName,
   initialAvatarUrl,
   initialWeightUnit,
+  email,
 }: {
   userId: string
   initialName: string
   initialAvatarUrl: string | null
   initialWeightUnit: 'kg' | 'lbs'
+  // Sign-in email, display-only - changing it means changing how you
+  // log in, which isn't something this form touches. Shown so members
+  // can check which address they're signed in with (e.g. if they're
+  // not getting an email from us) without needing to ask a coach.
+  email: string | null
 }) {
   const [name, setName] = useState(initialName)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
@@ -193,19 +199,46 @@ export default function ProfileForm({
         />
       </div>
 
+      {email && (
+        <div>
+          <label className="block text-xs font-medium text-zinc-400 mb-1.5">Email</label>
+          <p className="w-full text-sm bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-400">
+            {email}
+          </p>
+          <p className="text-xs text-zinc-500 mt-1.5">
+            The address you sign in with. Contact your coach to change it.
+          </p>
+        </div>
+      )}
+
       <div>
         <label className="block text-xs font-medium text-zinc-400 mb-1.5">Weight unit</label>
-        <select
-          value={weightUnit}
-          onChange={(e) => {
-            setWeightUnit(e.target.value as 'kg' | 'lbs')
-            setSaved(false)
-          }}
-          className="w-full text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition"
-        >
-          <option value="kg">Kilograms (kg)</option>
-          <option value="lbs">Pounds (lbs)</option>
-        </select>
+        {/* appearance-none + a custom chevron (instead of the browser's
+            default one) so the dropdown arrow sits with proper breathing
+            room from the edge, matching the other fields - the native
+            arrow rendered flush against the border, which read as
+            cramped next to Name's plain text input above it. */}
+        <div className="relative">
+          <select
+            value={weightUnit}
+            onChange={(e) => {
+              setWeightUnit(e.target.value as 'kg' | 'lbs')
+              setSaved(false)
+            }}
+            className="w-full appearance-none text-sm bg-zinc-900 border border-zinc-700 rounded-lg pl-3 pr-9 py-2 text-white focus:outline-none focus:border-orange-500 transition"
+          >
+            <option value="kg">Kilograms (kg)</option>
+            <option value="lbs">Pounds (lbs)</option>
+          </select>
+          <svg
+            viewBox="0 0 20 20"
+            fill="none"
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500"
+            aria-hidden="true"
+          >
+            <path d="M5 7.5L10 12.5L15 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
         <p className="text-xs text-zinc-500 mt-1.5">
           Changes how weights are shown and entered in your workouts - your logged history stays
           accurate either way.

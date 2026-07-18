@@ -2133,37 +2133,51 @@ export default function WorkoutDayPicker({
                     {large && (
                       <label className="block text-zinc-500 text-xs mb-1">Weight ({weightUnit})</label>
                     )}
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      placeholder={
-                        last?.weight != null ? String(convertWeightForDisplay(last.weight, weightUnit)) : 'weight'
-                      }
-                      value={row.weight}
-                      onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
-                      // Scaled up in large/guided mode to match the rest
-                      // of the upsized card (2xl title, Target line) -
-                      // the inputs were the one thing left at list-view
-                      // size, which is likely why they didn't read as
-                      // "the main thing to interact with here." Border
-                      // goes orange from two independent sources:
-                      // `large && confirmEmptyDone` is the guided
-                      // per-step Done nudge; `!large && missingValuesFlagged`
-                      // is the whole-day Finish Workout check on this same
-                      // round-box row (see the round-box call site below,
-                      // which used to ring the whole row instead - Satish
-                      // asked to replicate the straight-set per-field
-                      // treatment here too). Either way, only the specific
-                      // empty field lights up, not a generic "something's
-                      // wrong" banner with no location.
-                      className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
-                        large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                      } ${
-                        ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.weight
-                          ? 'border-orange-500/60'
-                          : 'border-zinc-800'
-                      }`}
-                    />
+                    {/* List/compact mode has no persistent label (see
+                        comment above) - a small "kg"/"lbs" tag overlaid
+                        inside the input itself covers the same "what
+                        unit is this?" question without adding a label
+                        line to every dense row. Large mode already
+                        answers this via the label above, so the tag is
+                        skipped there rather than showing it twice. */}
+                    <div className="relative">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        placeholder={
+                          last?.weight != null ? String(convertWeightForDisplay(last.weight, weightUnit)) : 'weight'
+                        }
+                        value={row.weight}
+                        onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
+                        // Scaled up in large/guided mode to match the rest
+                        // of the upsized card (2xl title, Target line) -
+                        // the inputs were the one thing left at list-view
+                        // size, which is likely why they didn't read as
+                        // "the main thing to interact with here." Border
+                        // goes orange from two independent sources:
+                        // `large && confirmEmptyDone` is the guided
+                        // per-step Done nudge; `!large && missingValuesFlagged`
+                        // is the whole-day Finish Workout check on this same
+                        // round-box row (see the round-box call site below,
+                        // which used to ring the whole row instead - Satish
+                        // asked to replicate the straight-set per-field
+                        // treatment here too). Either way, only the specific
+                        // empty field lights up, not a generic "something's
+                        // wrong" banner with no location.
+                        className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
+                          large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm pl-2 pr-7 py-1.5'
+                        } ${
+                          ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.weight
+                            ? 'border-orange-500/60'
+                            : 'border-zinc-800'
+                        }`}
+                      />
+                      {!large && (
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-zinc-500">
+                          {weightUnit}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
                 <div className="flex-1">
@@ -2610,20 +2624,27 @@ export default function WorkoutDayPicker({
                         never happens together), but both are checked
                         directly rather than assumed mutually exclusive. */}
                     {ex.trackWeight !== false && (
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder={
-                          last?.weight != null ? String(convertWeightForDisplay(last.weight, weightUnit)) : 'weight'
-                        }
-                        value={row?.weight ?? ''}
-                        onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
-                        className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
-                          ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.weight
-                            ? 'border-orange-500/60'
-                            : 'border-zinc-800'
-                        }`}
-                      />
+                      <div className="relative w-full">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          placeholder={
+                            last?.weight != null
+                              ? String(convertWeightForDisplay(last.weight, weightUnit))
+                              : 'weight'
+                          }
+                          value={row?.weight ?? ''}
+                          onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
+                          className={`w-full bg-zinc-900 border rounded-lg pl-2 pr-7 py-1.5 text-sm text-white placeholder-zinc-600 ${
+                            ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.weight
+                              ? 'border-orange-500/60'
+                              : 'border-zinc-800'
+                          }`}
+                        />
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-zinc-500">
+                          {weightUnit}
+                        </span>
+                      </div>
                     )}
                     <input
                       type="number"

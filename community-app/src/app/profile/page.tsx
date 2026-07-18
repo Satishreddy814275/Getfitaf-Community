@@ -35,6 +35,7 @@ export default async function ProfilePage() {
         initialName={profile?.full_name || ''}
         initialAvatarUrl={profile?.avatar_url || null}
         initialWeightUnit={profile?.weight_unit === 'lbs' ? 'lbs' : 'kg'}
+        email={user.email || null}
       />
 
       <InstallAppRow />

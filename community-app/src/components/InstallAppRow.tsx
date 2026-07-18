@@ -41,9 +41,19 @@ export default function InstallAppRow() {
     await deferredPrompt.userChoice
   }
 
+  // Note on the heading below: there's no reliable, cross-browser way
+  // to detect "already installed but currently viewing in a regular
+  // browser tab" - the standalone check above only catches "currently
+  // running as the installed app," which is a different thing. Someone
+  // who installed the app and later opens this page in a normal
+  // browser tab (not the home-screen icon) would otherwise see this
+  // row every time as if they'd never installed. The "(if you haven't
+  // already)" qualifier is the honest fix - Satish's call - rather
+  // than a detection heuristic that would be wrong often enough to be
+  // more confusing than the caveat itself.
   return (
     <div className="glass rounded-2xl p-5 mt-4">
-      <p className="text-sm font-semibold text-white mb-1">Install app</p>
+      <p className="text-sm font-semibold text-white mb-1">Install app (if you haven&apos;t already)</p>
       {state.ios ? (
         <p className="text-xs text-zinc-400">
           Tap <span className="text-zinc-300 font-medium">Share</span>, then{' '}
@@ -62,6 +72,8 @@ export default function InstallAppRow() {
       ) : (
         <p className="text-xs text-zinc-400">
           Look for &quot;Install app&quot; or &quot;Add to Home Screen&quot; in your browser&apos;s menu.
+          Already installed? You can ignore this - it shows here because this page doesn&apos;t know
+          whether the app is on your home screen unless you&apos;re currently using it from there.
         </p>
       )}
     </div>
