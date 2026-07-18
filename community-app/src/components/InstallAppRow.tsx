@@ -53,7 +53,7 @@ export default function InstallAppRow() {
   // more confusing than the caveat itself.
   return (
     <div className="glass rounded-2xl p-5 mt-4">
-      <p className="text-sm font-semibold text-white mb-1">Install app (if you haven&apos;t already)</p>
+      <p className="text-sm font-semibold text-white mb-2">Install app (if you haven&apos;t already)</p>
       {state.ios ? (
         <p className="text-xs text-zinc-400">
           Tap <span className="text-zinc-300 font-medium">Share</span>, then{' '}
@@ -70,11 +70,15 @@ export default function InstallAppRow() {
           </button>
         </>
       ) : (
-        <p className="text-xs text-zinc-400">
-          Look for &quot;Install app&quot; or &quot;Add to Home Screen&quot; in your browser&apos;s menu.
-          Already installed? You can ignore this - it shows here because this page doesn&apos;t know
-          whether the app is on your home screen unless you&apos;re currently using it from there.
-        </p>
+        <>
+          <p className="text-xs text-zinc-400">
+            Look for &quot;Install app&quot; or &quot;Add to Home Screen&quot; in your browser&apos;s menu.
+          </p>
+          <p className="text-xs text-zinc-500 mt-2">
+            Already installed? You can ignore this - it shows here because this page doesn&apos;t know
+            whether the app is on your home screen unless you&apos;re currently using it from there.
+          </p>
+        </>
       )}
     </div>
   )

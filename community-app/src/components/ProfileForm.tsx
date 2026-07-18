@@ -206,7 +206,7 @@ export default function ProfileForm({
             {email}
           </p>
           <p className="text-xs text-zinc-500 mt-1.5">
-            The address you sign in with. Contact your coach to change it.
+            The address you sign in with. Contact support to change it.
           </p>
         </div>
       )}
