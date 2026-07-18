@@ -566,12 +566,16 @@ export default function WorkoutDayPicker({
     // transition away from, so it doesn't trigger the same
     // set-state-in-effect concern the two synchronous calls above do.
     const showRaf = requestAnimationFrame(() => setCelebrationVisible(true))
-    // Starts fading ~5.5s in, fully unmounts at 6s (300ms transition
-    // duration plus a small buffer) - a deliberately short, fixed
-    // window rather than anything content-length-dependent, per
-    // Satish's ask to keep this one simple.
-    const hideTimer = setTimeout(() => setCelebrationVisible(false), 5500)
-    const unmountTimer = setTimeout(() => setJustFinished(false), 6000)
+    // Starts fading at 89.5s in, fully unmounts at 90s. Originally 6s,
+    // bumped up here - Satish's flag: with the celebration modal now in
+    // the mix, someone might sit on that modal for a bit before landing
+    // back on this screen, and the old 6s window could already be gone
+    // by the time they got here. Still a deliberately fixed, generous-
+    // but-finite window (not indefinite) - the point was never to have
+    // it linger for days, just to survive realistic time spent on the
+    // modal first.
+    const hideTimer = setTimeout(() => setCelebrationVisible(false), 89500)
+    const unmountTimer = setTimeout(() => setJustFinished(false), 90000)
     return () => {
       cancelAnimationFrame(showRaf)
       clearTimeout(hideTimer)
