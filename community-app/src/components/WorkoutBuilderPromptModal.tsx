@@ -37,6 +37,13 @@ export default function WorkoutBuilderPromptModal({
     // not a boolean — dismissing only snoozes it through the end of
     // that local day, not forever.
     if (window.localStorage.getItem(storageKey) === new Date().toDateString()) return
+    // Reading localStorage (an external system) at mount, then
+    // orchestrating a mount/unmount entrance animation, is exactly what
+    // effects are for - not a "derive state from a prop" case, so the
+    // render-time-comparison pattern used elsewhere doesn't fit here.
+    // Same precedent as WorkoutDayPicker's celebration-modal entrance
+    // effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
     requestAnimationFrame(() => {
       requestAnimationFrame(() => setVisible(true))

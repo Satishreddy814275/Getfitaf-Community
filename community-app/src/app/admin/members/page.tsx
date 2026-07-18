@@ -119,7 +119,7 @@ export default async function AdminMembersPage() {
         <div className="mb-8">
           <h1 className="text-xl font-bold text-white">New Requests</h1>
           <p className="text-sm text-zinc-500 mt-1 mb-4">
-            Recent signups nobody's actioned yet, newest first.
+            Recent signups nobody&apos;s actioned yet, newest first.
           </p>
           <AdminNewRequestsList members={newRequests} />
         </div>
@@ -129,7 +129,7 @@ export default async function AdminMembersPage() {
         <h1 className="text-xl font-bold text-white">Members</h1>
         <p className="text-sm text-zinc-500 mt-1">
           Reset a profile photo, or grant/revoke low-ticket community access once
-          someone's paid.
+          someone&apos;s paid.
         </p>
       </div>
 

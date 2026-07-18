@@ -67,6 +67,9 @@ function TemplateEditor({
     const targets = blocks.filter((b) => b.phase === phase && selected.has(b.id) && b.groupId == null)
     if (targets.length < 2) return
     const ids = new Set(targets.map((b) => b.id))
+    // Only ever runs from the Group button's onClick, never during render
+    // - same pattern/precedent as WorkoutDayPicker's resumedStartedAt.
+    // eslint-disable-next-line react-hooks/purity
     const groupId = `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`
     const defaultRounds = Math.max(...targets.map((b) => b.setsCount), 1)
     setBlocks((prev) => prev.map((b) => (ids.has(b.id) ? { ...b, groupId, setsCount: defaultRounds } : b)))

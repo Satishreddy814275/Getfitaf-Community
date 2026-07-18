@@ -148,6 +148,9 @@ function DayGroupEditor({
     const targets = templateBlocks.filter((b) => b.phase === phase && selected.has(b.id) && b.groupId == null)
     if (targets.length < 2) return
     const ids = targets.map((b) => b.id)
+    // Only ever runs from the Group button's onClick, never during render
+    // - same pattern/precedent as WorkoutDayPicker's resumedStartedAt.
+    // eslint-disable-next-line react-hooks/purity
     const groupId = `g${Date.now()}${Math.random().toString(36).slice(2, 6)}`
 
     setTemplateBlocks((prev) => prev.map((b) => (ids.includes(b.id) ? { ...b, groupId } : b)))

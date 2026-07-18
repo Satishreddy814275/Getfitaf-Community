@@ -106,7 +106,7 @@ export default async function AdminPage() {
         </div>
         <div className="glass rounded-2xl p-5 text-center">
           <p className="text-2xl font-black text-orange-500">{uniquePosters}</p>
-          <p className="text-zinc-500 text-xs mt-1">Members who've posted</p>
+          <p className="text-zinc-500 text-xs mt-1">Members who&apos;ve posted</p>
         </div>
       </div>
 

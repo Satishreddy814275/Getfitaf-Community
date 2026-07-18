@@ -119,7 +119,7 @@ export default async function AdminVideosPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">Exercise Videos</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Add a video and it'll automatically show up in the workout logging view for any
+          Add a video and it&apos;ll automatically show up in the workout logging view for any
           exercise with a matching name - past plans included, no regeneration needed.
         </p>
       </div>

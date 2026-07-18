@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // Square the preview is drawn at, and the square the final exported
 // image is re-rendered at. 320px is far more than the 64px this app
@@ -32,9 +32,13 @@ export default function AvatarCropper({
   const dragging = useRef(false)
   const lastPos = useRef({ x: 0, y: 0 })
 
-  // Load the source image once when a file/URL is handed in.
+  // Load the source image once when a file/URL is handed in. No
+  // setReady(false) here - `ready` already starts false (see useState
+  // above), and this component is only ever mounted while cropSource is
+  // truthy in ProfileForm (always passes through null/unmount first), so
+  // there's no "already open, source just changed" case that needs an
+  // explicit reset.
   useEffect(() => {
-    setReady(false)
     const isFile = typeof source !== 'string'
     const url = isFile ? URL.createObjectURL(source) : source
 
@@ -61,26 +65,11 @@ export default function AvatarCropper({
     }
   }, [source])
 
-  // Redraw whenever pan/zoom changes.
-  useEffect(() => {
-    draw()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoom, offset, ready])
-
-  function clampOffset(z: number, o: { x: number; y: number }) {
-    const img = imgRef.current
-    if (!img) return o
-    const w = img.width * z
-    const h = img.height * z
-    const boundX = Math.max(0, (w - PREVIEW_SIZE) / 2)
-    const boundY = Math.max(0, (h - PREVIEW_SIZE) / 2)
-    return {
-      x: Math.min(boundX, Math.max(-boundX, o.x)),
-      y: Math.min(boundY, Math.max(-boundY, o.y)),
-    }
-  }
-
-  function draw() {
+  // draw is declared as a useCallback (rather than a plain function
+  // declaration below) specifically so the redraw effect right below it
+  // can reference it in a dependency array without a source-order issue
+  // - it needs to exist before that effect, not just be hoisted.
+  const draw = useCallback(() => {
     const canvas = canvasRef.current
     const img = imgRef.current
     if (!canvas || !img || !ready) return
@@ -96,6 +85,24 @@ export default function AvatarCropper({
     const x = PREVIEW_SIZE / 2 - w / 2 + offset.x
     const y = PREVIEW_SIZE / 2 - h / 2 + offset.y
     ctx.drawImage(img, x, y, w, h)
+  }, [zoom, offset, ready])
+
+  // Redraw whenever pan/zoom changes.
+  useEffect(() => {
+    draw()
+  }, [draw])
+
+  function clampOffset(z: number, o: { x: number; y: number }) {
+    const img = imgRef.current
+    if (!img) return o
+    const w = img.width * z
+    const h = img.height * z
+    const boundX = Math.max(0, (w - PREVIEW_SIZE) / 2)
+    const boundY = Math.max(0, (h - PREVIEW_SIZE) / 2)
+    return {
+      x: Math.min(boundX, Math.max(-boundX, o.x)),
+      y: Math.min(boundY, Math.max(-boundY, o.y)),
+    }
   }
 
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {

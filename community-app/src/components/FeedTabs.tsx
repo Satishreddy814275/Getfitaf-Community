@@ -82,20 +82,38 @@ export default function FeedTabs({
   // param instead of remounting this component. A mount-only effect
   // would silently never fire again in that case, which is exactly
   // why clicking a notification looked like it did nothing.
+  // React's own "adjust state when a prop changes" pattern (see
+  // react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes)
+  // instead of calling setState synchronously inside an effect - a state
+  // variable (deliberately useState, not useRef - refs can't be read or
+  // written during render) remembers the initialPostId seen on the
+  // previous render, and the state updates below only run on the render
+  // where it actually changed. Still gated on initialPostId alone (not
+  // posts/initialCommentId), for the same reason as before: re-opening
+  // the overlay should only ever be driven by a fresh notification
+  // click, not by posts/comment data changing underneath an already-
+  // open overlay.
+  const [prevInitialPostId, setPrevInitialPostId] = useState<string | null | undefined>(undefined)
+  if (initialPostId !== prevInitialPostId) {
+    setPrevInitialPostId(initialPostId)
+    if (initialPostId) {
+      const match = posts.find((p) => p.id === initialPostId)
+      if (match) {
+        setSelectedPost(match)
+        setActiveCommentId(initialCommentId || null)
+      } else {
+        setPostNotFound(true)
+      }
+    }
+  }
+
+  // Clearing the query param is a real side effect (URL navigation), so
+  // it stays in an effect - it just no longer needs to touch any state,
+  // so no set-state-in-effect concern here.
   useEffect(() => {
     if (!initialPostId) return
-    const match = posts.find((p) => p.id === initialPostId)
-    if (match) {
-      setSelectedPost(match)
-      setActiveCommentId(initialCommentId || null)
-    } else {
-      setPostNotFound(true)
-    }
-    // Clear the query params so a refresh or closing the overlay
-    // doesn't keep re-triggering this.
     router.replace('/feed')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialPostId])
+  }, [initialPostId, router])
 
   // Single combined search — matches either the poster's name or the
   // post text, so one box covers "find a member" and "find a keyword"
