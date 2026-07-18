@@ -15,15 +15,36 @@ const manrope = Manrope({
 });
 import { createClient } from "@/lib/supabase/server";
 import AppNav from "@/components/AppNav";
+import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
+import SplashScreen from "@/components/SplashScreen";
 import type { Notification } from "@/types";
 
 export const metadata: Metadata = {
   title: "GetFit AF Community",
   description: "The GetFit AF client community",
+  // manifest.json + icons make this installable as a PWA. appleWebApp
+  // is what actually gets Safari's "Add to Home Screen" to treat it as
+  // a standalone app (own icon, no browser chrome) instead of just a
+  // bookmark - Android/Chrome would pick most of this up from the
+  // manifest alone, but iOS needs these explicit tags too.
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icons/favicon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/favicon-16.png", sizes: "16x16", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "GetFit AF",
+  },
 };
 
 export const viewport: Viewport = {
   colorScheme: "dark",
+  themeColor: "#f97316",
 };
 
 export default async function RootLayout({
@@ -72,6 +93,8 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
+        <SplashScreen />
+        <ServiceWorkerRegister />
         {user && (
           <AppNav
             isAdmin={isAdmin}
