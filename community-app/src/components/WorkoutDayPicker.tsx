@@ -722,25 +722,15 @@ export default function WorkoutDayPicker({
   const [sideTimerActive, setSideTimerActive] = useState<{
     originalName: string
     timerSeconds: number
-    // Which row (0-indexed) this timer run belongs to - even indices
-    // are the "right" half of a pair, odd are "left" (see the row
-    // labeling in renderExerciseCard). A perSide+timed exercise with 2
-    // sets has 4 rows/timer-runs total (right/left x2), not just 2.
-    rowIndex: number
+    isSecondSide: boolean
   } | null>(null)
-  // Set the moment a perSide exercise's "right" timer finishes on its
-  // own - shows the "Switch sides" prompt on that exercise's card
-  // until they tap through to the matching "left" row. Cleared
-  // (without ever being set) if the timer is dismissed early instead
-  // of let to run out, so backing out of a timer never nags for a
-  // second side that was never really started. nextRowIndex is always
-  // the row right after the one that just finished, so the prompt's
-  // button knows exactly which row to start next regardless of how
-  // many sets this exercise has.
-  const [awaitingOtherSideFor, setAwaitingOtherSideFor] = useState<{
-    originalName: string
-    nextRowIndex: number
-  } | null>(null)
+  // Set the moment a perSide exercise's first-side timer finishes on
+  // its own - shows the "Switch sides" prompt on that exercise's card
+  // until they tap through to the second side. Cleared (without ever
+  // being set) if the timer is dismissed early instead of let to run
+  // out, so backing out of a timer never nags for a second side that
+  // was never really started.
+  const [awaitingOtherSideFor, setAwaitingOtherSideFor] = useState<string | null>(null)
   // Which phase sections (warmup/main/cooldown) are collapsed in list
   // view - defaults to warmup and cooldown collapsed, main expanded, so
   // the first screen of a day leads with a short "N exercises" summary
@@ -893,27 +883,16 @@ export default function WorkoutDayPicker({
     setRestPickerFor(null)
   }
 
-  // Starts (or restarts) the work timer for one row of a perSide
+  // Starts (or restarts) the work timer for one side of a perSide
   // exercise. Deliberately doesn't call startRestTimer - that would
   // immediately null out the sideTimerActive this function just set,
   // since state updates from this render batch together and the last
   // one wins.
-  function startSideTimer(ex: CellExercise, rowIndex: number) {
+  function startSideTimer(ex: CellExercise, isSecondSide: boolean) {
     setAwaitingOtherSideFor(null)
-    setSideTimerActive({ originalName: ex.originalName, timerSeconds: ex.timerSeconds!, rowIndex })
+    setSideTimerActive({ originalName: ex.originalName, timerSeconds: ex.timerSeconds!, isSecondSide })
     setRestTimer({ remaining: ex.timerSeconds!, total: ex.timerSeconds! })
     setRestPickerFor(null)
-  }
-
-  // Which row's timer the generic "Start timer" control should target
-  // next for a perSide+timed exercise - the first row without a
-  // logged value yet, or row 0 if every row already has one (so
-  // pressing it again after everything's filled just restarts from
-  // the top instead of doing nothing).
-  function nextSideRowIndex(exerciseName: string): number {
-    const rows = setsByExercise[exerciseName] || []
-    const idx = rows.findIndex((r) => !r.reps)
-    return idx === -1 ? 0 : idx
   }
 
   function adjustRestTimer(deltaSeconds: number) {
@@ -1042,19 +1021,11 @@ export default function WorkoutDayPicker({
   // Detects a perSide work timer running out on its own (as opposed to
   // being dismissed early - the dismiss button clears sideTimerActive
   // itself, so by the time this runs there's nothing left to react to)
-  // and either prompts for the matching other-side row or, if the row
-  // that just finished was itself a "left" row, clears the prompt -
-  // that pair is done, and any further set is picked up fresh next
-  // time the generic timer control is pressed. Even row index = right
-  // (needs a prompt for its left match); odd = left (pair complete).
+  // and either prompts for the other side or, if this was already the
+  // second side, wraps the exercise up.
   useEffect(() => {
     if (sideTimerActive && prevRestTimerForSideRef.current && !restTimer) {
-      const wasRightSide = sideTimerActive.rowIndex % 2 === 0
-      setAwaitingOtherSideFor(
-        wasRightSide
-          ? { originalName: sideTimerActive.originalName, nextRowIndex: sideTimerActive.rowIndex + 1 }
-          : null
-      )
+      setAwaitingOtherSideFor(sideTimerActive.isSecondSide ? null : sideTimerActive.originalName)
       setSideTimerActive(null)
     }
     prevRestTimerForSideRef.current = restTimer
@@ -1133,18 +1104,10 @@ export default function WorkoutDayPicker({
   function startCell(cell: Cell, mode: 'list' | 'guided' = 'list') {
     // Pre-fill one row per target set (e.g. "3-5" -> 3 rows) - just a
     // starting point, the +/- controls below let them adjust freely.
-    // Timed perSide exercises are the one exception: Satish's call is
-    // that "3 sets" on one of these means 3 sets PER SIDE, i.e. 6 rows
-    // (right, left, right, left, right, left) - not 3 rows split
-    // across two sides. Untimed perSide exercises are unaffected -
-    // there the Sets number is exactly the row count, same as any
-    // other exercise, and "do both sides" is just a reminder shown
-    // next to each row rather than something that changes row count.
     const initial: Record<string, SetRow[]> = {}
     const initialChecked: Record<string, boolean[]> = {}
     for (const ex of cell.exercises) {
-      const rawCount = parseTargetSetCount(ex.sets)
-      const count = ex.perSide && ex.timerSeconds != null ? rawCount * 2 : rawCount
+      const count = parseTargetSetCount(ex.sets)
       initial[ex.name] = Array.from({ length: count }, () => ({ weight: '', reps: '' }))
       initialChecked[ex.name] = Array.from({ length: count }, () => false)
     }
@@ -1269,40 +1232,27 @@ export default function WorkoutDayPicker({
     setMissingValuesFlagged(false)
   }
 
-  // Timed perSide exercises add/remove a full right+left pair at once
-  // (2 rows), so manually adjusting set count with +/- never leaves a
-  // lone unmatched side sitting there - matches the same "a set means
-  // both sides" rule the initial row count above already follows.
-  // Untimed perSide exercises are unaffected - one row per click, same
-  // as any other exercise.
-  function addSetRow(ex: CellExercise) {
-    const rowsToAdd = ex.perSide && ex.timerSeconds != null ? 2 : 1
-    const blankRows = Array.from({ length: rowsToAdd }, () => ({ weight: '', reps: '' }))
+  function addSetRow(exerciseName: string) {
     setSetsByExercise((prev) => ({
       ...prev,
-      [ex.name]: [...(prev[ex.name] || []), ...blankRows],
+      [exerciseName]: [...(prev[exerciseName] || []), { weight: '', reps: '' }],
     }))
     setCheckedByExercise((prev) => ({
       ...prev,
-      [ex.name]: [...(prev[ex.name] || []), ...blankRows.map(() => false)],
+      [exerciseName]: [...(prev[exerciseName] || []), false],
     }))
   }
 
-  function removeSetRow(ex: CellExercise, index: number) {
-    // Removing either side of a timed perSide pair removes both -
-    // pairStart is the row's "right" (even) index whether index itself
-    // was the right or the left.
-    const removeCount = ex.perSide && ex.timerSeconds != null ? 2 : 1
-    const start = removeCount === 2 ? (index % 2 === 0 ? index : index - 1) : index
+  function removeSetRow(exerciseName: string, index: number) {
     setSetsByExercise((prev) => {
-      const rows = [...(prev[ex.name] || [])]
-      rows.splice(start, removeCount)
-      return { ...prev, [ex.name]: rows }
+      const rows = [...(prev[exerciseName] || [])]
+      rows.splice(index, 1)
+      return { ...prev, [exerciseName]: rows }
     })
     setCheckedByExercise((prev) => {
-      const rows = [...(prev[ex.name] || [])]
-      rows.splice(start, removeCount)
-      return { ...prev, [ex.name]: rows }
+      const rows = [...(prev[exerciseName] || [])]
+      rows.splice(index, 1)
+      return { ...prev, [exerciseName]: rows }
     })
   }
 
@@ -1810,7 +1760,7 @@ export default function WorkoutDayPicker({
                     {ex.timerSeconds != null && (
                       <button
                         onClick={() => {
-                          startSideTimer(ex, nextSideRowIndex(ex.name))
+                          startSideTimer(ex, false)
                           setOverflowOpenFor(null)
                         }}
                         className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
@@ -1978,7 +1928,7 @@ export default function WorkoutDayPicker({
                         timer" controls on the same card. */}
                     {!large && (
                       <button
-                        onClick={() => startSideTimer(ex, nextSideRowIndex(ex.name))}
+                        onClick={() => startSideTimer(ex, false)}
                         className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                       >
                         ▶ {formatDurationLabel(ex.timerSeconds)} timer
@@ -2036,11 +1986,11 @@ export default function WorkoutDayPicker({
 
           {/* Large/guided mode shows this same prompt inside the big
               timer panel at the bottom of the card instead - see below. */}
-          {!large && ex.perSide && ex.timerSeconds != null && awaitingOtherSideFor?.originalName === ex.originalName && (
+          {!large && ex.perSide && ex.timerSeconds != null && awaitingOtherSideFor === ex.originalName && (
             <div className="mb-2 flex items-center justify-between gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2">
               <span className="text-orange-400 text-xs font-medium">First side done - now the other side</span>
               <button
-                onClick={() => startSideTimer(ex, awaitingOtherSideFor.nextRowIndex)}
+                onClick={() => startSideTimer(ex, true)}
                 className="shrink-0 text-xs font-semibold text-black bg-orange-500 hover:bg-orange-400 rounded-lg px-3 py-1.5 transition"
               >
                 ▶ Other side
@@ -2128,8 +2078,7 @@ export default function WorkoutDayPicker({
             }
           >
             {(setsByExercise[ex.name] || []).map((row, i) => (
-              <Fragment key={i}>
-              <div className="flex items-center gap-2">
+              <div key={i} className="flex items-center gap-2">
                 {/* "Set N" is a plain label, not an input like Weight/
                     Reps - it deliberately does NOT get a matching
                     visible label above it (that would wrongly imply
@@ -2144,21 +2093,13 @@ export default function WorkoutDayPicker({
                     sitting centered against their taller (label +
                     input) height. aria-hidden since it's purely a
                     spacing trick, nothing to announce. */}
-                {/* Timed perSide exercises (a side plank, e.g.) relabel
-                    every row Right/Left instead of Set N - each pair
-                    of rows (0,1 / 2,3 / ...) is one set done on both
-                    sides, so a plain "Set 3" would lose which side
-                    that particular row actually is. Untimed perSide
-                    exercises keep "Set N" - see the "Remember to do
-                    both sides" line below instead, since those don't
-                    split into separate rows per side at all. */}
                 <span className={`text-zinc-500 shrink-0 ${large ? 'text-sm w-12' : 'text-xs w-11'}`}>
                   {large && (
                     <span className="block text-xs mb-1 invisible" aria-hidden="true">
                       Set
                     </span>
                   )}
-                  {ex.perSide && ex.timerSeconds != null ? (i % 2 === 0 ? 'Right' : 'Left') : `Set ${i + 1}`}
+                  Set {i + 1}
                 </span>
                 {ex.trackWeight !== false && (
                   <div className="flex-1">
@@ -2275,7 +2216,7 @@ export default function WorkoutDayPicker({
                     of what was prescribed. */}
                 {ex.round == null && (
                   <button
-                    onClick={() => removeSetRow(ex, i)}
+                    onClick={() => removeSetRow(ex.name, i)}
                     aria-label="Remove set"
                     className="text-zinc-600 hover:text-red-400 transition text-sm shrink-0"
                   >
@@ -2283,20 +2224,10 @@ export default function WorkoutDayPicker({
                   </button>
                 )}
               </div>
-              {/* Untimed perSide exercises (single-arm rows, e.g.) don't
-                  split into separate Right/Left rows - one row's numbers
-                  apply to both sides, so this is just a passive reminder
-                  next to it rather than a relabel or a second row. */}
-              {ex.perSide && ex.timerSeconds == null && (
-                <p className={`text-zinc-500 text-[11px] ${large ? 'ml-12' : 'ml-11'}`}>
-                  Remember to do both sides
-                </p>
-              )}
-              </Fragment>
             ))}
             {ex.round == null && (
               <button
-                onClick={() => addSetRow(ex)}
+                onClick={() => addSetRow(ex.name)}
                 className="text-xs text-orange-400 hover:text-orange-300 transition"
               >
                 + Add set
@@ -2334,7 +2265,7 @@ export default function WorkoutDayPicker({
                     </button>
                   </div>
                 </>
-              ) : ex.perSide && awaitingOtherSideFor?.originalName === ex.originalName ? (
+              ) : ex.perSide && awaitingOtherSideFor === ex.originalName ? (
                 <>
                   <p className="text-orange-400 text-sm font-medium mb-3">
                     First side done - now the other side
@@ -2351,7 +2282,7 @@ export default function WorkoutDayPicker({
                       doesn't compete in size with Done right below it. */}
                   <div className="flex justify-center">
                     <button
-                      onClick={() => startSideTimer(ex, awaitingOtherSideFor.nextRowIndex)}
+                      onClick={() => startSideTimer(ex, true)}
                       className="border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-sm font-semibold px-5 py-2 rounded-full transition"
                     >
                       ▶ Start other side
@@ -2361,7 +2292,7 @@ export default function WorkoutDayPicker({
               ) : (
                 <div className="flex justify-center">
                   <button
-                    onClick={() => startSideTimer(ex, nextSideRowIndex(ex.name))}
+                    onClick={() => startSideTimer(ex, false)}
                     className="border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-sm font-semibold px-5 py-2 rounded-full transition"
                   >
                     ▶ Start {formatDurationLabel(ex.timerSeconds)} timer
@@ -2485,7 +2416,7 @@ export default function WorkoutDayPicker({
                 <>
                   <button
                     onClick={() =>
-                      rep.perSide ? startSideTimer(rep, 0) : startRestTimer(rep.timerSeconds!)
+                      rep.perSide ? startSideTimer(rep, false) : startRestTimer(rep.timerSeconds!)
                     }
                     className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                   >
@@ -2565,11 +2496,11 @@ export default function WorkoutDayPicker({
             </div>
           </div>
 
-          {rep.perSide && rep.timerSeconds != null && awaitingOtherSideFor?.originalName === rep.originalName && (
+          {rep.perSide && rep.timerSeconds != null && awaitingOtherSideFor === rep.originalName && (
             <div className="mb-2 flex items-center justify-between gap-2 bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-2">
               <span className="text-orange-400 text-xs font-medium">First side done - now the other side</span>
               <button
-                onClick={() => startSideTimer(rep, awaitingOtherSideFor.nextRowIndex)}
+                onClick={() => startSideTimer(rep, true)}
                 className="shrink-0 text-xs font-semibold text-black bg-orange-500 hover:bg-orange-400 rounded-lg px-3 py-1.5 transition"
               >
                 ▶ Other side
