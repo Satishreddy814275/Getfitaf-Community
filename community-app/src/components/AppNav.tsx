@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import NotificationBell from './NotificationBell'
 import ExternalNavLink from './ExternalNavLink'
 import { signOut } from '@/app/login/actions'
+import { useSessionActive } from './SessionActiveProvider'
 import type { Notification } from '@/types'
 
 function isPathActive(pathname: string, href: string) {
@@ -143,6 +144,7 @@ export default function AppNav({
   notifications: Notification[]
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
+  const { sessionActive } = useSessionActive()
   const showWorkouts = hasLowTicket || isAdmin
   const showLessons = isAdmin || isApproved
 
@@ -211,28 +213,36 @@ export default function AppNav({
           Workouts/Lessons only when that member actually has access,
           so the bar never shows a tab that leads to a locked page.
           Everything else (Edit Profile, Admin, Choose Your Program, Sign
-          out) lives behind "More" rather than crowding the bar. */}
-      <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
-        <BottomTab href="/feed" label="Feed" icon="home" />
-        {showWorkouts && <BottomTab href="/workouts" label="Workouts" icon="barbell" />}
-        <BottomTab href="/leaderboard" label="Ranks" icon="trophy" />
-        {showLessons && (
-          <a
-            href="https://learn.getfitaf.fitness/dashboard.html"
+          out) lives behind "More" rather than crowding the bar.
+          Hidden entirely while a workout session is active (sessionActive,
+          reported up from WorkoutDayPicker via SessionActiveProvider) -
+          same full-focus reasoning as hiding the page header above the
+          workout itself: this bar sits right next to the exercise inputs
+          on a phone screen, and a mis-tap here would navigate someone
+          straight out of an in-progress set. */}
+      {!sessionActive && (
+        <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
+          <BottomTab href="/feed" label="Feed" icon="home" />
+          {showWorkouts && <BottomTab href="/workouts" label="Workouts" icon="barbell" />}
+          <BottomTab href="/leaderboard" label="Ranks" icon="trophy" />
+          {showLessons && (
+            <a
+              href="https://learn.getfitaf.fitness/dashboard.html"
+              className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
+            >
+              <TabIcon name="book" className="text-zinc-500" />
+              <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
+            </a>
+          )}
+          <button
+            onClick={() => setMoreOpen(true)}
             className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
           >
-            <TabIcon name="book" className="text-zinc-500" />
-            <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
-          </a>
-        )}
-        <button
-          onClick={() => setMoreOpen(true)}
-          className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
-        >
-          <TabIcon name="dots" className="text-zinc-500" />
-          <span className="text-[10px] font-semibold text-zinc-500">More</span>
-        </button>
-      </nav>
+            <TabIcon name="dots" className="text-zinc-500" />
+            <span className="text-[10px] font-semibold text-zinc-500">More</span>
+          </button>
+        </nav>
+      )}
 
       {moreOpen && (
         <div className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end">

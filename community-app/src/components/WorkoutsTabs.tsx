@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import WorkoutDayPicker from './WorkoutDayPicker'
 import WorkoutHistoryList from './WorkoutHistoryList'
+import { useSessionActive } from './SessionActiveProvider'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutHistoryGroup, WorkoutExerciseSwap } from '@/types'
 
@@ -27,15 +28,29 @@ export default function WorkoutsTabs({
   swaps: WorkoutExerciseSwap[]
 }) {
   const [tab, setTab] = useState<Tab>('current')
-  // True while WorkoutDayPicker has a day open for logging - reported
-  // up via its onSessionActiveChange callback. Drives hiding the page
-  // header and tab switcher below, so an active session gets the whole
-  // screen instead of competing with "Your Workouts" / the program
-  // description / the Completed Workouts tab for attention. Discard
-  // (on WorkoutDayPicker's own sticky bar) is the only way out of an
-  // active session now - no Back to Community link shown here either
-  // while one's running, per Satish's explicit call.
-  const [sessionActive, setSessionActive] = useState(false)
+  // True while WorkoutDayPicker has a day open for logging - reported up
+  // via its onSessionActiveChange callback. Lives in the shared
+  // SessionActiveProvider (not a local useState) specifically so AppNav,
+  // which renders outside this page's tree entirely, can also see it and
+  // hide the mobile bottom tab bar. Drives hiding the page header and
+  // tab switcher below too, so an active session gets the whole screen
+  // instead of competing with "Your Workouts" / the program description
+  // / the Completed Workouts tab for attention. Discard (on
+  // WorkoutDayPicker's own sticky bar) is the only way out of an active
+  // session now - no Back to Community link shown here either while
+  // one's running, per Satish's explicit call.
+  const { sessionActive, setSessionActive } = useSessionActive()
+
+  // Safety net for leaving this page some other way than Discard/Finish
+  // (browser back, a direct link, a notification tap) - WorkoutDayPicker
+  // unmounting on its own doesn't get a chance to report
+  // sessionActive=false first in that case, and since the flag lives in
+  // a provider that spans the whole app (not scoped to this page), an
+  // uncleared true would wrongly keep the bottom tab bar hidden on every
+  // other page too. Runs once, on this component's own unmount.
+  useEffect(() => {
+    return () => setSessionActive(false)
+  }, [setSessionActive])
 
   return (
     <div>

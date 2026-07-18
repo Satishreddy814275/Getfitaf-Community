@@ -17,6 +17,8 @@ import { createClient } from "@/lib/supabase/server";
 import AppNav from "@/components/AppNav";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
 import SplashScreen from "@/components/SplashScreen";
+import { SessionActiveProvider } from "@/components/SessionActiveProvider";
+import PageBody from "@/components/PageBody";
 import type { Notification } from "@/types";
 
 export const metadata: Metadata = {
@@ -93,22 +95,20 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
       <body className="min-h-full flex flex-col bg-[#0a0a0a] font-sans">
-        <SplashScreen />
-        <ServiceWorkerRegister />
-        {user && (
-          <AppNav
-            isAdmin={isAdmin}
-            isApproved={isApproved}
-            hasLowTicket={hasLowTicket}
-            showPrograms={showPrograms}
-            notifications={notifications}
-          />
-        )}
-        {/* Bottom padding on mobile only, clearing the fixed bottom tab
-            bar in AppNav (~64px + safe-area inset) so page content
-            never sits underneath it. Not needed on desktop, where
-            there's no fixed bottom bar. */}
-        <div className={user ? 'pb-16 sm:pb-0' : ''}>{children}</div>
+        <SessionActiveProvider>
+          <SplashScreen />
+          <ServiceWorkerRegister />
+          {user && (
+            <AppNav
+              isAdmin={isAdmin}
+              isApproved={isApproved}
+              hasLowTicket={hasLowTicket}
+              showPrograms={showPrograms}
+              notifications={notifications}
+            />
+          )}
+          <PageBody hasUser={!!user}>{children}</PageBody>
+        </SessionActiveProvider>
       </body>
     </html>
   );
