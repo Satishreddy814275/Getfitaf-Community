@@ -594,6 +594,16 @@ export function BlockItemEditor({
           onChange={() => onToggleSelect(b.id)}
           className="mt-1.5 accent-orange-500"
         />
+        {/* Remove now lives inside this same wrapping group (not as a
+            separate sibling pinned to the row's far edge) so that when
+            the fields wrap onto a second line on a narrower screen,
+            Remove wraps down with them instead of floating alone next
+            to whatever's still on the first line - everything about
+            this one exercise stays visually together, same idea as
+            the round-group rows below, which never had this split in
+            the first place. Satish's call - the admin side doesn't
+            need to look fancy, but it should still feel put-together
+            for coaches using it every day. */}
         <div className="flex-1 flex flex-wrap items-center gap-1.5">
           <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
           <BlockNumberFields
@@ -602,14 +612,14 @@ export function BlockItemEditor({
             showSets
             showProgressionFields={showProgressionFields}
           />
+          <button
+            type="button"
+            onClick={() => onRemove(b.id)}
+            className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0"
+          >
+            Remove
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => onRemove(b.id)}
-          className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0 mt-1"
-        >
-          Remove
-        </button>
       </div>
     )
   }
