@@ -2050,14 +2050,23 @@ export default function WorkoutDayPicker({
                       // the inputs were the one thing left at list-view
                       // size, which is likely why they didn't read as
                       // "the main thing to interact with here." Border
-                      // goes orange once confirmEmptyDone is showing
-                      // (the "some values are missing" nudge) AND this
-                      // specific field is still empty - points at
-                      // exactly what's missing rather than a generic
-                      // "something's wrong" banner with no location.
+                      // goes orange from two independent sources:
+                      // `large && confirmEmptyDone` is the guided
+                      // per-step Done nudge; `!large && missingValuesFlagged`
+                      // is the whole-day Finish Workout check on this same
+                      // round-box row (see the round-box call site below,
+                      // which used to ring the whole row instead - Satish
+                      // asked to replicate the straight-set per-field
+                      // treatment here too). Either way, only the specific
+                      // empty field lights up, not a generic "something's
+                      // wrong" banner with no location.
                       className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
                         large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                      } ${large && confirmEmptyDone && !row.weight ? 'border-orange-500/60' : 'border-zinc-800'}`}
+                      } ${
+                        ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.weight
+                          ? 'border-orange-500/60'
+                          : 'border-zinc-800'
+                      }`}
                     />
                   </div>
                 )}
@@ -2071,7 +2080,11 @@ export default function WorkoutDayPicker({
                     onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
                     className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
                       large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                    } ${large && confirmEmptyDone && !row.reps ? 'border-orange-500/60' : 'border-zinc-800'}`}
+                    } ${
+                      ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.reps
+                        ? 'border-orange-500/60'
+                        : 'border-zinc-800'
+                    }`}
                   />
                 </div>
                 {/* Hidden in large/guided mode - see the matching Check
@@ -2854,28 +2867,22 @@ export default function WorkoutDayPicker({
                             const isLastInBox = idx === box.length - 1
                             const showRest =
                               ex.restSeconds != null && (!isLastInBox || exercises.indexOf(ex) < exercises.length - 1)
-                            // Row-level flagged-missing highlight, not a
-                            // ring around the whole round box - Satish's
-                            // call: ringing the entire box for one
-                            // incomplete exercise among several was too
-                            // blunt ("we don't need to violate the whole
-                            // box"). Round rows have no card boundary of
-                            // their own (see renderExerciseCard's
-                            // boxed:false, compact mode), so this row gets
-                            // its own rounded highlight instead - same
-                            // orange as the per-field borders on the
-                            // actual missing weight/reps inputs.
-                            const rowFlaggedMissing = missingValuesFlagged && groupHasMissingValues(group)
+                            // No row-level ring here anymore either - this
+                            // used to highlight the whole compact row when
+                            // Finish Workout flagged missing values, same
+                            // idea as the straight-set whole-card ring that
+                            // was already narrowed to per-field. Satish's
+                            // ask this round: replicate that same
+                            // per-field precision here too, instead of
+                            // highlighting the whole row. renderExerciseCard
+                            // itself now handles the actual weight/reps
+                            // input highlighting (see its own comment) via
+                            // the same missingValuesFlagged check, so
+                            // nothing extra is needed at this call site
+                            // beyond the existing divider spacing.
                             return (
                               <Fragment key={ex.originalName}>
-                                <div
-                                  className={
-                                    (idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60') +
-                                    (rowFlaggedMissing
-                                      ? ' rounded-lg ring-1 ring-orange-500/50 bg-orange-500/5 -mx-1.5 px-1.5 py-1'
-                                      : '')
-                                  }
-                                >
+                                <div className={idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60'}>
                                   {renderExerciseCard(ex, { boxed: false })}
                                 </div>
                                 {showRest && renderRestPill(ex.restSeconds!)}
