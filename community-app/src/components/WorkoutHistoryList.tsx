@@ -1,9 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import { convertWeightForDisplay, type WeightUnit } from '@/lib/weightUnit'
 import type { WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
 
-export default function WorkoutHistoryList({ groups }: { groups: WorkoutHistoryGroup[] }) {
+export default function WorkoutHistoryList({
+  groups,
+  weightUnit,
+}: {
+  groups: WorkoutHistoryGroup[]
+  // Optional, defaulting to kg (matches every logged value's canonical
+  // storage unit) - AdminMembersList passes the viewed member's own
+  // preference here, not the admin's, so the numbers a coach sees match
+  // what that client actually sees in their own app.
+  weightUnit?: WeightUnit
+}) {
+  const unit = weightUnit ?? 'kg'
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
 
   if (groups.length === 0) {
@@ -51,7 +63,10 @@ export default function WorkoutHistoryList({ groups }: { groups: WorkoutHistoryG
                           {sets
                             .slice()
                             .sort((a, b) => a.setNumber - b.setNumber)
-                            .map((s) => `${s.weight ?? '-'}x${s.reps ?? '-'}`)
+                            .map((s) => {
+                              const w = convertWeightForDisplay(s.weight, unit)
+                              return `${w != null ? `${w}${unit}` : '-'} x ${s.reps ?? '-'}`
+                            })
                             .join(', ')}
                         </p>
                       ))}

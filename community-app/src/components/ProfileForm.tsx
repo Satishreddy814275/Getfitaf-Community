@@ -10,13 +10,16 @@ export default function ProfileForm({
   userId,
   initialName,
   initialAvatarUrl,
+  initialWeightUnit,
 }: {
   userId: string
   initialName: string
   initialAvatarUrl: string | null
+  initialWeightUnit: 'kg' | 'lbs'
 }) {
   const [name, setName] = useState(initialName)
   const [avatarUrl, setAvatarUrl] = useState(initialAvatarUrl)
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>(initialWeightUnit)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [file, setFile] = useState<Blob | null>(null)
   // Holds either a freshly-picked File or the URL string of the existing
@@ -113,6 +116,7 @@ export default function ProfileForm({
       const formData = new FormData()
       formData.set('full_name', name)
       if (newAvatarUrl) formData.set('avatar_url', newAvatarUrl)
+      formData.set('weight_unit', weightUnit)
 
       await updateProfile(formData)
 
@@ -189,10 +193,31 @@ export default function ProfileForm({
         />
       </div>
 
+      <div>
+        <label className="block text-xs font-medium text-zinc-400 mb-1.5">Weight unit</label>
+        <select
+          value={weightUnit}
+          onChange={(e) => {
+            setWeightUnit(e.target.value as 'kg' | 'lbs')
+            setSaved(false)
+          }}
+          className="w-full text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-orange-500 transition"
+        >
+          <option value="kg">Kilograms (kg)</option>
+          <option value="lbs">Pounds (lbs)</option>
+        </select>
+        <p className="text-xs text-zinc-500 mt-1.5">
+          Changes how weights are shown and entered in your workouts - your logged history stays
+          accurate either way.
+        </p>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           type="submit"
-          disabled={saving || (!file && name.trim() === initialName.trim())}
+          disabled={
+            saving || (!file && name.trim() === initialName.trim() && weightUnit === initialWeightUnit)
+          }
           className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-lg disabled:opacity-40 transition"
         >
           {saving ? 'Saving...' : 'Save changes'}

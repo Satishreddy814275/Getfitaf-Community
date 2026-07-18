@@ -18,6 +18,7 @@ export default function WorkoutsTabs({
   history,
   videos,
   swaps,
+  weightUnit,
 }: {
   generationId: string
   days: WorkoutPlanDay[]
@@ -26,6 +27,7 @@ export default function WorkoutsTabs({
   history: WorkoutHistoryGroup[]
   videos: ExerciseVideo[]
   swaps: WorkoutExerciseSwap[]
+  weightUnit: 'kg' | 'lbs'
 }) {
   const [tab, setTab] = useState<Tab>('current')
   // True while WorkoutDayPicker has a day open for logging - reported up
@@ -101,10 +103,11 @@ export default function WorkoutsTabs({
           history={history}
           videos={videos}
           swaps={swaps}
+          weightUnit={weightUnit}
           onSessionActiveChange={setSessionActive}
         />
       ) : (
-        <WorkoutHistoryList groups={history} />
+        <WorkoutHistoryList groups={history} weightUnit={weightUnit} />
       )}
     </div>
   )

@@ -6,6 +6,7 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
+import { convertWeightForDisplay, convertWeightToKgForStorage, type WeightUnit } from '@/lib/weightUnit'
 import {
   Timer,
   Play,
@@ -466,6 +467,7 @@ export default function WorkoutDayPicker({
   history,
   videos,
   swaps,
+  weightUnit,
   onSessionActiveChange,
 }: {
   generationId: string
@@ -475,6 +477,12 @@ export default function WorkoutDayPicker({
   history: WorkoutHistoryGroup[]
   videos: ExerciseVideo[]
   swaps: WorkoutExerciseSwap[]
+  // Everything in setsByExercise/lastByExercise/history is canonical kg
+  // (see migration-weight-unit.sql) - this is only ever used for display
+  // (weight inputs, "last time" hints, the history chart) and for
+  // converting a typed input back to kg right before it's written in
+  // finishWorkout(). Never changes what's actually stored.
+  weightUnit: WeightUnit
   // Lets the parent (WorkoutsTabs) know whether a day is currently
   // being logged, so it can hide the page header and tab switcher
   // while a session is active - full focus, per Satish: the program
@@ -485,6 +493,16 @@ export default function WorkoutDayPicker({
   onSessionActiveChange?: (active: boolean) => void
 }) {
   const router = useRouter()
+
+  // Small formatting helper for the "Last time" reference lines and
+  // input placeholders - converts a canonical-kg value to the member's
+  // preferred unit and appends the unit itself, so a lbs member never
+  // has to guess whether "44.1" means kg or lbs.
+  function formatLastWeight(kg: number | null): string {
+    const converted = convertWeightForDisplay(kg, weightUnit)
+    return converted != null ? `${converted}${weightUnit}` : '-'
+  }
+
   const [activeCell, setActiveCell] = useState<Cell | null>(null)
   // Fires on every activeCell transition, including the initial mount
   // (so a resumed draft session - restored a moment later by the
@@ -1443,7 +1461,11 @@ export default function WorkoutDayPicker({
       (setsByExercise[ex.name] || []).map((row, i) => ({
         exerciseName: ex.name,
         setNumber: i + 1,
-        weight: row.weight.trim() === '' ? null : Number(row.weight),
+        // Typed in the member's preferred unit - converted to canonical
+        // kg right here, at the actual write boundary, so everything
+        // downstream (DB, "last time" hints, the history chart) stays
+        // unit-agnostic and never has to guess what was typed.
+        weight: row.weight.trim() === '' ? null : convertWeightToKgForStorage(Number(row.weight), weightUnit),
         reps: row.reps.trim() === '' ? null : Number(row.reps),
       }))
     )
@@ -1521,7 +1543,10 @@ export default function WorkoutDayPicker({
       .filter((e) => e.sets.some((s) => s.weight != null))
       .map((e) => ({
         date: e.completedAt,
-        weight: Math.max(...e.sets.map((s) => s.weight ?? 0)),
+        // Converted here (once, at the source) rather than inside
+        // renderWeightChart itself, so the chart function stays a plain
+        // renderer with no unit awareness of its own.
+        weight: convertWeightForDisplay(Math.max(...e.sets.map((s) => s.weight ?? 0)), weightUnit) ?? 0,
       }))
 
     const exercises = activeCell.exercises
@@ -1883,7 +1908,7 @@ export default function WorkoutDayPicker({
           )}
           {last && (
             <p className="text-zinc-500 text-xs mb-1.5">
-              Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
+              Last time: {formatLastWeight(last.weight)} x {last.reps ?? '-'}
             </p>
           )}
           {/* Compact rows (boxed=false, inside a round box) fold every
@@ -2105,11 +2130,15 @@ export default function WorkoutDayPicker({
                         mode keeps relying on the placeholder alone
                         (unchanged), since that row is already dense
                         enough without adding label lines to every row. */}
-                    {large && <label className="block text-zinc-500 text-xs mb-1">Weight</label>}
+                    {large && (
+                      <label className="block text-zinc-500 text-xs mb-1">Weight ({weightUnit})</label>
+                    )}
                     <input
                       type="number"
                       inputMode="decimal"
-                      placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                      placeholder={
+                        last?.weight != null ? String(convertWeightForDisplay(last.weight, weightUnit)) : 'weight'
+                      }
                       value={row.weight}
                       onChange={(e) => updateSet(ex.name, i, 'weight', e.target.value)}
                       // Scaled up in large/guided mode to match the rest
@@ -2342,7 +2371,7 @@ export default function WorkoutDayPicker({
           )}
           {last && (
             <p className="text-zinc-500 text-xs mb-1.5">
-              Last time: {last.weight ?? '-'} x {last.reps ?? '-'}
+              Last time: {formatLastWeight(last.weight)} x {last.reps ?? '-'}
             </p>
           )}
           <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1">
@@ -2584,7 +2613,9 @@ export default function WorkoutDayPicker({
                       <input
                         type="number"
                         inputMode="decimal"
-                        placeholder={last?.weight != null ? String(last.weight) : 'weight'}
+                        placeholder={
+                          last?.weight != null ? String(convertWeightForDisplay(last.weight, weightUnit)) : 'weight'
+                        }
                         value={row?.weight ?? ''}
                         onChange={(e) => updateSet(ex.name, 0, 'weight', e.target.value)}
                         className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
@@ -3347,7 +3378,12 @@ export default function WorkoutDayPicker({
                           </span>
                         </div>
                         <p className="text-zinc-400 text-xs">
-                          {entry.sets.map((s) => `${s.weight ?? '-'}x${s.reps ?? '-'}`).join(', ')}
+                          {entry.sets
+                            .map((s) => {
+                              const w = convertWeightForDisplay(s.weight, weightUnit)
+                              return `${w != null ? `${w}${weightUnit}` : '-'} x ${s.reps ?? '-'}`
+                            })
+                            .join(', ')}
                         </p>
                       </div>
                     ))}

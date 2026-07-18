@@ -53,7 +53,9 @@ export default function AdminMembersList({
   // fetched lazily on first expand, then cached here so re-collapsing
   // and re-expanding the same member doesn't re-fetch.
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
-  const [historyByMember, setHistoryByMember] = useState<Record<string, WorkoutHistoryGroup[]>>({})
+  const [historyByMember, setHistoryByMember] = useState<
+    Record<string, { history: WorkoutHistoryGroup[]; weightUnit: 'kg' | 'lbs' }>
+  >({})
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null)
 
   async function handleToggleHistory(member: Member) {
@@ -64,8 +66,8 @@ export default function AdminMembersList({
     setExpandedMemberId(member.id)
     if (!historyByMember[member.id]) {
       setLoadingHistoryId(member.id)
-      const history = await getMemberWorkoutHistory(member.id)
-      setHistoryByMember((h) => ({ ...h, [member.id]: history }))
+      const result = await getMemberWorkoutHistory(member.id)
+      setHistoryByMember((h) => ({ ...h, [member.id]: result }))
       setLoadingHistoryId(null)
     }
   }
@@ -202,7 +204,10 @@ export default function AdminMembersList({
                     {loadingHistoryId === member.id ? (
                       <p className="text-xs text-zinc-500 py-4">Loading...</p>
                     ) : (
-                      <WorkoutHistoryList groups={historyByMember[member.id] || []} />
+                      <WorkoutHistoryList
+                        groups={historyByMember[member.id]?.history || []}
+                        weightUnit={historyByMember[member.id]?.weightUnit}
+                      />
                     )}
                   </div>
                 )}

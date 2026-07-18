@@ -14,7 +14,7 @@ export default async function WorkoutsPage() {
   if (!user) redirect('/login')
 
   const [profileRes, membershipRes] = await Promise.all([
-    supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
+    supabase.from('profiles').select('is_admin, approved, weight_unit').eq('id', user.id).single(),
     supabase
       .from('space_memberships')
       .select('space')
@@ -25,6 +25,7 @@ export default async function WorkoutsPage() {
 
   const isAdmin = !!profileRes.data?.is_admin
   const hasLowTicket = !!membershipRes.data
+  const weightUnit: 'kg' | 'lbs' = profileRes.data?.weight_unit === 'lbs' ? 'lbs' : 'kg'
 
   if (!isAdmin && !hasLowTicket) {
     redirect('/join')
@@ -229,6 +230,7 @@ export default async function WorkoutsPage() {
         history={history}
         videos={videos}
         swaps={swaps}
+        weightUnit={weightUnit}
       />
     </div>
   )

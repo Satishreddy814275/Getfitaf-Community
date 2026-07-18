@@ -763,13 +763,25 @@ export async function saveProgramDayAsTemplate(
 // read another member's rows. Returns the same WorkoutHistoryGroup[]
 // shape the member-facing WorkoutHistoryList component already
 // renders, so no new display component was needed here.
-export async function getMemberWorkoutHistory(memberId: string): Promise<WorkoutHistoryGroup[]> {
+export async function getMemberWorkoutHistory(
+  memberId: string
+): Promise<{ history: WorkoutHistoryGroup[]; weightUnit: 'kg' | 'lbs' }> {
   const { isAdmin } = await requireAdmin()
-  if (!isAdmin) return []
+  if (!isAdmin) return { history: [], weightUnit: 'kg' }
 
   const admin = createAdminClient()
 
   const activePlan = await getActiveWorkoutPlan(memberId)
+
+  // The member's own preference, not the admin's - a coach viewing a
+  // client's log should see the same units that client sees in their
+  // own app, regardless of what unit the admin's own profile is set to.
+  const { data: memberProfile } = await admin
+    .from('profiles')
+    .select('weight_unit')
+    .eq('id', memberId)
+    .single()
+  const weightUnit: 'kg' | 'lbs' = memberProfile?.weight_unit === 'lbs' ? 'lbs' : 'kg'
 
   const { data: allSessions } = await admin
     .from('workout_sessions')
@@ -816,11 +828,13 @@ export async function getMemberWorkoutHistory(memberId: string): Promise<Workout
     groupsByGeneration.set(s.generation_id, group)
   }
 
-  return Array.from(groupsByGeneration.values()).sort((a, b) => {
+  const history = Array.from(groupsByGeneration.values()).sort((a, b) => {
     if (a.isCurrent) return -1
     if (b.isCurrent) return 1
     return (b.sessions[0]?.completedAt || '').localeCompare(a.sessions[0]?.completedAt || '')
   })
+
+  return { history, weightUnit }
 }
 
 // "Tier 1" exercise editor - lets an admin tweak the numbers on an

@@ -18,10 +18,18 @@ export async function updateProfile(formData: FormData) {
 
   const fullName = ((formData.get('full_name') as string) || '').trim()
   const avatarUrl = (formData.get('avatar_url') as string) || null
+  // Guarded against anything but the two real values, rather than
+  // trusting the submitted string outright - the DB's own CHECK
+  // constraint would reject a bad value anyway, but failing silently
+  // here (falling back to the current preference) is friendlier than
+  // a thrown error over a settings field this low-stakes.
+  const weightUnitRaw = formData.get('weight_unit') as string | null
+  const weightUnit = weightUnitRaw === 'kg' || weightUnitRaw === 'lbs' ? weightUnitRaw : null
 
-  const update: { full_name?: string; avatar_url?: string } = {}
+  const update: { full_name?: string; avatar_url?: string; weight_unit?: string } = {}
   if (fullName) update.full_name = fullName
   if (avatarUrl) update.avatar_url = avatarUrl
+  if (weightUnit) update.weight_unit = weightUnit
 
   if (Object.keys(update).length === 0) return
 
@@ -31,4 +39,5 @@ export async function updateProfile(formData: FormData) {
   revalidatePath('/feed')
   revalidatePath('/admin')
   revalidatePath('/leaderboard')
+  revalidatePath('/workouts')
 }

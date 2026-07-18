@@ -13,7 +13,7 @@ export default async function ProfilePage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, avatar_url')
+    .select('full_name, avatar_url, weight_unit')
     .eq('id', user.id)
     .single()
 
@@ -34,6 +34,7 @@ export default async function ProfilePage() {
         userId={user.id}
         initialName={profile?.full_name || ''}
         initialAvatarUrl={profile?.avatar_url || null}
+        initialWeightUnit={profile?.weight_unit === 'lbs' ? 'lbs' : 'kg'}
       />
 
       <InstallAppRow />
