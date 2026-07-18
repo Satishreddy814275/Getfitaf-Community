@@ -358,6 +358,7 @@ export function BlockNumberFields({
   onUpdateBlock,
   showSets,
   showProgressionFields = true,
+  onRemove,
 }: {
   block: EditableBlock
   onUpdateBlock: (id: string, fields: Partial<EditableBlock>) => void
@@ -368,6 +369,11 @@ export function BlockNumberFields({
   // property, not a number that progresses week to week) stays visible
   // here.
   showProgressionFields?: boolean
+  // Rendered as part of the same atomic Weight/Log-as/Each-side
+  // cluster below (not as a separate sibling at the call site) - see
+  // the comment on that wrapper for why. Optional only because a
+  // couple of read-only call sites never pass one.
+  onRemove?: () => void
 }) {
   return (
     <>
@@ -423,54 +429,75 @@ export function BlockNumberFields({
           />
         </label>
       )}
-      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-        <input
-          type="checkbox"
-          checked={block.trackWeight}
-          onChange={(e) => onUpdateBlock(block.id, { trackWeight: e.target.checked })}
-          className="accent-orange-500"
-        />
-        Weight
-      </label>
-      {/* Independent of the Weight checkbox and of Timer above -
-          Timer only controls whether a timer button shows; this
-          controls what the second number box actually means. A timed
-          AMRAP move (timer set, "Reps" selected) still logs a rep
-          count; an isometric hold (timer set, "Duration" selected)
-          logs how many seconds it was actually held, which may differ
-          from the prescribed Timer value. See WorkoutExercise.logAsDuration. */}
-      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-        Log as
-        <span className="inline-flex rounded border border-zinc-700 overflow-hidden">
+      {/* Weight / Log as / Each side / Remove as one atomic group -
+          wrapped together in their own nowrap row rather than left as
+          separate items in the outer flex-wrap row. That row wraps
+          whichever items don't fit onto a second line in DOM order,
+          which used to split this group awkwardly (e.g. Weight
+          staying on line one, Log as and Remove dropping to line two)
+          once Log as's wider segmented control was added. Grouped like
+          this, the whole cluster either fits on the current line or
+          moves down as a single unbroken unit - Satish's ask: these
+          four belong together regardless of where the wrap falls. */}
+      <span className="flex items-center gap-2.5 shrink-0">
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <input
+            type="checkbox"
+            checked={block.trackWeight}
+            onChange={(e) => onUpdateBlock(block.id, { trackWeight: e.target.checked })}
+            className="accent-orange-500"
+          />
+          Weight
+        </label>
+        {/* Independent of the Weight checkbox and of Timer above -
+            Timer only controls whether a timer button shows; this
+            controls what the second number box actually means. A timed
+            AMRAP move (timer set, "Reps" selected) still logs a rep
+            count; an isometric hold (timer set, "Duration" selected)
+            logs how many seconds it was actually held, which may differ
+            from the prescribed Timer value. See WorkoutExercise.logAsDuration. */}
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          Log as
+          <span className="inline-flex rounded border border-zinc-700 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => onUpdateBlock(block.id, { logAsDuration: false })}
+              className={`px-1.5 py-1 text-[11px] transition ${
+                !block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
+              }`}
+            >
+              Reps
+            </button>
+            <button
+              type="button"
+              onClick={() => onUpdateBlock(block.id, { logAsDuration: true })}
+              className={`px-1.5 py-1 text-[11px] transition ${
+                block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
+              }`}
+            >
+              Duration
+            </button>
+          </span>
+        </label>
+        <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <input
+            type="checkbox"
+            checked={block.perSide}
+            onChange={(e) => onUpdateBlock(block.id, { perSide: e.target.checked })}
+            className="accent-orange-500"
+          />
+          Each side
+        </label>
+        {onRemove && (
           <button
             type="button"
-            onClick={() => onUpdateBlock(block.id, { logAsDuration: false })}
-            className={`px-1.5 py-1 text-[11px] transition ${
-              !block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
-            }`}
+            onClick={onRemove}
+            className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0"
           >
-            Reps
+            Remove
           </button>
-          <button
-            type="button"
-            onClick={() => onUpdateBlock(block.id, { logAsDuration: true })}
-            className={`px-1.5 py-1 text-[11px] transition ${
-              block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
-            }`}
-          >
-            Duration
-          </button>
-        </span>
-      </label>
-      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
-        <input
-          type="checkbox"
-          checked={block.perSide}
-          onChange={(e) => onUpdateBlock(block.id, { perSide: e.target.checked })}
-          className="accent-orange-500"
-        />
-        Each side
-      </label>
+        )}
+      </span>
     </>
   )
 }
@@ -594,16 +621,10 @@ export function BlockItemEditor({
           onChange={() => onToggleSelect(b.id)}
           className="mt-1.5 accent-orange-500"
         />
-        {/* Remove now lives inside this same wrapping group (not as a
-            separate sibling pinned to the row's far edge) so that when
-            the fields wrap onto a second line on a narrower screen,
-            Remove wraps down with them instead of floating alone next
-            to whatever's still on the first line - everything about
-            this one exercise stays visually together, same idea as
-            the round-group rows below, which never had this split in
-            the first place. Satish's call - the admin side doesn't
-            need to look fancy, but it should still feel put-together
-            for coaches using it every day. */}
+        {/* Remove is rendered inside BlockNumberFields now, as part of
+            its atomic Weight/Log-as/Each-side/Remove cluster - see the
+            comment there. Keeps this row's own wrap-point concern
+            (Name vs. the numeric fields) separate from that cluster's. */}
         <div className="flex-1 flex flex-wrap items-center gap-1.5">
           <ExerciseNameField name={b.name} pool={pool} onChange={(name) => onUpdateBlock(b.id, { name })} />
           <BlockNumberFields
@@ -611,14 +632,8 @@ export function BlockItemEditor({
             onUpdateBlock={onUpdateBlock}
             showSets
             showProgressionFields={showProgressionFields}
+            onRemove={() => onRemove(b.id)}
           />
-          <button
-            type="button"
-            onClick={() => onRemove(b.id)}
-            className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0"
-          >
-            Remove
-          </button>
         </div>
       </div>
     )
@@ -670,14 +685,8 @@ export function BlockItemEditor({
               onUpdateBlock={onUpdateBlock}
               showSets={false}
               showProgressionFields={showProgressionFields}
+              onRemove={() => onRemove(b.id)}
             />
-            <button
-              type="button"
-              onClick={() => onRemove(b.id)}
-              className="text-zinc-600 hover:text-red-400 text-[11px] shrink-0 mt-1"
-            >
-              Remove
-            </button>
           </div>
         ))}
       </div>
