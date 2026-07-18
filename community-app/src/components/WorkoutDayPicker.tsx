@@ -5,7 +5,25 @@ import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/wor
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
-import { Timer, Play, BicepsFlexed, Check, History as HistoryIcon, X, ArrowRight, AlertTriangle } from 'lucide-react'
+import {
+  Timer,
+  Play,
+  BicepsFlexed,
+  Check,
+  History as HistoryIcon,
+  X,
+  ArrowRight,
+  AlertTriangle,
+  Sun,
+  Flame,
+  Wind,
+  PartyPopper,
+  Trophy,
+  Medal,
+  ThumbsUp,
+  Sparkles,
+  Rocket,
+} from 'lucide-react'
 import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup } from '@/types'
 
 interface SetRow {
@@ -252,7 +270,45 @@ function isFirstOfPhaseGroups(groups: CellExercise[][], index: number): boolean 
 function phaseIntroText(phase: 'warmup' | 'main' | 'cooldown'): string {
   if (phase === 'warmup') return "Let's warm up"
   if (phase === 'main') return 'Time for the main workout'
-  return "Nice work, let's cool down."
+  return "Great job, now let's cool down."
+}
+
+// Icon shown above phaseIntroText's line on the round-intro screen -
+// Sun for warm-up (start-of-session feel), Flame for main (energy/
+// intensity), Wind for cool-down (winding down) - picked from a set of
+// mockup options Satish reviewed directly before building.
+function phaseIntroIcon(phase: 'warmup' | 'main' | 'cooldown') {
+  if (phase === 'warmup') return Sun
+  if (phase === 'main') return Flame
+  return Wind
+}
+
+// Consecutive-calendar-days streak, ending today, for the "N workouts
+// back-to-back" celebration message - Satish's explicit definition:
+// calendar days, not just "however many sessions in a row whenever
+// they happened." history only has sessions saved BEFORE the one
+// currently being finished (finishWorkout calls this synchronously,
+// before the server round-trip that would refresh the history prop),
+// so today's date is added unconditionally - this session's completion
+// is what's about to make today count. One session logged on a given
+// day is enough to count that whole day, regardless of how many
+// exercises/sets it had.
+function computeBackToBackStreak(history: WorkoutHistoryGroup[]): number {
+  const dates = new Set<string>()
+  for (const group of history) {
+    for (const session of group.sessions) {
+      if (session.completedAt) dates.add(new Date(session.completedAt).toDateString())
+    }
+  }
+  const today = new Date()
+  dates.add(today.toDateString())
+  let streak = 0
+  const cursor = new Date(today)
+  while (dates.has(cursor.toDateString())) {
+    streak++
+    cursor.setDate(cursor.getDate() - 1)
+  }
+  return streak
 }
 
 // Short label for the list view's collapsible phase section headers -
@@ -416,6 +472,32 @@ export default function WorkoutDayPicker({
   const [checkedByExercise, setCheckedByExercise] = useState<Record<string, boolean[]>>({})
   const [isPending, startTransition] = useTransition()
   const [justFinished, setJustFinished] = useState(false)
+  // Randomly-picked appreciation message shown alongside justFinished -
+  // picked once per finish (in finishWorkout, see pickCelebration
+  // there), not recomputed on every render, so it doesn't change out
+  // from under someone still looking at it. null until the first finish
+  // of this mount.
+  const [celebration, setCelebration] = useState<{ Icon: typeof Sun; text: string } | null>(null)
+  // Drives the pop-in transition on the celebration message - starts
+  // false, flips true one frame after justFinished goes true (see the
+  // effect below), so the CSS transition actually has a "before" state
+  // to animate from instead of mounting already at its final scale/
+  // opacity with nothing to interpolate.
+  const [celebrationVisible, setCelebrationVisible] = useState(false)
+  useEffect(() => {
+    if (!justFinished) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCelebrationVisible(false)
+      return
+    }
+    setCelebrationVisible(false)
+    // Deferred one frame via requestAnimationFrame, not a direct call -
+    // this is what actually gives the browser a "false" paint to
+    // transition away from, so it doesn't trigger the same
+    // set-state-in-effect concern the two synchronous calls above do.
+    const raf = requestAnimationFrame(() => setCelebrationVisible(true))
+    return () => cancelAnimationFrame(raf)
+  }, [justFinished])
   // Which day rows are expanded inline in the program grid below (task
   // #50+) - a day tapped in its Week N card no longer navigates to a
   // separate screen, it expands in place. A Set (not a single value) so
@@ -746,7 +828,17 @@ export default function WorkoutDayPicker({
   }
 
   function toggleViewMode() {
-    setViewMode((prev) => (prev === 'guided' ? 'list' : 'guided'))
+    // Switching TO guided view is treated as "I'm going back to keep
+    // working, not finish" - clears missingValuesFlagged (see
+    // handleFinishClick) so the next Finish Workout tap re-checks from
+    // scratch instead of staying permanently in "finish anyway, no
+    // recheck" mode for the rest of the session. Not read via setViewMode's
+    // updater callback (which would call a second setState from inside
+    // another's updater) - viewMode is read directly since this only ever
+    // runs from an event handler, where it's guaranteed current.
+    const next = viewMode === 'guided' ? 'list' : 'guided'
+    if (next === 'guided') setMissingValuesFlagged(false)
+    setViewMode(next)
   }
 
   // Auto-advances the guided player the moment a rest countdown it
@@ -959,6 +1051,13 @@ export default function WorkoutDayPicker({
       rows[index] = { ...rows[index], [field]: value }
       return { ...prev, [exerciseName]: rows }
     })
+    // Same reasoning as toggleViewMode above - typing into ANY set
+    // value (not just a flagged-missing one) clears the whole-day
+    // missing-values flag immediately, rather than requiring every
+    // missing field to be filled first. Finish Workout just re-checks
+    // fresh from scratch next time it's tapped, so nothing is lost by
+    // clearing eagerly here.
+    setMissingValuesFlagged(false)
   }
 
   function addSetRow(exerciseName: string) {
@@ -1147,6 +1246,55 @@ export default function WorkoutDayPicker({
     startCell(cell, mode)
   }
 
+  // Picks one appreciation message for the celebration shown alongside
+  // justFinished - a mixed pool of always-eligible generic lines plus
+  // two conditional ones that only enter the pool when they're actually
+  // true (a real 2+ day streak, or this week having any assigned days
+  // at all). Random pick every time, including when a conditional one
+  // is eligible - Satish's explicit call ("even in back-to-back, it
+  // doesn't need to be all the time... a random motivation note
+  // generator"), so a real streak doesn't always win out over the
+  // generic pool.
+  //
+  // Computed here (inside finishWorkout, using activeCell/allCells/
+  // completedSet/history directly) rather than reusing currentWeek/
+  // totalCells/doneCells from the program-overview render below -
+  // those are declared AFTER the `if (activeCell) { ... return }`
+  // branch this function lives in, so they're never initialized during
+  // any render where activeCell is truthy (which is always, whenever
+  // Finish Workout is actually clickable). activeCell.week is also
+  // simply the more correct scope here anyway - "this week" means the
+  // week of the day just finished, not wherever the overview's
+  // next-due pointer happens to sit.
+  function pickCelebration(cell: Cell): { Icon: typeof Sun; text: string } {
+    const weekCells = allCells.filter((c) => c.week === cell.week)
+    const weekTotal = weekCells.length
+    // completedSet reflects state from BEFORE this save (completedCells
+    // hasn't refreshed from the server yet) - add 1 for the day just
+    // finished, unless it was already marked done (re-logging an
+    // already-completed day shouldn't double-count).
+    const alreadyCounted = completedSet.has(cell.key)
+    const weekDone = weekCells.filter((c) => completedSet.has(c.key)).length + (alreadyCounted ? 0 : 1)
+    const streak = computeBackToBackStreak(history)
+
+    const pool: { Icon: typeof Sun; text: string }[] = [
+      { Icon: Trophy, text: 'That was a strong session!' },
+      { Icon: ThumbsUp, text: "Let's go - another one done!" },
+      { Icon: Sparkles, text: 'Nice work - you showed up today!' },
+      { Icon: Rocket, text: "Great day - momentum's building!" },
+    ]
+    if (streak >= 2) {
+      pool.push({
+        Icon: PartyPopper,
+        text: `${streak} workouts back-to-back. ${streak <= 3 ? 'Nice' : 'Great'} streak!`,
+      })
+    }
+    if (weekTotal > 0) {
+      pool.push({ Icon: Medal, text: `${weekDone} of ${weekTotal} this week - great pace!` })
+    }
+    return pool[Math.floor(Math.random() * pool.length)]
+  }
+
   function finishWorkout() {
     if (!activeCell) return
     const sets = activeCell.exercises.flatMap((ex) =>
@@ -1157,6 +1305,7 @@ export default function WorkoutDayPicker({
         reps: row.reps.trim() === '' ? null : Number(row.reps),
       }))
     )
+    const celebrationPick = pickCelebration(activeCell)
 
     startTransition(async () => {
       await logWorkoutSession({
@@ -1169,6 +1318,7 @@ export default function WorkoutDayPicker({
       clearDraft(generationId)
       setActiveCell(null)
       setJustFinished(true)
+      setCelebration(celebrationPick)
       setRestTimer(null)
     })
   }
@@ -2583,21 +2733,7 @@ export default function WorkoutDayPicker({
                         </p>
                       )}
                       {isRoundBox ? (
-                        <div
-                          className={
-                            'glass rounded-2xl p-3.5 space-y-1.5' +
-                            // Same flagged-missing highlight as
-                            // renderGroupedCard, but on the whole round box
-                            // rather than a single card - a round box has
-                            // no per-exercise card boundary inside it (see
-                            // its rows below), so the whole box is what
-                            // gets the ring if anything within it is
-                            // incomplete.
-                            (missingValuesFlagged && box.some((group) => groupHasMissingValues(group))
-                              ? ' ring-2 ring-orange-500/60'
-                              : '')
-                          }
-                        >
+                        <div className="glass rounded-2xl p-3.5 space-y-1.5">
                           {box.map((group, idx) => {
                             const ex = group[0]
                             // Same divider-suppression idea as the
@@ -2622,9 +2758,28 @@ export default function WorkoutDayPicker({
                             const isLastInBox = idx === box.length - 1
                             const showRest =
                               ex.restSeconds != null && (!isLastInBox || exercises.indexOf(ex) < exercises.length - 1)
+                            // Row-level flagged-missing highlight, not a
+                            // ring around the whole round box - Satish's
+                            // call: ringing the entire box for one
+                            // incomplete exercise among several was too
+                            // blunt ("we don't need to violate the whole
+                            // box"). Round rows have no card boundary of
+                            // their own (see renderExerciseCard's
+                            // boxed:false, compact mode), so this row gets
+                            // its own rounded highlight instead - same
+                            // orange as the per-field borders on the
+                            // actual missing weight/reps inputs.
+                            const rowFlaggedMissing = missingValuesFlagged && groupHasMissingValues(group)
                             return (
                               <Fragment key={ex.originalName}>
-                                <div className={idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60'}>
+                                <div
+                                  className={
+                                    (idx === 0 || prevHadRest ? '' : 'pt-1.5 border-t border-zinc-800/60') +
+                                    (rowFlaggedMissing
+                                      ? ' rounded-lg ring-1 ring-orange-500/50 bg-orange-500/5 -mx-1.5 px-1.5 py-1'
+                                      : '')
+                                  }
+                                >
                                   {renderExerciseCard(ex, { boxed: false })}
                                 </div>
                                 {showRest && renderRestPill(ex.restSeconds!)}
@@ -2696,6 +2851,15 @@ export default function WorkoutDayPicker({
 
             {guidedPhase === 'roundIntro' && (currentRound != null || introPhase != null) && (
               <div className="glass rounded-2xl p-6 text-center">
+                {/* Only phase-transition screens (warm-up/main/cool-down)
+                    get an icon - a plain "Round 2 starts" mid-phase
+                    screen doesn't correspond to any of the three, so
+                    introPhase is null there and no icon renders. */}
+                {introPhase &&
+                  (() => {
+                    const PhaseIcon = phaseIntroIcon(introPhase)
+                    return <PhaseIcon className="w-8 h-8 text-orange-400 mx-auto mb-3" aria-hidden="true" />
+                  })()}
                 <p className="text-white text-xl font-bold mb-2">
                   {introPhase ? phaseIntroText(introPhase) : `Round ${currentRound} starts`}
                 </p>
@@ -2761,6 +2925,15 @@ export default function WorkoutDayPicker({
                 >
                   Skip rest ⏭
                 </button>
+                {/* Deliberately neutral, not red/danger-toned - red
+                    already means "destructive" in this app (Discard),
+                    and skipping rest is a legitimate choice sometimes
+                    (running late, already feels recovered), not an
+                    error. The nudge line does the discouraging instead
+                    of the button's color. */}
+                <p className="text-zinc-500 text-xs mt-2">
+                  Don&apos;t skip rest - it helps you perform better.
+                </p>
               </div>
             )}
 
@@ -2845,7 +3018,19 @@ export default function WorkoutDayPicker({
             sticky ones do. inset-x-0 + an inner max-w-3xl wrapper
             reproduce the page's own centering/width, since fixed
             positions relative to the viewport, not this component's
-            parent. */}
+            parent.
+
+            Hidden entirely (not just spaced out) during the guided
+            player's rest and round-intro screens - Satish's call after
+            seeing Skip rest land close to this bar on short screens
+            ("letting it disappear completely... sounds like a great
+            option"). Finishing mid-rest or mid-round-intro isn't a
+            meaningful action anyway, so removing the mis-tap target
+            entirely is cleaner than just adding clearance. Still shown
+            for 'exercise' and 'done' guided phases, and always in list
+            view (effectiveMode !== 'guided' short-circuits the phase
+            check there). */}
+        {!(effectiveMode === 'guided' && (guidedPhase === 'rest' || guidedPhase === 'roundIntro')) && (
         <div className="fixed inset-x-0 bottom-16 sm:static z-30 px-4 sm:px-0 pt-3 pb-3 sm:pb-0 sm:mt-10 bg-[#0a0a0a]/95 backdrop-blur sm:bg-transparent sm:backdrop-blur-none border-t border-zinc-800 sm:border-0">
           <div className="max-w-3xl mx-auto">
             <p className="text-zinc-500 text-[11px] text-center mb-2">
@@ -2877,6 +3062,7 @@ export default function WorkoutDayPicker({
             </button>
           </div>
         </div>
+        )}
 
         {/* Per-exercise History modal - opened from the "⋯" menu on any
             exercise card (renderExerciseCard/renderGroupedCard both set
@@ -2944,8 +3130,20 @@ export default function WorkoutDayPicker({
 
   return (
     <div className="space-y-4">
-      {justFinished && (
-        <p className="text-sm text-orange-400">Nice work - that session&apos;s logged.</p>
+      {/* Random appreciation message (see pickCelebration in
+          finishWorkout) instead of one static line - pops in via
+          celebrationVisible's one-frame-delayed scale/opacity flip
+          (see its effect above) rather than mounting already at full
+          size, so there's an actual "before" state to transition from. */}
+      {justFinished && celebration && (
+        <div
+          className={`flex items-center gap-2 text-orange-400 transition-all duration-300 ease-out ${
+            celebrationVisible ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
+          }`}
+        >
+          <celebration.Icon className="w-5 h-5 shrink-0" aria-hidden="true" />
+          <p className="text-sm font-medium">{celebration.text}</p>
+        </div>
       )}
 
       {programComplete && (
