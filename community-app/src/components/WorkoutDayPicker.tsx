@@ -1746,50 +1746,6 @@ export default function WorkoutDayPicker({
             <>
               <div className="fixed inset-0 z-10" onClick={() => setOverflowOpenFor(null)} />
               <div className="absolute right-0 top-full mt-1 min-w-[180px] bg-zinc-900 border border-zinc-800 rounded-lg shadow-lg py-1 z-20">
-                {!boxed && (
-                  <>
-                    <a
-                      href={video ? video.videoUrl : youtubeSearchUrl(ex.name)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => setOverflowOpenFor(null)}
-                      className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                    >
-                      {video ? '▶ Watch video' : 'Search on YouTube ↗'}
-                    </a>
-                    {ex.timerSeconds != null && (
-                      <button
-                        onClick={() => {
-                          startSideTimer(ex, false)
-                          setOverflowOpenFor(null)
-                        }}
-                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                      >
-                        ▶ {formatDurationLabel(ex.timerSeconds)} timer
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        setRestPickerFor(restPickerOpen ? null : ex.originalName)
-                        setOverflowOpenFor(null)
-                      }}
-                      className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                    >
-                      <Timer className="w-3.5 h-3.5" aria-hidden="true" /> Custom timer
-                    </button>
-                    {setRows.length > 0 && (
-                      <button
-                        onClick={() => {
-                          toggleAllChecked(ex.name, setRows.length)
-                          setOverflowOpenFor(null)
-                        }}
-                        className="block w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                      >
-                        {allChecked ? '✓ All checked' : 'Check all sets'}
-                      </button>
-                    )}
-                  </>
-                )}
                 {!video && (
                   <button
                     onClick={() => {
@@ -1812,22 +1768,6 @@ export default function WorkoutDayPicker({
                 >
                   ⇄ Swap exercise
                 </button>
-                {/* Boxed (full card) mode gets History as its own inline
-                    icon button beside the timer instead - see the boxed
-                    actions row below. Compact mode (inside a round box)
-                    has no such inline row, so it stays here as the only
-                    way to reach it there. */}
-                {!boxed && (
-                  <button
-                    onClick={() => {
-                      setHistoryFor({ name: ex.name, label: displayName, logAsDuration: !!ex.logAsDuration })
-                      setOverflowOpenFor(null)
-                    }}
-                    className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
-                  >
-                    <HistoryIcon className="w-3.5 h-3.5" aria-hidden="true" /> History
-                  </button>
-                )}
               </div>
             </>
           )}
@@ -1862,17 +1802,9 @@ export default function WorkoutDayPicker({
                 Target: {ex.sets} x {ex.reps}
               </p>
             ) : (
-              // Compact rows put "..." right here, on the same line as
-              // Target, instead of leaving it stranded alone on the
-              // actions row below (which otherwise had nothing else on
-              // it in compact mode - see boxed-only actions row further
-              // down).
-              <div className="flex items-center gap-2 shrink-0">
-                <p className="text-zinc-500 text-xs whitespace-nowrap">
-                  Target: {ex.sets} x {ex.reps}
-                </p>
-                {!boxed && overflowMenuButton}
-              </div>
+              <p className="text-zinc-500 text-xs whitespace-nowrap shrink-0">
+                Target: {ex.sets} x {ex.reps}
+              </p>
             )}
           </div>
           {ex.name !== ex.originalName && (
@@ -1892,13 +1824,12 @@ export default function WorkoutDayPicker({
                 : `${formatLastWeight(last.weight)} x ${last.reps ?? '-'}`}
             </p>
           )}
-          {/* Compact rows (boxed=false, inside a round box) fold every
-              secondary action - video, timer, custom timer, check all,
-              "..." - into the header row above (Target line) or the
-              "..." menu itself, so this whole row simply doesn't exist
-              for them - nothing left to show once "..." moved up. */}
-          {boxed && (
-            <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1'}>
+          {/* Round-box rows (boxed=false) used to fold every secondary
+              action into the "..." menu to stay compact - Satish's
+              later call was that burying even the video link behind a
+              menu tap wasn't worth the space it saved, so this row now
+              renders the same for every exercise regardless of boxed. */}
+          <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1'}>
               <div className="flex items-center gap-3 flex-wrap gap-y-1">
                 {video ? (
                   <a
@@ -1982,7 +1913,6 @@ export default function WorkoutDayPicker({
                 {overflowMenuButton}
               </div>
             </div>
-          )}
 
           {/* Large/guided mode shows this same prompt inside the big
               timer panel at the bottom of the card instead - see below. */}
