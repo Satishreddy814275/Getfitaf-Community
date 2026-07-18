@@ -81,6 +81,16 @@ export interface WorkoutExercise {
   // weight that doesn't apply. Absent/true on older AI-generated plans,
   // where every exercise still shows a weight field same as before.
   trackWeight?: boolean
+  // True when the "reps" field is actually a duration held, in
+  // seconds - planks, wall sits, dead hangs. Independent of
+  // timerSeconds/trackWeight on purpose: a timed AMRAP move (e.g.
+  // "squat jumps, 30s") has a timer but still logs a rep count, while
+  // a weighted hold (e.g. a loaded farmer's carry) tracks weight AND
+  // duration at once. Absent/false on everything else, which keeps
+  // every existing exercise's behavior unchanged - this only relabels
+  // and reformats the same underlying number, it doesn't add a new
+  // logged value or require a migration.
+  logAsDuration?: boolean
   // Prescribed rest duration in seconds shown next to Target (e.g. 40)
   // - like timerSeconds, this is a number to reach for a one-tap timer
   // with, not something the app enforces or counts down on its own.

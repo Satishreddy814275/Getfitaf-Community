@@ -73,8 +73,9 @@ export function buildDayGroups(days: WorkoutPlanDay[]): DayGroup[] {
 
 // One progression cell - the numbers that are allowed to differ
 // between the same exercise's occurrence in different weeks. Everything
-// else about the exercise (name, phase, grouping, trackWeight) is
-// shared/structural and lives on the template block instead.
+// else about the exercise (name, phase, grouping, trackWeight,
+// logAsDuration) is shared/structural and lives on the template block
+// instead.
 export interface ProgressionCell {
   setsCount: number
   reps: string
@@ -209,6 +210,7 @@ export interface StructuralDiffEntry {
     restSeconds: number | null
     timerSeconds: number | null
     trackWeight: boolean
+    logAsDuration: boolean
   }
 }
 
@@ -351,6 +353,7 @@ export function diffBlockStructure(
         restSeconds: cb.restSeconds,
         timerSeconds: cb.timerSeconds,
         trackWeight: cb.trackWeight,
+        logAsDuration: cb.logAsDuration,
       },
     })
   }
@@ -391,6 +394,7 @@ export function applyStructuralDiffToBlocks(
         restSeconds: seed?.restSeconds ?? null,
         timerSeconds: seed?.timerSeconds ?? null,
         trackWeight: seed?.trackWeight ?? true,
+        logAsDuration: seed?.logAsDuration ?? false,
         perSide: entry.perSide ?? false,
         phase: entry.phase ?? 'main',
         groupId: null,

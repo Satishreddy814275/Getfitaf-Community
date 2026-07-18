@@ -54,7 +54,10 @@ export default function AdminMembersList({
   // and re-expanding the same member doesn't re-fetch.
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
   const [historyByMember, setHistoryByMember] = useState<
-    Record<string, { history: WorkoutHistoryGroup[]; weightUnit: 'kg' | 'lbs' }>
+    Record<
+      string,
+      { history: WorkoutHistoryGroup[]; weightUnit: 'kg' | 'lbs'; logAsDurationByExercise: Record<string, boolean> }
+    >
   >({})
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null)
 
@@ -207,6 +210,7 @@ export default function AdminMembersList({
                       <WorkoutHistoryList
                         groups={historyByMember[member.id]?.history || []}
                         weightUnit={historyByMember[member.id]?.weightUnit}
+                        logAsDurationByExercise={historyByMember[member.id]?.logAsDurationByExercise}
                       />
                     )}
                   </div>

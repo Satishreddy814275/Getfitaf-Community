@@ -91,6 +91,7 @@ function TemplateEditor({
         restSeconds: null,
         timerSeconds: null,
         trackWeight: true,
+        logAsDuration: false,
         perSide: false,
         phase,
         groupId: null,

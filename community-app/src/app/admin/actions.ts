@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
+import { buildLogAsDurationLookup } from '@/lib/workoutBlocks'
 import { revalidatePath } from 'next/cache'
 import type { WorkoutExercise, WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay } from '@/types'
 import {
@@ -765,9 +766,13 @@ export async function saveProgramDayAsTemplate(
 // renders, so no new display component was needed here.
 export async function getMemberWorkoutHistory(
   memberId: string
-): Promise<{ history: WorkoutHistoryGroup[]; weightUnit: 'kg' | 'lbs' }> {
+): Promise<{
+  history: WorkoutHistoryGroup[]
+  weightUnit: 'kg' | 'lbs'
+  logAsDurationByExercise: Record<string, boolean>
+}> {
   const { isAdmin } = await requireAdmin()
-  if (!isAdmin) return { history: [], weightUnit: 'kg' }
+  if (!isAdmin) return { history: [], weightUnit: 'kg', logAsDurationByExercise: {} }
 
   const admin = createAdminClient()
 
@@ -834,7 +839,9 @@ export async function getMemberWorkoutHistory(
     return (b.sessions[0]?.completedAt || '').localeCompare(a.sessions[0]?.completedAt || '')
   })
 
-  return { history, weightUnit }
+  const logAsDurationByExercise = buildLogAsDurationLookup(activePlan?.days ?? [])
+
+  return { history, weightUnit, logAsDurationByExercise }
 }
 
 // "Tier 1" exercise editor - lets an admin tweak the numbers on an

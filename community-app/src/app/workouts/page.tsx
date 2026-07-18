@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
+import { buildLogAsDurationLookup } from '@/lib/workoutBlocks'
 import WorkoutsTabs from '@/components/WorkoutsTabs'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
 import type { LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
@@ -220,6 +221,8 @@ export default async function WorkoutsPage() {
   // onSessionActiveChange wiring in WorkoutDayPicker/WorkoutsTabs.
   // Satish's call: none of that is needed once you've hit Start
   // Workout, it just takes focus away from the session itself.
+  const logAsDurationByExercise = buildLogAsDurationLookup(plan.days)
+
   return (
     <div className="max-w-3xl mx-auto w-full py-8 px-4 sm:px-6">
       <WorkoutsTabs
@@ -231,6 +234,7 @@ export default async function WorkoutsPage() {
         videos={videos}
         swaps={swaps}
         weightUnit={weightUnit}
+        logAsDurationByExercise={logAsDurationByExercise}
       />
     </div>
   )

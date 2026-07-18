@@ -2,11 +2,13 @@
 
 import { useState } from 'react'
 import { convertWeightForDisplay, type WeightUnit } from '@/lib/weightUnit'
+import { baseExerciseName } from '@/lib/workoutBlocks'
 import type { WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
 
 export default function WorkoutHistoryList({
   groups,
   weightUnit,
+  logAsDurationByExercise,
 }: {
   groups: WorkoutHistoryGroup[]
   // Optional, defaulting to kg (matches every logged value's canonical
@@ -14,6 +16,13 @@ export default function WorkoutHistoryList({
   // preference here, not the admin's, so the numbers a coach sees match
   // what that client actually sees in their own app.
   weightUnit?: WeightUnit
+  // Best-effort exerciseName -> logAsDuration lookup (see
+  // buildLogAsDurationLookup in workoutBlocks.ts) built from whichever
+  // plan the caller has on hand. A name missing from the lookup falls
+  // back to the plain reps display below - this only ever relabels a
+  // session's already-correct numbers, never hides or loses data if
+  // the classification can't be determined.
+  logAsDurationByExercise?: Record<string, boolean>
 }) {
   const unit = weightUnit ?? 'kg'
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
@@ -57,19 +66,28 @@ export default function WorkoutHistoryList({
                       {byExercise.size === 0 && (
                         <p className="text-xs text-zinc-500">No sets logged for this session.</p>
                       )}
-                      {Array.from(byExercise.entries()).map(([exerciseName, sets]) => (
-                        <p key={exerciseName} className="text-xs text-zinc-400">
-                          <span className="text-zinc-300 font-medium">{exerciseName}:</span>{' '}
-                          {sets
-                            .slice()
-                            .sort((a, b) => a.setNumber - b.setNumber)
-                            .map((s) => {
-                              const w = convertWeightForDisplay(s.weight, unit)
-                              return `${w != null ? `${w}${unit}` : '-'} x ${s.reps ?? '-'}`
-                            })
-                            .join(', ')}
-                        </p>
-                      ))}
+                      {Array.from(byExercise.entries()).map(([exerciseName, sets]) => {
+                        const isDuration = !!logAsDurationByExercise?.[baseExerciseName(exerciseName)]
+                        return (
+                          <p key={exerciseName} className="text-xs text-zinc-400">
+                            <span className="text-zinc-300 font-medium">{exerciseName}:</span>{' '}
+                            {sets
+                              .slice()
+                              .sort((a, b) => a.setNumber - b.setNumber)
+                              .map((s) =>
+                                isDuration
+                                  ? s.reps != null
+                                    ? `${s.reps}s`
+                                    : '-'
+                                  : (() => {
+                                      const w = convertWeightForDisplay(s.weight, unit)
+                                      return `${w != null ? `${w}${unit}` : '-'} x ${s.reps ?? '-'}`
+                                    })()
+                              )
+                              .join(', ')}
+                          </p>
+                        )
+                      })}
                     </div>
                   )}
                 </div>

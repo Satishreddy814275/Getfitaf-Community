@@ -432,6 +432,36 @@ export function BlockNumberFields({
         />
         Weight
       </label>
+      {/* Independent of the Weight checkbox and of Timer above -
+          Timer only controls whether a timer button shows; this
+          controls what the second number box actually means. A timed
+          AMRAP move (timer set, "Reps" selected) still logs a rep
+          count; an isometric hold (timer set, "Duration" selected)
+          logs how many seconds it was actually held, which may differ
+          from the prescribed Timer value. See WorkoutExercise.logAsDuration. */}
+      <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        Log as
+        <span className="inline-flex rounded border border-zinc-700 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => onUpdateBlock(block.id, { logAsDuration: false })}
+            className={`px-1.5 py-1 text-[11px] transition ${
+              !block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
+            }`}
+          >
+            Reps
+          </button>
+          <button
+            type="button"
+            onClick={() => onUpdateBlock(block.id, { logAsDuration: true })}
+            className={`px-1.5 py-1 text-[11px] transition ${
+              block.logAsDuration ? 'bg-orange-500 text-black font-medium' : 'text-zinc-500 hover:text-white'
+            }`}
+          >
+            Duration
+          </button>
+        </span>
+      </label>
       <label className="flex items-center gap-1.5 text-[11px] text-zinc-500">
         <input
           type="checkbox"
@@ -759,6 +789,7 @@ function DayEditor({
         restSeconds: null,
         timerSeconds: null,
         trackWeight: true,
+        logAsDuration: false,
         perSide: false,
         phase,
         groupId: null,

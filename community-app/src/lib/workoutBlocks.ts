@@ -26,6 +26,9 @@ export interface EditableBlock {
   restSeconds: number | null
   timerSeconds: number | null
   trackWeight: boolean
+  // See WorkoutExercise.logAsDuration in @/types - carried through
+  // unchanged by collapse/expand, same as trackWeight.
+  logAsDuration: boolean
   // See WorkoutExercise.perSide in @/types - carried through unchanged
   // by collapse/expand, same as trackWeight.
   perSide: boolean
@@ -86,6 +89,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        logAsDuration: !!ex.logAsDuration,
         perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
@@ -108,6 +112,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        logAsDuration: !!ex.logAsDuration,
         perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
@@ -143,6 +148,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: ex.restSeconds ?? null,
         timerSeconds: ex.timerSeconds ?? null,
         trackWeight: ex.trackWeight !== false,
+        logAsDuration: !!ex.logAsDuration,
         perSide: !!ex.perSide,
         phase: ex.phase ?? 'main',
         groupId: null,
@@ -162,6 +168,7 @@ export function collapseExercisesToBlocks(exercises: WorkoutExercise[]): Editabl
         restSeconds: source.restSeconds ?? null,
         timerSeconds: source.timerSeconds ?? null,
         trackWeight: source.trackWeight !== false,
+        logAsDuration: !!source.logAsDuration,
         perSide: !!source.perSide,
         phase: source.phase ?? 'main',
         groupId,
@@ -231,8 +238,30 @@ function buildExercise(name: string, block: EditableBlock): WorkoutExercise {
   }
   if (block.restSeconds != null) e.restSeconds = block.restSeconds
   if (block.timerSeconds != null) e.timerSeconds = block.timerSeconds
+  if (block.logAsDuration) e.logAsDuration = true
   if (block.perSide) e.perSide = true
   return e
+}
+
+// Best-effort exerciseName -> logAsDuration lookup for history displays
+// that aggregate across every past session/generation (WorkoutHistoryList),
+// which only ever stored raw weight/reps numbers with no marker for
+// which mode they were logged under. Built from whatever plan the
+// caller has on hand (usually the member's current active plan) -
+// classification (is this a plank, a hold) doesn't typically change
+// for a given exercise, so this is accurate for the common case even
+// though it can't know about an exercise that's since been removed
+// from every plan the member has. Keyed by baseExerciseName so a
+// lookup against a logged set's raw name (which may carry a "(Round
+// N)"/"(N)" suffix) needs the same stripping applied on the read side.
+export function buildLogAsDurationLookup(days: WorkoutPlanDay[]): Record<string, boolean> {
+  const lookup: Record<string, boolean> = {}
+  for (const day of days) {
+    for (const ex of day.exercises) {
+      lookup[baseExerciseName(ex.name)] = !!ex.logAsDuration
+    }
+  }
+  return lookup
 }
 
 // Convenience for callers operating on a whole program's days array -

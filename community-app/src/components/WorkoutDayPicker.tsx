@@ -44,6 +44,7 @@ interface CellExercise {
   sets: string
   reps: string
   trackWeight?: boolean
+  logAsDuration?: boolean
   restSeconds?: number
   timerSeconds?: number
   round?: number
@@ -93,6 +94,7 @@ function resolveExercises(
           sets: swap.sets,
           reps: swap.reps,
           trackWeight: ex.trackWeight,
+          logAsDuration: ex.logAsDuration,
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
           round: ex.round,
@@ -105,6 +107,7 @@ function resolveExercises(
           sets: ex.sets,
           reps: ex.reps,
           trackWeight: ex.trackWeight,
+          logAsDuration: ex.logAsDuration,
           restSeconds: ex.restSeconds,
           timerSeconds: ex.timerSeconds,
           round: ex.round,
@@ -691,7 +694,15 @@ export default function WorkoutDayPicker({
   // currently-displayed name (post-swap, if swapped) plus a display
   // label, since that's what computeExerciseHistory below matches
   // against. Null when closed.
-  const [historyFor, setHistoryFor] = useState<{ name: string; label: string } | null>(null)
+  // logAsDuration travels with it (rather than being re-looked-up from
+  // the current exercises array) so the chart/list below can format
+  // correctly even for an exercise that's since been swapped out of
+  // today's plan.
+  const [historyFor, setHistoryFor] = useState<{
+    name: string
+    label: string
+    logAsDuration: boolean
+  } | null>(null)
   // Which exercise's rest-timer preset picker is open (per-card
   // trigger), vs. the timer itself, which is global - only one rest
   // period happens at a time regardless of which card started it, so
@@ -1263,6 +1274,7 @@ export default function WorkoutDayPicker({
       sets: '1',
       reps: last.reps,
       trackWeight: last.trackWeight,
+      logAsDuration: last.logAsDuration,
       restSeconds: last.restSeconds,
       timerSeconds: last.timerSeconds,
       phase: last.phase,
@@ -1537,16 +1549,24 @@ export default function WorkoutDayPicker({
     // comment above computeExerciseHistory), but no point re-deriving
     // the chart's min/max on every render otherwise.
     const historyEntries = historyFor ? computeExerciseHistory(historyFor.name) : []
+    // For a duration-mode exercise (see WorkoutExercise.logAsDuration),
+    // the same "reps" column actually holds seconds held, so the chart
+    // plots that instead of weight - the thing worth watching progress
+    // on for a plank is how long it was held, not a weight that was
+    // never tracked in the first place. Converted/selected here (once,
+    // at the source) rather than inside renderChart itself, so the
+    // chart function stays a plain renderer with no unit awareness.
     const historyChartPoints = historyEntries
       .slice()
       .reverse() // entries are most-recent-first; chart reads oldest -> newest, left to right
-      .filter((e) => e.sets.some((s) => s.weight != null))
+      .filter((e) =>
+        historyFor?.logAsDuration ? e.sets.some((s) => s.reps != null) : e.sets.some((s) => s.weight != null)
+      )
       .map((e) => ({
         date: e.completedAt,
-        // Converted here (once, at the source) rather than inside
-        // renderWeightChart itself, so the chart function stays a plain
-        // renderer with no unit awareness of its own.
-        weight: convertWeightForDisplay(Math.max(...e.sets.map((s) => s.weight ?? 0)), weightUnit) ?? 0,
+        value: historyFor?.logAsDuration
+          ? Math.max(...e.sets.map((s) => s.reps ?? 0))
+          : convertWeightForDisplay(Math.max(...e.sets.map((s) => s.weight ?? 0)), weightUnit) ?? 0,
       }))
 
     const exercises = activeCell.exercises
@@ -1674,34 +1694,32 @@ export default function WorkoutDayPicker({
     }
 
     // Minimal hand-rolled SVG line chart for the History modal - top
-    // weight logged per session, oldest to newest left-to-right. No
-    // charting library added for this (the app has none so far); a
-    // plain polyline is all "top weight over time" needs. Callers
-    // should only invoke this with 2+ points - a single point has no
-    // line to draw and isn't worth a chart.
-    function renderWeightChart(points: { date: string; weight: number }[]) {
+    // weight (or, for a duration-mode exercise, longest hold) logged
+    // per session, oldest to newest left-to-right. No charting library
+    // added for this (the app has none so far); a plain polyline is
+    // all this needs. Callers should only invoke this with 2+ points -
+    // a single point has no line to draw and isn't worth a chart.
+    function renderChart(points: { date: string; value: number }[], label: string, unit: string) {
       const width = 300
       const height = 90
       const padX = 10
       const padY = 14
-      const weights = points.map((p) => p.weight)
-      const minW = Math.min(...weights)
-      const maxW = Math.max(...weights)
-      const range = maxW - minW || 1
+      const values = points.map((p) => p.value)
+      const minV = Math.min(...values)
+      const maxV = Math.max(...values)
+      const range = maxV - minV || 1
       const stepX = points.length > 1 ? (width - padX * 2) / (points.length - 1) : 0
       const coords = points.map((p, i) => ({
         x: padX + i * stepX,
-        y: padY + (1 - (p.weight - minW) / range) * (height - padY * 2),
+        y: padY + (1 - (p.value - minV) / range) * (height - padY * 2),
       }))
       const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ')
       return (
         <div className="mb-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-zinc-500 text-[11px] uppercase tracking-wider font-semibold">
-              Top weight over time
-            </span>
+            <span className="text-zinc-500 text-[11px] uppercase tracking-wider font-semibold">{label}</span>
             <span className="text-zinc-500 text-[11px]">
-              {minW === maxW ? minW : `${minW}–${maxW}`}
+              {minV === maxV ? `${minV}${unit}` : `${minV}–${maxV}${unit}`}
             </span>
           </div>
           <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24" preserveAspectRatio="none">
@@ -1848,7 +1866,7 @@ export default function WorkoutDayPicker({
                 {!boxed && (
                   <button
                     onClick={() => {
-                      setHistoryFor({ name: ex.name, label: displayName })
+                      setHistoryFor({ name: ex.name, label: displayName, logAsDuration: !!ex.logAsDuration })
                       setOverflowOpenFor(null)
                     }}
                     className="flex items-center gap-1.5 w-full text-left px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800 transition"
@@ -1908,7 +1926,16 @@ export default function WorkoutDayPicker({
           )}
           {last && (
             <p className="text-zinc-500 text-xs mb-1.5">
-              Last time: {formatLastWeight(last.weight)} x {last.reps ?? '-'}
+              Last time:{' '}
+              {ex.logAsDuration
+                ? // A weighted hold (farmer's carry) still shows the
+                  // weight alongside duration; a plain bodyweight hold
+                  // (plank) never had a weight to show, same as
+                  // formatLastWeight already returns '-' for those.
+                  `${ex.trackWeight !== false ? `${formatLastWeight(last.weight)}, ` : ''}${
+                    last.reps != null ? `${last.reps}s` : '-'
+                  } held`
+                : `${formatLastWeight(last.weight)} x ${last.reps ?? '-'}`}
             </p>
           )}
           {/* Compact rows (boxed=false, inside a round box) fold every
@@ -1969,7 +1996,7 @@ export default function WorkoutDayPicker({
                   </button>
                 )}
                 <button
-                  onClick={() => setHistoryFor({ name: ex.name, label: displayName })}
+                  onClick={() => setHistoryFor({ name: ex.name, label: displayName, logAsDuration: !!ex.logAsDuration })}
                   aria-label="View history"
                   className="text-zinc-400 hover:text-white transition"
                 >
@@ -2181,21 +2208,34 @@ export default function WorkoutDayPicker({
                   </div>
                 )}
                 <div className="flex-1">
-                  {large && <label className="block text-zinc-500 text-xs mb-1">Reps</label>}
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    placeholder={ex.reps || 'reps'}
-                    value={row.reps}
-                    onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
-                    className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
-                      large ? 'text-lg font-semibold px-3 py-2.5' : 'text-sm px-2 py-1.5'
-                    } ${
-                      ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.reps
-                        ? 'border-orange-500/60'
-                        : 'border-zinc-800'
-                    }`}
-                  />
+                  {large && (
+                    <label className="block text-zinc-500 text-xs mb-1">
+                      {ex.logAsDuration ? 'Duration (s)' : 'Reps'}
+                    </label>
+                  )}
+                  <div className="relative">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder={ex.reps || (ex.logAsDuration ? 'seconds' : 'reps')}
+                      value={row.reps}
+                      onChange={(e) => updateSet(ex.name, i, 'reps', e.target.value)}
+                      className={`w-full bg-zinc-900 border rounded-lg text-white placeholder-zinc-600 ${
+                        large
+                          ? 'text-lg font-semibold px-3 py-2.5'
+                          : `text-sm py-1.5 ${ex.logAsDuration ? 'pl-2 pr-6' : 'px-2'}`
+                      } ${
+                        ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row.reps
+                          ? 'border-orange-500/60'
+                          : 'border-zinc-800'
+                      }`}
+                    />
+                    {!large && ex.logAsDuration && (
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-zinc-500">
+                        s
+                      </span>
+                    )}
+                  </div>
                 </div>
                 {/* Hidden in large/guided mode - see the matching Check
                     all comment above. This function only ever renders
@@ -2385,7 +2425,16 @@ export default function WorkoutDayPicker({
           )}
           {last && (
             <p className="text-zinc-500 text-xs mb-1.5">
-              Last time: {formatLastWeight(last.weight)} x {last.reps ?? '-'}
+              Last time:{' '}
+              {rep.logAsDuration
+                ? // A weighted hold (farmer's carry) still shows the
+                  // weight alongside duration; a plain bodyweight hold
+                  // (plank) never had a weight to show, same as
+                  // formatLastWeight already returns '-' for those.
+                  `${rep.trackWeight !== false ? `${formatLastWeight(last.weight)}, ` : ''}${
+                    last.reps != null ? `${last.reps}s` : '-'
+                  } held`
+                : `${formatLastWeight(last.weight)} x ${last.reps ?? '-'}`}
             </p>
           )}
           <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1">
@@ -2435,7 +2484,7 @@ export default function WorkoutDayPicker({
                 </button>
               )}
               <button
-                onClick={() => setHistoryFor({ name: rep.name, label })}
+                onClick={() => setHistoryFor({ name: rep.name, label, logAsDuration: !!rep.logAsDuration })}
                 aria-label="View history"
                 className="text-zinc-400 hover:text-white transition"
               >
@@ -2646,18 +2695,27 @@ export default function WorkoutDayPicker({
                         </span>
                       </div>
                     )}
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      placeholder={ex.reps || 'reps'}
-                      value={row?.reps ?? ''}
-                      onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
-                      className={`w-full bg-zinc-900 border rounded-lg px-2 py-1.5 text-sm text-white placeholder-zinc-600 ${
-                        ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.reps
-                          ? 'border-orange-500/60'
-                          : 'border-zinc-800'
-                      }`}
-                    />
+                    <div className="relative w-full">
+                      <input
+                        type="number"
+                        inputMode="numeric"
+                        placeholder={ex.reps || (ex.logAsDuration ? 'seconds' : 'reps')}
+                        value={row?.reps ?? ''}
+                        onChange={(e) => updateSet(ex.name, 0, 'reps', e.target.value)}
+                        className={`w-full bg-zinc-900 border rounded-lg py-1.5 text-sm text-white placeholder-zinc-600 ${
+                          ex.logAsDuration ? 'pl-2 pr-6' : 'px-2'
+                        } ${
+                          ((large && confirmEmptyDone) || (!large && missingValuesFlagged)) && !row?.reps
+                            ? 'border-orange-500/60'
+                            : 'border-zinc-800'
+                        }`}
+                      />
+                      {ex.logAsDuration && (
+                        <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-medium text-zinc-500">
+                          s
+                        </span>
+                      )}
+                    </div>
                     <button
                       onClick={() => toggleSetChecked(ex.name, 0)}
                       aria-label={(checkedByExercise[ex.name] || [])[0] ? 'Mark set incomplete' : 'Mark set complete'}
@@ -3385,7 +3443,12 @@ export default function WorkoutDayPicker({
                 </p>
               ) : (
                 <>
-                  {historyChartPoints.length >= 2 && renderWeightChart(historyChartPoints)}
+                  {historyChartPoints.length >= 2 &&
+                    renderChart(
+                      historyChartPoints,
+                      historyFor.logAsDuration ? 'Time held over time' : 'Top weight over time',
+                      historyFor.logAsDuration ? 's' : weightUnit
+                    )}
                   <div className="space-y-2">
                     {historyEntries.map((entry) => (
                       <div key={entry.sessionId} className="glass rounded-xl px-3 py-2.5">
@@ -3399,12 +3462,14 @@ export default function WorkoutDayPicker({
                           </span>
                         </div>
                         <p className="text-zinc-400 text-xs">
-                          {entry.sets
-                            .map((s) => {
-                              const w = convertWeightForDisplay(s.weight, weightUnit)
-                              return `${w != null ? `${w}${weightUnit}` : '-'} x ${s.reps ?? '-'}`
-                            })
-                            .join(', ')}
+                          {historyFor.logAsDuration
+                            ? entry.sets.map((s) => (s.reps != null ? `${s.reps}s` : '-')).join(', ')
+                            : entry.sets
+                                .map((s) => {
+                                  const w = convertWeightForDisplay(s.weight, weightUnit)
+                                  return `${w != null ? `${w}${weightUnit}` : '-'} x ${s.reps ?? '-'}`
+                                })
+                                .join(', ')}
                         </p>
                       </div>
                     ))}
