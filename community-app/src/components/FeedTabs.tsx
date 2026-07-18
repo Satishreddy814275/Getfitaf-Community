@@ -17,6 +17,7 @@ export default function FeedTabs({
   isAdmin,
   initialLessonId,
   initialLessonTitle,
+  initialContent,
   initialPostId,
   initialCommentId,
   leaderboardRows,
@@ -26,6 +27,10 @@ export default function FeedTabs({
   isAdmin: boolean
   initialLessonId: string | null
   initialLessonTitle: string | null
+  // Plain pre-fill text, independent of the lesson-completion pair
+  // above - see PostComposer's own comment on why these stay separate
+  // props rather than one being reused for the other.
+  initialContent?: string | null
   initialPostId?: string | null
   initialCommentId?: string | null
   leaderboardRows: LeaderboardRow[]
@@ -216,6 +221,7 @@ export default function FeedTabs({
             isAdmin={isAdmin}
             initialLessonId={initialLessonId}
             initialLessonTitle={initialLessonTitle}
+            initialContent={initialContent}
           />
         </div>
 

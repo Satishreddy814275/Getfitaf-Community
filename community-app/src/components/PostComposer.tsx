@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
 import { compressImage } from '@/lib/compressImage'
@@ -9,19 +9,44 @@ export default function PostComposer({
   isAdmin = false,
   initialLessonId = null,
   initialLessonTitle = null,
+  // Generic pre-fill, independent of the lesson-completion mechanism
+  // above (initialLessonId/initialLessonTitle also attach a lesson_id
+  // to the post and show the dismissible "Sharing about: X" chip -
+  // this one is just plain starting text, e.g. from the workout
+  // finish-celebration modal's "Post a win" button, with no lesson
+  // association). If both are somehow present, the lesson-completion
+  // wording wins - that path is the more specific/intentional one of
+  // the two.
+  initialContent = null,
 }: {
   isAdmin?: boolean
   initialLessonId?: string | null
   initialLessonTitle?: string | null
+  initialContent?: string | null
 }) {
   const [content, setContent] = useState(
-    initialLessonTitle ? `Just finished "${initialLessonTitle}"! ` : ''
+    initialLessonTitle ? `Just finished "${initialLessonTitle}"! ` : initialContent || ''
   )
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [isAnnouncement, setIsAnnouncement] = useState(false)
   const [lessonId, setLessonId] = useState(initialLessonId)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // "Auto-open" for a composer that's always visible on the page (not
+  // a real modal/toggle - see PostComposer's usage in FeedTabs) really
+  // just means: scroll it into view and focus the textarea, so landing
+  // on /feed with a pre-fill obviously ready to edit doesn't require
+  // scrolling to find it first. Mount-only (empty deps) - deliberately
+  // does not re-fire if content changes later from typing.
+  useEffect(() => {
+    if (!initialLessonTitle && !initialContent) return
+    formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    textareaRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,7 +99,7 @@ export default function PostComposer({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="glass rounded-2xl p-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="glass rounded-2xl p-4">
       {lessonId && initialLessonTitle && (
         <div className="flex items-center justify-between mb-2 px-2 py-1.5 rounded-lg bg-orange-500/10 text-xs text-orange-400">
           <span>Sharing about: {initialLessonTitle}</span>
@@ -88,6 +113,7 @@ export default function PostComposer({
         </div>
       )}
       <textarea
+        ref={textareaRef}
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="Share an update, win, or question with the group..."

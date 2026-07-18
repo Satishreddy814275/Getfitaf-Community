@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/workouts/actions'
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
@@ -311,6 +312,38 @@ function computeBackToBackStreak(history: WorkoutHistoryGroup[]): number {
   return streak
 }
 
+// Pre-filled text for the "Post a win in the community" button on the
+// finish-workout celebration modal - always names the actual day and
+// ends with 💪 (Satish's explicit ask), but the phrasing around it
+// rotates so the feed doesn't fill up with the literal same sentence
+// every time. Same random-pool idea as pickCelebration/the phase
+// intro copy, just for this one spot.
+function pickWinPostText(dayLabel: string): string {
+  const templates = [
+    `Just finished ${dayLabel}! 💪`,
+    `Logged another one: ${dayLabel} 💪`,
+    `${dayLabel} - done and dusted 💪`,
+    `Checked off ${dayLabel} today 💪`,
+    `Another one in the books: ${dayLabel} 💪`,
+  ]
+  return templates[Math.floor(Math.random() * templates.length)]
+}
+
+// Fixed, non-random line for the inline banner (above the progress
+// bar) once a session's finished - deliberately NOT drawn from the
+// same random pool as the celebration modal (pickCelebration), per
+// Satish's own correction: a random pool line risked reading as stale
+// or repeated if seen again later, whereas a percentage-of-program
+// message is always accurate to what's actually true whenever it's
+// seen. 100% is handled separately by the existing "you've completed
+// this program" block, so this only ever needs to cover 0-99%.
+function progressBracketMessage(percent: number): string {
+  if (percent < 25) return "Great start - let's keep the momentum going!"
+  if (percent < 50) return "You're building real consistency."
+  if (percent < 75) return 'Halfway there and going strong!'
+  return 'Almost through this program!'
+}
+
 // Short label for the list view's collapsible phase section headers -
 // same three phases as phaseIntroText above, just a header word instead
 // of a full sentence.
@@ -451,6 +484,7 @@ export default function WorkoutDayPicker({
   // this and older callers shouldn't be forced to pass it.
   onSessionActiveChange?: (active: boolean) => void
 }) {
+  const router = useRouter()
   const [activeCell, setActiveCell] = useState<Cell | null>(null)
   // Fires on every activeCell transition, including the initial mount
   // (so a resumed draft session - restored a moment later by the
@@ -471,18 +505,41 @@ export default function WorkoutDayPicker({
   // removeSetRow below.
   const [checkedByExercise, setCheckedByExercise] = useState<Record<string, boolean[]>>({})
   const [isPending, startTransition] = useTransition()
+  // justFinished now drives ONLY the small inline banner above the
+  // progress bar (see the percentage-bracket message it shows further
+  // down, and the auto-fade effect right below) - the "real"
+  // celebration moment moved to a separate blocking modal
+  // (celebrationModalOpen below), per Satish's ask for something more
+  // immediate/deliberate than a banner someone might not even scroll
+  // back up to see.
   const [justFinished, setJustFinished] = useState(false)
-  // Randomly-picked appreciation message shown alongside justFinished -
-  // picked once per finish (in finishWorkout, see pickCelebration
-  // there), not recomputed on every render, so it doesn't change out
-  // from under someone still looking at it. null until the first finish
-  // of this mount.
+  // Blocking modal shown the instant Finish Workout completes - stays
+  // open until one of its own two buttons is tapped (no backdrop
+  // dismiss, no auto-timeout - Satish's explicit call: "I am thinking
+  // of a blocking modal"). Independent of justFinished/the inline
+  // banner's own auto-fade lifecycle below - dismissing this modal
+  // doesn't touch the banner, and the banner fading out doesn't touch
+  // this.
+  const [celebrationModalOpen, setCelebrationModalOpen] = useState(false)
+  // Randomly-picked appreciation message shown in the modal - picked
+  // once per finish (in finishWorkout, see pickCelebration there), not
+  // recomputed on every render, so it doesn't change out from under
+  // someone still looking at it. null until the first finish of this
+  // mount.
   const [celebration, setCelebration] = useState<{ Icon: typeof Sun; text: string } | null>(null)
-  // Drives the pop-in transition on the celebration message - starts
-  // false, flips true one frame after justFinished goes true (see the
-  // effect below), so the CSS transition actually has a "before" state
-  // to animate from instead of mounting already at its final scale/
-  // opacity with nothing to interpolate.
+  // The just-finished day's label, captured at the same moment as
+  // celebration (activeCell.label, before finishWorkout nulls
+  // activeCell) - used to build the "Post a win" pre-filled post text.
+  const [finishedDayLabel, setFinishedDayLabel] = useState<string | null>(null)
+  // Drives the inline banner's pop-in/pop-out transition - starts
+  // false, flips true one frame after justFinished goes true (so the
+  // CSS transition has a "before" state to animate from instead of
+  // mounting already at full scale/opacity), stays true for a few
+  // seconds, then flips back to false to fade out before the banner
+  // unmounts entirely - Satish's ask: "this one can pop up and fade
+  // out after a few seconds," specifically so a message picked when it
+  // first appeared never lingers and reads as stale if seen much later
+  // in the same session.
   const [celebrationVisible, setCelebrationVisible] = useState(false)
   useEffect(() => {
     if (!justFinished) {
@@ -495,8 +552,18 @@ export default function WorkoutDayPicker({
     // this is what actually gives the browser a "false" paint to
     // transition away from, so it doesn't trigger the same
     // set-state-in-effect concern the two synchronous calls above do.
-    const raf = requestAnimationFrame(() => setCelebrationVisible(true))
-    return () => cancelAnimationFrame(raf)
+    const showRaf = requestAnimationFrame(() => setCelebrationVisible(true))
+    // Starts fading ~5.5s in, fully unmounts at 6s (300ms transition
+    // duration plus a small buffer) - a deliberately short, fixed
+    // window rather than anything content-length-dependent, per
+    // Satish's ask to keep this one simple.
+    const hideTimer = setTimeout(() => setCelebrationVisible(false), 5500)
+    const unmountTimer = setTimeout(() => setJustFinished(false), 6000)
+    return () => {
+      cancelAnimationFrame(showRaf)
+      clearTimeout(hideTimer)
+      clearTimeout(unmountTimer)
+    }
   }, [justFinished])
   // Which day rows are expanded inline in the program grid below (task
   // #50+) - a day tapped in its Week N card no longer navigates to a
@@ -1306,6 +1373,7 @@ export default function WorkoutDayPicker({
       }))
     )
     const celebrationPick = pickCelebration(activeCell)
+    const dayLabel = activeCell.label
 
     startTransition(async () => {
       await logWorkoutSession({
@@ -1319,6 +1387,8 @@ export default function WorkoutDayPicker({
       setActiveCell(null)
       setJustFinished(true)
       setCelebration(celebrationPick)
+      setFinishedDayLabel(dayLabel)
+      setCelebrationModalOpen(true)
       setRestTimer(null)
     })
   }
@@ -3130,19 +3200,62 @@ export default function WorkoutDayPicker({
 
   return (
     <div className="space-y-4">
-      {/* Random appreciation message (see pickCelebration in
-          finishWorkout) instead of one static line - pops in via
-          celebrationVisible's one-frame-delayed scale/opacity flip
-          (see its effect above) rather than mounting already at full
-          size, so there's an actual "before" state to transition from. */}
-      {justFinished && celebration && (
+      {/* Fixed percentage-of-program line (progressBracketMessage), not
+          the random celebration pool - that one now lives exclusively
+          in the finish-workout modal below. Pops in via
+          celebrationVisible's one-frame-delayed scale/opacity flip,
+          stays up briefly, then fades back out and unmounts on its own
+          (see the justFinished effect above) - kept deliberately
+          simple, one line, no icon, per Satish's ask not to overbuild
+          this part. */}
+      {justFinished && totalCells > 0 && (
         <div
-          className={`flex items-center gap-2 text-orange-400 transition-all duration-300 ease-out ${
+          className={`text-orange-400 text-sm font-medium transition-all duration-300 ease-out ${
             celebrationVisible ? 'scale-100 opacity-100' : 'scale-90 opacity-0'
           }`}
         >
-          <celebration.Icon className="w-5 h-5 shrink-0" aria-hidden="true" />
-          <p className="text-sm font-medium">{celebration.text}</p>
+          {progressBracketMessage(Math.round((doneCells / totalCells) * 100))}
+        </div>
+      )}
+
+      {/* Blocking finish-workout celebration modal - appears the
+          instant Finish Workout completes (see celebrationModalOpen in
+          finishWorkout), stays up until one of its own two buttons is
+          tapped. No backdrop-click dismiss and no auto-timeout, unlike
+          the inline banner above - Satish's explicit call for a real
+          blocking modal here, since this is the actual "stop and
+          register what you did" moment; the banner is just a residual
+          afterglow once you're back on the overview screen. */}
+      {celebrationModalOpen && celebration && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="glass rounded-2xl p-6 max-w-sm w-full text-center">
+            <celebration.Icon className="w-9 h-9 text-orange-400 mx-auto mb-3" aria-hidden="true" />
+            <p className="text-white text-lg font-semibold mb-6">{celebration.text}</p>
+            <div className="space-y-2">
+              {/* "Post a win" is the bold primary - Satish's pick.
+                  Navigates to the feed with its always-visible post box
+                  already scrolled into view, focused, and filled in
+                  with a random day-name+💪 line (pickWinPostText) -
+                  nothing to open, it's just there ready to edit or
+                  post as-is. */}
+              <button
+                onClick={() => {
+                  const text = pickWinPostText(finishedDayLabel || "today's workout")
+                  setCelebrationModalOpen(false)
+                  router.push(`/feed?prefill=${encodeURIComponent(text)}`)
+                }}
+                className="w-full bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-3 rounded-xl transition"
+              >
+                Post a win in the community
+              </button>
+              <button
+                onClick={() => setCelebrationModalOpen(false)}
+                className="w-full border border-orange-500/40 text-orange-400 hover:bg-orange-500/10 text-sm font-semibold py-3 rounded-xl transition"
+              >
+                Continue to program
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

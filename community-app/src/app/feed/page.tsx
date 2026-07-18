@@ -10,7 +10,7 @@ import type { Post, LeaderboardRow } from '@/types'
 export default async function FeedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lesson?: string; title?: string; post?: string; comment?: string }>
+  searchParams: Promise<{ lesson?: string; title?: string; post?: string; comment?: string; prefill?: string }>
 }) {
   const supabase = await createClient()
   const {
@@ -33,6 +33,12 @@ export default async function FeedPage({
   // scrolls to/highlights this one, instead of landing on the post
   // with comments still collapsed.
   const initialCommentId = params.comment || null
+  // Set when arriving from the workout finish-celebration modal's
+  // "Post a win in the community" button (?prefill=<text>) - a plain
+  // starting draft for the composer, unrelated to the lesson-
+  // completion pair above (see PostComposer's own comment on why they
+  // stay separate).
+  const initialContent = params.prefill || null
 
   const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, enrollmentRes] =
     await Promise.all([
@@ -128,6 +134,7 @@ export default async function FeedPage({
           isAdmin={isAdmin}
           initialLessonId={lessonId}
           initialLessonTitle={lessonTitle}
+          initialContent={initialContent}
           initialPostId={initialPostId}
           initialCommentId={initialCommentId}
           leaderboardRows={topFive}
