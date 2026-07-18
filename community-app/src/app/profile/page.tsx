@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import ProfileForm from '@/components/ProfileForm'
+import InstallAppRow from '@/components/InstallAppRow'
 
 export default async function ProfilePage() {
   const supabase = await createClient()
@@ -34,6 +35,8 @@ export default async function ProfilePage() {
         initialName={profile?.full_name || ''}
         initialAvatarUrl={profile?.avatar_url || null}
       />
+
+      <InstallAppRow />
     </div>
   )
 }

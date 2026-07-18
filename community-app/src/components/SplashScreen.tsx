@@ -1,18 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-
-// Only meaningful once someone's actually installed the PWA to their
-// home screen - a regular browser tab already has its own address bar
-// visible while it loads, so overlaying a second loading state there
-// would just be redundant. Standalone-mode detection covers both
-// Android/desktop (the display-mode media query) and iOS Safari
-// (navigator.standalone, which only Safari exposes - not in the
-// standard lib.dom types, hence the cast).
-function isStandalone() {
-  const iosStandalone = (window.navigator as unknown as { standalone?: boolean }).standalone
-  return window.matchMedia('(display-mode: standalone)').matches || iosStandalone === true
-}
+import { isStandalone } from '@/lib/pwa'
 
 // Worth being upfront about what this does and doesn't cover: the very
 // first instant after tapping the home-screen icon - before any of our

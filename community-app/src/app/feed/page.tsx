@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
+import InstallAppBanner from '@/components/InstallAppBanner'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
@@ -104,6 +105,11 @@ export default async function FeedPage({
           </span>
         </div>
       )}
+
+      {/* Unconditional (everyone benefits from installing, not just
+          low-ticket members) - self-hides once already installed or
+          snoozed for the day, see InstallAppBanner's own logic. */}
+      <InstallAppBanner storageKey={`install-prompt-dismissed-${user.id}`} />
 
       {/* Two-tier reminder for low-ticket members who haven't picked a
           program yet, both gated on the same condition. The card is
