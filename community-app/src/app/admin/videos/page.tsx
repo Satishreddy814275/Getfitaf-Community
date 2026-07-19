@@ -31,7 +31,9 @@ export default async function AdminVideosPage() {
   const [{ data: videosData }, { data: generationsData }, { data: templatesData }] = await Promise.all([
     supabase
       .from('exercise_videos')
-      .select('id, exercise_name, video_url, coach_notes, created_at, added_by, profiles ( full_name )')
+      .select(
+        'id, exercise_name, video_url, coach_notes, created_at, added_by, video_type, is_placeholder, profiles ( full_name )'
+      )
       .order('exercise_name'),
     createAdminClient()
       .from('workout_generations')
@@ -47,13 +49,14 @@ export default async function AdminVideosPage() {
     coach_notes: v.coach_notes,
     created_at: v.created_at,
     added_by_name: (v.profiles as unknown as { full_name: string | null } | null)?.full_name || null,
+    video_type: (v.video_type as 'tutorial' | 'demo') || 'tutorial',
+    is_placeholder: !!v.is_placeholder,
   }))
 
   // Computed fresh on every page load, not cached - counts how often
-  // each exercise name has actually shown up, then filters to the ones
-  // with no matching video yet, ranked most-common first. Same matching
-  // logic as the member-facing /workouts view, so "needs a video" here
-  // always agrees with what members actually see as missing. Fine to
+  // each exercise name has actually shown up. Same matching logic as
+  // the member-facing /workouts view, so "needs a video" here always
+  // agrees with what members actually see as missing. Fine to
   // recompute live at the current scale - see project memory for the
   // scaling plan if this ever needs to move to a precomputed/cached
   // table.
@@ -100,12 +103,20 @@ export default async function AdminVideosPage() {
     countDays(((tpl.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[])
   }
 
-  const matchableVideos = videos.map((v) => ({ exerciseName: v.exercise_name, videoUrl: v.video_url }))
-  const needsVideo = Array.from(frequency.entries())
-    .filter(([name]) => !findExerciseVideo(name, matchableVideos))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 15)
-    .map(([name, count]) => ({ name, count }))
+  // Full lists, no top-N cap - AdminExerciseVideosList turns these into
+  // a searchable/sortable table instead, so a long tail past whatever
+  // used to be the top 15 is still reachable. Computed once per type
+  // (tutorial/demo), the client component switches between them with
+  // the Tutorial/Demo tab.
+  function needsVideoFor(type: 'tutorial' | 'demo') {
+    const matchable = videos
+      .filter((v) => v.video_type === type)
+      .map((v) => ({ exerciseName: v.exercise_name, videoUrl: v.video_url }))
+    return Array.from(frequency.entries())
+      .filter(([name]) => !findExerciseVideo(name, matchable))
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }))
+  }
 
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
@@ -124,7 +135,10 @@ export default async function AdminVideosPage() {
         </p>
       </div>
 
-      <AdminExerciseVideosList videos={videos || []} needsVideo={needsVideo} />
+      <AdminExerciseVideosList
+        videos={videos || []}
+        needsVideoByType={{ tutorial: needsVideoFor('tutorial'), demo: needsVideoFor('demo') }}
+      />
     </div>
   )
 }

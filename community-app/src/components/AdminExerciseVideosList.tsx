@@ -9,6 +9,8 @@ import {
 } from '@/app/admin/actions'
 import { normalize } from '@/lib/exerciseVideos'
 
+type VideoType = 'tutorial' | 'demo'
+
 interface ExerciseVideoRow {
   id: string
   exercise_name: string
@@ -16,6 +18,8 @@ interface ExerciseVideoRow {
   coach_notes: string | null
   created_at: string
   added_by_name: string | null
+  video_type: VideoType
+  is_placeholder: boolean
 }
 
 interface NeedsVideoRow {
@@ -23,17 +27,46 @@ interface NeedsVideoRow {
   count: number
 }
 
+// Not a full sentence, just a compact toggle - shown next to the video
+// link input on both add and edit, defaulting to checked on add since
+// Satish's own framing is that grabbing a video straight from YouTube
+// is usually a stand-in for footage he hasn't shot yet (see project
+// memory). Existing rows from before this feature existed are NOT
+// retroactively flagged - only new adds/edits touch this.
+function PlaceholderToggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <label className="flex items-center gap-1.5 text-xs text-zinc-400 select-none">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-orange-500"
+      />
+      Not my footage yet - flag to replace later
+    </label>
+  )
+}
+
 export default function AdminExerciseVideosList({
   videos,
-  needsVideo,
+  needsVideoByType,
 }: {
   videos: ExerciseVideoRow[]
-  needsVideo: NeedsVideoRow[]
+  needsVideoByType: Record<VideoType, NeedsVideoRow[]>
 }) {
+  const [activeType, setActiveType] = useState<VideoType>('tutorial')
+
   const exerciseNameInputRef = useRef<HTMLInputElement>(null)
   const [exerciseName, setExerciseName] = useState('')
   const [videoUrl, setVideoUrl] = useState('')
   const [coachNotes, setCoachNotes] = useState('')
+  const [isPlaceholder, setIsPlaceholder] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -42,12 +75,27 @@ export default function AdminExerciseVideosList({
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
   const [editNotes, setEditNotes] = useState('')
+  const [editPlaceholder, setEditPlaceholder] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
 
   const [showBulkImport, setShowBulkImport] = useState(false)
   const [showNeedsVideo, setShowNeedsVideo] = useState(true)
+  const [needsVideoSearch, setNeedsVideoSearch] = useState('')
+  const [needsVideoSort, setNeedsVideoSort] = useState<'count' | 'name'>('count')
+  const [showNeedsFootage, setShowNeedsFootage] = useState(false)
   const [bulkText, setBulkText] = useState('')
+  const [bulkPlaceholder, setBulkPlaceholder] = useState(true)
   const [isBulkImporting, setIsBulkImporting] = useState(false)
+
+  const videosForType = useMemo(
+    () => videos.filter((v) => v.video_type === activeType),
+    [videos, activeType]
+  )
+  const needsVideo = useMemo(() => needsVideoByType[activeType] || [], [needsVideoByType, activeType])
+  const needsFootage = useMemo(
+    () => videosForType.filter((v) => v.is_placeholder),
+    [videosForType]
+  )
 
   // Exact-match only (not the loose word-overlap matching used when
   // suggesting a video for a generated exercise) - this is just
@@ -58,14 +106,23 @@ export default function AdminExerciseVideosList({
   const duplicateMatch = useMemo(() => {
     const target = normalize(exerciseName)
     if (!target) return null
-    return videos.find((v) => normalize(v.exercise_name) === target) || null
-  }, [exerciseName, videos])
+    return videosForType.find((v) => normalize(v.exercise_name) === target) || null
+  }, [exerciseName, videosForType])
 
   const filteredVideos = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return videos
-    return videos.filter((v) => v.exercise_name.toLowerCase().includes(q))
-  }, [videos, search])
+    if (!q) return videosForType
+    return videosForType.filter((v) => v.exercise_name.toLowerCase().includes(q))
+  }, [videosForType, search])
+
+  const filteredNeedsVideo = useMemo(() => {
+    const q = needsVideoSearch.trim().toLowerCase()
+    let list = q ? needsVideo.filter((n) => n.name.toLowerCase().includes(q)) : needsVideo
+    list = [...list].sort((a, b) =>
+      needsVideoSort === 'count' ? b.count - a.count : a.name.localeCompare(b.name)
+    )
+    return list
+  }, [needsVideo, needsVideoSearch, needsVideoSort])
 
   // One row per line: "Exercise name, video url". No CSV quoting
   // support (no library, no escaping) - this is a small internal tool
@@ -74,7 +131,7 @@ export default function AdminExerciseVideosList({
   // in the same paste, are counted as skipped and excluded from what
   // actually gets imported.
   const parsedBulkImport = useMemo(() => {
-    const existingNormalized = new Set(videos.map((v) => normalize(v.exercise_name)))
+    const existingNormalized = new Set(videosForType.map((v) => normalize(v.exercise_name)))
     const seen = new Set<string>()
     const rows: { exerciseName: string; videoUrl: string }[] = []
     let skipped = 0
@@ -99,17 +156,18 @@ export default function AdminExerciseVideosList({
     }
 
     return { rows, skipped }
-  }, [bulkText, videos])
+  }, [bulkText, videosForType])
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     if (!exerciseName.trim() || !videoUrl.trim()) return
 
     setIsSubmitting(true)
-    await addExerciseVideo(exerciseName, videoUrl, coachNotes)
+    await addExerciseVideo(exerciseName, videoUrl, coachNotes, activeType, isPlaceholder)
     setExerciseName('')
     setVideoUrl('')
     setCoachNotes('')
+    setIsPlaceholder(true)
     setIsSubmitting(false)
   }
 
@@ -125,6 +183,7 @@ export default function AdminExerciseVideosList({
     setEditName(video.exercise_name)
     setEditUrl(video.video_url)
     setEditNotes(video.coach_notes || '')
+    setEditPlaceholder(video.is_placeholder)
   }
 
   function cancelEdit() {
@@ -134,7 +193,7 @@ export default function AdminExerciseVideosList({
   async function saveEdit() {
     if (!editingId || !editName.trim() || !editUrl.trim()) return
     setIsSavingEdit(true)
-    await updateExerciseVideo(editingId, editName, editUrl, editNotes)
+    await updateExerciseVideo(editingId, editName, editUrl, editNotes, editPlaceholder)
     setIsSavingEdit(false)
     setEditingId(null)
   }
@@ -148,7 +207,7 @@ export default function AdminExerciseVideosList({
   async function handleBulkImport() {
     if (parsedBulkImport.rows.length === 0) return
     setIsBulkImporting(true)
-    await addExerciseVideosBulk(parsedBulkImport.rows)
+    await addExerciseVideosBulk(parsedBulkImport.rows, activeType, bulkPlaceholder)
     setIsBulkImporting(false)
     setBulkText('')
     setShowBulkImport(false)
@@ -156,6 +215,23 @@ export default function AdminExerciseVideosList({
 
   return (
     <div>
+      <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 mb-4 w-fit">
+        {(['tutorial', 'demo'] as VideoType[]).map((type) => (
+          <button
+            key={type}
+            type="button"
+            onClick={() => setActiveType(type)}
+            className={
+              activeType === type
+                ? 'px-3.5 py-1.5 rounded-md bg-orange-500 text-black text-xs font-semibold transition capitalize'
+                : 'px-3.5 py-1.5 rounded-md text-zinc-400 hover:text-white text-xs font-semibold transition capitalize'
+            }
+          >
+            {type}
+          </button>
+        ))}
+      </div>
+
       <form onSubmit={handleAdd} className="glass rounded-2xl p-4 mb-4 space-y-3">
         <div>
           <label className="text-xs text-zinc-500 mb-1 block">Exercise name</label>
@@ -169,8 +245,8 @@ export default function AdminExerciseVideosList({
           />
           {duplicateMatch && (
             <p className="text-amber-400 text-xs mt-1.5">
-              Already have a video for &quot;{duplicateMatch.exercise_name}&quot; - adding this
-              will create a second entry for the same exercise.
+              Already have a {activeType} video for &quot;{duplicateMatch.exercise_name}&quot; -
+              adding this will create a second entry for the same exercise.
             </p>
           )}
         </div>
@@ -196,13 +272,14 @@ export default function AdminExerciseVideosList({
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
           />
         </div>
+        <PlaceholderToggle checked={isPlaceholder} onChange={setIsPlaceholder} />
         <div className="flex items-center justify-between gap-3">
           <button
             type="submit"
             disabled={isSubmitting || !exerciseName.trim() || !videoUrl.trim()}
             className="bg-orange-500 hover:bg-orange-400 disabled:opacity-50 text-black text-sm font-semibold px-4 py-2 rounded-lg transition"
           >
-            {isSubmitting ? 'Adding...' : 'Add video'}
+            {isSubmitting ? 'Adding...' : `Add ${activeType} video`}
           </button>
           <button
             type="button"
@@ -223,24 +300,86 @@ export default function AdminExerciseVideosList({
           >
             <span>{showNeedsVideo ? '▾' : '▸'}</span>
             <span>
-              Needs a video ({needsVideo.length}) - ranked by how often it&apos;s actually been
-              prescribed
+              Needs a {activeType} video ({needsVideo.length})
             </span>
           </button>
           {showNeedsVideo && (
-          <div className="flex flex-wrap gap-2">
-            {needsVideo.map((item) => (
-              <button
-                key={item.name}
-                onClick={() => prefillFromSuggestion(item.name)}
-                className="flex items-center gap-1.5 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-full pl-3 pr-2.5 py-1.5 text-xs transition"
-              >
-                <span className="text-zinc-300">{item.name}</span>
-                <span className="text-zinc-600">{item.count}x</span>
-                <span className="text-orange-400 font-medium">+ Add</span>
-              </button>
-            ))}
-          </div>
+            <div className="glass rounded-2xl p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="text"
+                  value={needsVideoSearch}
+                  onChange={(e) => setNeedsVideoSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                />
+                <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-0.5">
+                  {(['count', 'name'] as const).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setNeedsVideoSort(s)}
+                      className={
+                        needsVideoSort === s
+                          ? 'px-2 py-1 rounded bg-orange-500 text-black text-[10px] font-semibold transition capitalize'
+                          : 'px-2 py-1 rounded text-zinc-500 hover:text-white text-[10px] font-semibold transition capitalize'
+                      }
+                    >
+                      {s === 'count' ? 'Most used' : 'A-Z'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="max-h-64 overflow-y-auto divide-y divide-zinc-900">
+                {filteredNeedsVideo.length === 0 && (
+                  <p className="text-xs text-zinc-600 italic py-3 text-center">No matches.</p>
+                )}
+                {filteredNeedsVideo.map((item) => (
+                  <button
+                    key={item.name}
+                    onClick={() => prefillFromSuggestion(item.name)}
+                    className="w-full flex items-center justify-between gap-2 py-2 text-left hover:bg-zinc-900/60 rounded transition px-1.5"
+                  >
+                    <span className="text-zinc-300 text-xs truncate">{item.name}</span>
+                    <span className="flex items-center gap-2 shrink-0">
+                      <span className="text-zinc-600 text-[10px]">{item.count}x prescribed</span>
+                      <span className="text-orange-400 text-[10px] font-medium">+ Add</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {needsFootage.length > 0 && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setShowNeedsFootage((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 hover:text-white transition mb-2"
+          >
+            <span>{showNeedsFootage ? '▾' : '▸'}</span>
+            <span>
+              Needs your own footage ({needsFootage.length}) - has a placeholder {activeType} video
+            </span>
+          </button>
+          {showNeedsFootage && (
+            <div className="flex flex-wrap gap-2">
+              {needsFootage.map((v) => (
+                <a
+                  key={v.id}
+                  href={v.video_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-800 rounded-full pl-3 pr-2.5 py-1.5 text-xs transition"
+                >
+                  <span className="text-zinc-300">{v.exercise_name}</span>
+                  <span className="text-orange-400">↗</span>
+                </a>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -259,6 +398,7 @@ export default function AdminExerciseVideosList({
               className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white font-mono"
             />
           </div>
+          <PlaceholderToggle checked={bulkPlaceholder} onChange={setBulkPlaceholder} />
           <div className="flex items-center justify-between gap-3">
             <p className="text-zinc-500 text-xs">
               {parsedBulkImport.rows.length} ready to import
@@ -288,12 +428,12 @@ export default function AdminExerciseVideosList({
           className="w-full max-w-xs bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white"
         />
         <span className="text-zinc-500 text-xs whitespace-nowrap">
-          {videos.length} exercise{videos.length === 1 ? '' : 's'} with videos
+          {videosForType.length} {activeType} video{videosForType.length === 1 ? '' : 's'}
         </span>
       </div>
 
-      {videos.length === 0 ? (
-        <p className="text-center text-sm text-zinc-500 py-12">No videos added yet.</p>
+      {videosForType.length === 0 ? (
+        <p className="text-center text-sm text-zinc-500 py-12">No {activeType} videos added yet.</p>
       ) : filteredVideos.length === 0 ? (
         <p className="text-center text-sm text-zinc-500 py-12">
           No exercises match &quot;{search}&quot;.
@@ -368,7 +508,14 @@ export default function AdminExerciseVideosList({
                     ) : (
                       <>
                         <td className="px-4 py-3 text-white font-medium align-top">
-                          {video.exercise_name}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span>{video.exercise_name}</span>
+                            {video.is_placeholder && (
+                              <span className="text-[9px] uppercase tracking-wide text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded font-normal">
+                                Placeholder
+                              </span>
+                            )}
+                          </div>
                           {video.coach_notes && (
                             <p className="text-zinc-500 text-xs font-normal mt-0.5 line-clamp-2 max-w-[200px]">
                               {video.coach_notes}
@@ -411,16 +558,19 @@ export default function AdminExerciseVideosList({
                   </tr>
                   {isEditing && (
                     <tr className="border-b border-zinc-900 last:border-0">
-                      <td colSpan={5} className="px-4 pb-3 pt-0">
-                        <label className="text-xs text-zinc-500 mb-1 block">
-                          Coach notes <span className="text-zinc-600">(optional)</span>
-                        </label>
-                        <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          rows={4}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
-                        />
+                      <td colSpan={5} className="px-4 pb-3 pt-0 space-y-2.5">
+                        <div>
+                          <label className="text-xs text-zinc-500 mb-1 block">
+                            Coach notes <span className="text-zinc-600">(optional)</span>
+                          </label>
+                          <textarea
+                            value={editNotes}
+                            onChange={(e) => setEditNotes(e.target.value)}
+                            rows={4}
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-white"
+                          />
+                        </div>
+                        <PlaceholderToggle checked={editPlaceholder} onChange={setEditPlaceholder} />
                       </td>
                     </tr>
                   )}

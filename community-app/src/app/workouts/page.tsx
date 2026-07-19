@@ -111,10 +111,13 @@ export default async function WorkoutsPage() {
     // small, shared reference table (see migration-exercise-videos.sql),
     // and matching happens client-side in WorkoutDayPicker so a video
     // added later lights up immediately without needing this query
-    // shape to change.
+    // shape to change. Filtered to video_type='tutorial' only - 'demo'
+    // videos (see migration-exercises-catalog.sql) are a separate,
+    // admin-only library for now and should never surface here.
     supabase
       .from('exercise_videos')
-      .select('exercise_name, video_url, coach_notes'),
+      .select('exercise_name, video_url, coach_notes')
+      .eq('video_type', 'tutorial'),
 
     // Scoped to the current generation only, same as completedCells
     // above - a regenerated plan starts fresh, so swaps from an older

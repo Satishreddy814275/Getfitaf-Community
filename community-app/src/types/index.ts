@@ -235,3 +235,17 @@ export interface BodyWeightEntry {
   loggedDate: string
   weightKg: number
 }
+
+// One canonical row per real-world exercise (see
+// migration-exercises-catalog.sql) - deliberately additive: program
+// content still stores exercise names as plain text, matched to this
+// table by normalized name, same as exercise_videos already does.
+// Owns the metadata program content has nowhere else to attach:
+// muscle groups (fixed checklist, multi-select) and category tags
+// (open multi-select, existing tags + new ones typed in).
+export interface ExerciseCatalogEntry {
+  id: string
+  name: string
+  muscleGroups: string[]
+  categoryTags: string[]
+}

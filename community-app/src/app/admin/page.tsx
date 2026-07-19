@@ -75,6 +75,12 @@ export default async function AdminPage() {
             Members →
           </Link>
           <Link
+            href="/admin/exercises"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Exercises →
+          </Link>
+          <Link
             href="/admin/videos"
             className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
           >

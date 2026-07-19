@@ -5,13 +5,21 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { buildLogAsDurationLookup } from '@/lib/workoutBlocks'
 import { revalidatePath } from 'next/cache'
-import type { WorkoutExercise, WorkoutHistoryGroup, WorkoutHistorySet, WorkoutPlanDay, BodyWeightEntry } from '@/types'
+import type {
+  WorkoutExercise,
+  WorkoutHistoryGroup,
+  WorkoutHistorySet,
+  WorkoutPlanDay,
+  BodyWeightEntry,
+} from '@/types'
 import {
   collapseExercisesToBlocks,
   expandBlocksToExercises,
   replaceDayExercises,
+  baseExerciseName,
   type EditableBlock,
 } from '@/lib/workoutBlocks'
+import { normalize } from '@/lib/exerciseVideos'
 import {
   applyWeekOverrides,
   applyStructuralDiffToBlocks,
@@ -139,12 +147,54 @@ export async function approveProfile(userId: string) {
   revalidatePath('/admin/members')
 }
 
+// Finds the canonical exercises row matching a name (same
+// normalize()+baseExerciseName() dedup the pool/catalog backfill used -
+// see migration-exercises-catalog.sql), creating one if nothing matches
+// yet. Keeps the exercises catalog current as new videos are added,
+// without a separate manual "register this exercise" step. Videos
+// themselves still match to program content by name at display time
+// (src/lib/exerciseVideos.ts), completely unrelated to this - this id
+// is only for the admin-side catalog/muscle-groups/category-tags join.
+async function findOrCreateExerciseId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rawName: string
+): Promise<string | null> {
+  const name = baseExerciseName(rawName)
+  if (!name) return null
+
+  const { data: existing } = await supabase.from('exercises').select('id, name')
+  const target = normalize(name)
+  const match = (existing || []).find((e) => normalize(e.name) === target)
+  if (match) return match.id
+
+  const { data: created } = await supabase
+    .from('exercises')
+    .insert({ name })
+    .select('id')
+    .single()
+  return created?.id ?? null
+}
+
 // Exercise video library - added incrementally by Satish/coaches over
 // time. Matching against AI-generated exercise names happens live in
 // /workouts (src/lib/exerciseVideos.ts), not at generation time, so a
 // video added here immediately becomes visible on every past plan
 // that references a matching exercise name, no regeneration needed.
-export async function addExerciseVideo(exerciseName: string, videoUrl: string, coachNotes?: string) {
+//
+// videoType splits this into two independently-tracked libraries -
+// 'tutorial' (used in the member workout view) and 'demo' (admin-only
+// for now). isPlaceholder flags footage that isn't Satish's own yet -
+// defaults to true since that's the common case for a freshly-added
+// video (see project memory); the quick "+ Video" add inside the
+// day/exercise picker (AdminProgramsList.tsx) doesn't pass these at
+// all, so it gets the same tutorial/placeholder defaults.
+export async function addExerciseVideo(
+  exerciseName: string,
+  videoUrl: string,
+  coachNotes?: string,
+  videoType: 'tutorial' | 'demo' = 'tutorial',
+  isPlaceholder: boolean = true
+) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
@@ -156,29 +206,38 @@ export async function addExerciseVideo(exerciseName: string, videoUrl: string, c
     data: { user },
   } = await supabase.auth.getUser()
 
+  const exerciseId = await findOrCreateExerciseId(supabase, trimmedName)
+
   await supabase.from('exercise_videos').insert({
     exercise_name: trimmedName,
     video_url: trimmedUrl,
     coach_notes: coachNotes?.trim() || null,
     added_by: user?.id || null,
+    video_type: videoType,
+    is_placeholder: isPlaceholder,
+    exercise_id: exerciseId,
   })
 
   revalidatePath('/admin/videos')
+  revalidatePath('/admin/exercises')
   revalidatePath('/workouts')
 }
 
-// `coachNotes` is optional and, when omitted (undefined), leaves the
-// existing note untouched rather than clearing it - callers like the
-// inline video editors in AdminProgramsList.tsx only ever edit
-// name/url and have no notes field of their own, so they shouldn't be
-// able to silently wipe out a note added elsewhere. Passing an empty
-// string, on the other hand, explicitly clears it - that only happens
-// from the real edit form in AdminExerciseVideosList.tsx.
+// `coachNotes` and `isPlaceholder` are both optional and, when omitted
+// (undefined), leave the existing value untouched rather than
+// clearing/resetting it - callers like the inline video editors in
+// AdminProgramsList.tsx only ever edit name/url and have no notes or
+// placeholder field of their own, so they shouldn't be able to
+// silently wipe either one out. videoType is deliberately NOT editable
+// here at all - a video's type is fixed at creation (which tab it was
+// added from), editing shouldn't be able to move it to the other
+// library by accident.
 export async function updateExerciseVideo(
   id: string,
   exerciseName: string,
   videoUrl: string,
-  coachNotes?: string
+  coachNotes?: string,
+  isPlaceholder?: boolean
 ) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
@@ -187,15 +246,26 @@ export async function updateExerciseVideo(
   const trimmedUrl = videoUrl.trim()
   if (!trimmedName || !trimmedUrl) return
 
-  const update: { exercise_name: string; video_url: string; coach_notes?: string | null } = {
+  const exerciseId = await findOrCreateExerciseId(supabase, trimmedName)
+
+  const update: {
+    exercise_name: string
+    video_url: string
+    exercise_id: string | null
+    coach_notes?: string | null
+    is_placeholder?: boolean
+  } = {
     exercise_name: trimmedName,
     video_url: trimmedUrl,
+    exercise_id: exerciseId,
   }
   if (coachNotes !== undefined) update.coach_notes = coachNotes.trim() || null
+  if (isPlaceholder !== undefined) update.is_placeholder = isPlaceholder
 
   await supabase.from('exercise_videos').update(update).eq('id', id)
 
   revalidatePath('/admin/videos')
+  revalidatePath('/admin/exercises')
   revalidatePath('/workouts')
 }
 
@@ -214,7 +284,11 @@ export async function deleteExerciseVideo(id: string) {
 // the caller before this is invoked (see AdminExerciseVideosList's
 // parsedBulkRows) rather than here, so the UI can show an accurate
 // "N skipped as duplicates" count before the insert happens.
-export async function addExerciseVideosBulk(rows: { exerciseName: string; videoUrl: string }[]) {
+export async function addExerciseVideosBulk(
+  rows: { exerciseName: string; videoUrl: string }[],
+  videoType: 'tutorial' | 'demo' = 'tutorial',
+  isPlaceholder: boolean = true
+) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
@@ -222,19 +296,46 @@ export async function addExerciseVideosBulk(rows: { exerciseName: string; videoU
     data: { user },
   } = await supabase.auth.getUser()
 
-  const cleaned = rows
-    .map((r) => ({
-      exercise_name: r.exerciseName.trim(),
-      video_url: r.videoUrl.trim(),
-      added_by: user?.id || null,
-    }))
+  const validRows = rows
+    .map((r) => ({ exercise_name: r.exerciseName.trim(), video_url: r.videoUrl.trim() }))
     .filter((r) => r.exercise_name && r.video_url)
 
-  if (cleaned.length === 0) return
+  if (validRows.length === 0) return
+
+  const cleaned = await Promise.all(
+    validRows.map(async (r) => ({
+      ...r,
+      added_by: user?.id || null,
+      video_type: videoType,
+      is_placeholder: isPlaceholder,
+      exercise_id: await findOrCreateExerciseId(supabase, r.exercise_name),
+    }))
+  )
 
   await supabase.from('exercise_videos').insert(cleaned)
 
   revalidatePath('/admin/videos')
+  revalidatePath('/admin/exercises')
+}
+
+// Muscle groups and category tags both live directly on the canonical
+// exercises row (see migration-exercises-catalog.sql) - a plain array
+// overwrite each save, no diffing needed since the whole checklist/tag
+// picker is always shown and edited as one unit in AdminExercisesList.
+export async function updateExerciseMetadata(
+  id: string,
+  muscleGroups: string[],
+  categoryTags: string[]
+) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  await supabase
+    .from('exercises')
+    .update({ muscle_groups: muscleGroups, category_tags: categoryTags })
+    .eq('id', id)
+
+  revalidatePath('/admin/exercises')
 }
 
 // Editable metadata + description for an existing program, from
