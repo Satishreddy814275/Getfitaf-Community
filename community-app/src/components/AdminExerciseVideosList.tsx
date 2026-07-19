@@ -8,8 +8,18 @@ import {
   updateExerciseVideo,
 } from '@/app/admin/actions'
 import { normalize } from '@/lib/exerciseVideos'
+import AdminExercisesList from '@/components/AdminExercisesList'
+import type { ExerciseCatalogEntry } from '@/types'
 
 type VideoType = 'tutorial' | 'demo'
+// A third pseudo-"type" alongside the two real video types - picking it
+// swaps the whole panel over to the muscle/equipment/type/other tag
+// editor (AdminExercisesList) instead of a video list. Folded in here
+// rather than kept as its own /admin/exercises page since Satish's
+// call was "can't we just have it as a tab in the video library
+// instead of a completely different place" - one search box, one nav
+// entry, for everything about an exercise.
+type Tab = VideoType | 'catalog'
 
 interface ExerciseVideoRow {
   id: string
@@ -56,11 +66,13 @@ function PlaceholderToggle({
 export default function AdminExerciseVideosList({
   videos,
   needsVideoByType,
+  exercises,
 }: {
   videos: ExerciseVideoRow[]
   needsVideoByType: Record<VideoType, NeedsVideoRow[]>
+  exercises: ExerciseCatalogEntry[]
 }) {
-  const [activeType, setActiveType] = useState<VideoType>('tutorial')
+  const [activeType, setActiveType] = useState<Tab>('tutorial')
 
   const exerciseNameInputRef = useRef<HTMLInputElement>(null)
   const [exerciseName, setExerciseName] = useState('')
@@ -88,10 +100,13 @@ export default function AdminExerciseVideosList({
   const [isBulkImporting, setIsBulkImporting] = useState(false)
 
   const videosForType = useMemo(
-    () => videos.filter((v) => v.video_type === activeType),
+    () => (activeType === 'catalog' ? [] : videos.filter((v) => v.video_type === activeType)),
     [videos, activeType]
   )
-  const needsVideo = useMemo(() => needsVideoByType[activeType] || [], [needsVideoByType, activeType])
+  const needsVideo = useMemo(
+    () => (activeType === 'catalog' ? [] : needsVideoByType[activeType] || []),
+    [needsVideoByType, activeType]
+  )
   const needsFootage = useMemo(
     () => videosForType.filter((v) => v.is_placeholder),
     [videosForType]
@@ -161,6 +176,7 @@ export default function AdminExerciseVideosList({
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     if (!exerciseName.trim() || !videoUrl.trim()) return
+    if (activeType === 'catalog') return
 
     setIsSubmitting(true)
     await addExerciseVideo(exerciseName, videoUrl, coachNotes, activeType, isPlaceholder)
@@ -206,6 +222,7 @@ export default function AdminExerciseVideosList({
 
   async function handleBulkImport() {
     if (parsedBulkImport.rows.length === 0) return
+    if (activeType === 'catalog') return
     setIsBulkImporting(true)
     await addExerciseVideosBulk(parsedBulkImport.rows, activeType, bulkPlaceholder)
     setIsBulkImporting(false)
@@ -216,7 +233,7 @@ export default function AdminExerciseVideosList({
   return (
     <div>
       <div className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1 mb-4 w-fit">
-        {(['tutorial', 'demo'] as VideoType[]).map((type) => (
+        {(['tutorial', 'demo', 'catalog'] as Tab[]).map((type) => (
           <button
             key={type}
             type="button"
@@ -232,6 +249,10 @@ export default function AdminExerciseVideosList({
         ))}
       </div>
 
+      {activeType === 'catalog' ? (
+        <AdminExercisesList exercises={exercises} />
+      ) : (
+      <>
       <form onSubmit={handleAdd} className="glass rounded-2xl p-4 mb-4 space-y-3">
         <div>
           <label className="text-xs text-zinc-500 mb-1 block">Exercise name</label>
@@ -580,6 +601,8 @@ export default function AdminExerciseVideosList({
             </tbody>
           </table>
         </div>
+      )}
+      </>
       )}
     </div>
   )

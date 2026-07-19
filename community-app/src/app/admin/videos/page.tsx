@@ -5,7 +5,7 @@ import Link from 'next/link'
 import AdminExerciseVideosList from '@/components/AdminExerciseVideosList'
 import { findExerciseVideo } from '@/lib/exerciseVideos'
 import { baseExerciseName } from '@/lib/workoutBlocks'
-import type { WorkoutPlanDay } from '@/types'
+import type { WorkoutPlanDay, ExerciseCatalogEntry } from '@/types'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
@@ -25,22 +25,39 @@ export default async function AdminVideosPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
-  // videosData is independent of generationsData/templatesData below,
-  // so all three are fetched together in one Promise.all rather than
-  // this one running as its own separate round-trip first.
-  const [{ data: videosData }, { data: generationsData }, { data: templatesData }] = await Promise.all([
-    supabase
-      .from('exercise_videos')
-      .select(
-        'id, exercise_name, video_url, coach_notes, created_at, added_by, video_type, is_placeholder, profiles ( full_name )'
-      )
-      .order('exercise_name'),
-    createAdminClient()
-      .from('workout_generations')
-      .select('structured_plan')
-      .not('structured_plan', 'is', null),
-    supabase.from('program_templates').select('structured_plan'),
-  ])
+  // videosData/exercisesData are independent of generationsData/
+  // templatesData below, so all four are fetched together in one
+  // Promise.all rather than running as separate round-trips.
+  // exercisesData feeds the "Catalog" tab (see AdminExercisesList) -
+  // folded in here rather than kept as its own /admin/exercises page,
+  // per Satish's call to put everything about an exercise in one place.
+  const [{ data: videosData }, { data: generationsData }, { data: templatesData }, { data: exercisesData }] =
+    await Promise.all([
+      supabase
+        .from('exercise_videos')
+        .select(
+          'id, exercise_name, video_url, coach_notes, created_at, added_by, video_type, is_placeholder, profiles ( full_name )'
+        )
+        .order('exercise_name'),
+      createAdminClient()
+        .from('workout_generations')
+        .select('structured_plan')
+        .not('structured_plan', 'is', null),
+      supabase.from('program_templates').select('structured_plan'),
+      supabase
+        .from('exercises')
+        .select('id, name, muscle_groups, equipment_tags, type_tags, other_tags')
+        .order('name'),
+    ])
+
+  const exercises: ExerciseCatalogEntry[] = (exercisesData || []).map((e) => ({
+    id: e.id,
+    name: e.name,
+    muscleGroups: e.muscle_groups || [],
+    equipmentTags: e.equipment_tags || [],
+    typeTags: e.type_tags || [],
+    otherTags: e.other_tags || [],
+  }))
 
   const videos = (videosData || []).map((v) => ({
     id: v.id,
@@ -138,6 +155,7 @@ export default async function AdminVideosPage() {
       <AdminExerciseVideosList
         videos={videos || []}
         needsVideoByType={{ tutorial: needsVideoFor('tutorial'), demo: needsVideoFor('demo') }}
+        exercises={exercises}
       />
     </div>
   )

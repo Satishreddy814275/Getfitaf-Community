@@ -237,15 +237,26 @@ export interface BodyWeightEntry {
 }
 
 // One canonical row per real-world exercise (see
-// migration-exercises-catalog.sql) - deliberately additive: program
+// migration-exercises-catalog.sql, extended by
+// migration-exercises-tag-buckets). Deliberately additive: program
 // content still stores exercise names as plain text, matched to this
 // table by normalized name, same as exercise_videos already does.
-// Owns the metadata program content has nowhere else to attach:
-// muscle groups (fixed checklist, multi-select) and category tags
-// (open multi-select, existing tags + new ones typed in).
+// Owns the metadata program content has nowhere else to attach, split
+// into four independent tag buckets - each is a starter suggestion
+// list (see BUCKET_CONFIG in AdminExercisesList) plus whatever's
+// actually been typed in over time, not a hard enum:
+//   - muscleGroups: which muscles the exercise works
+//   - equipmentTags: what's needed to do it (Gym/Dumbbell/Bands/...)
+//   - typeTags: what kind of exercise it is (Strength/Cardio/...)
+//   - otherTags: catch-all for anything that doesn't fit the above
+//     three (was a single flat "category_tags" field before the
+//     bucket split - renamed at the DB level since it held zero real
+//     data at the time, so nothing needed migrating).
 export interface ExerciseCatalogEntry {
   id: string
   name: string
   muscleGroups: string[]
-  categoryTags: string[]
+  equipmentTags: string[]
+  typeTags: string[]
+  otherTags: string[]
 }

@@ -318,24 +318,76 @@ export async function addExerciseVideosBulk(
   revalidatePath('/admin/exercises')
 }
 
-// Muscle groups and category tags both live directly on the canonical
-// exercises row (see migration-exercises-catalog.sql) - a plain array
-// overwrite each save, no diffing needed since the whole checklist/tag
-// picker is always shown and edited as one unit in AdminExercisesList.
+// Four independent tag buckets, all living directly on the canonical
+// exercises row (see migration-exercises-catalog.sql +
+// migration-exercises-tag-buckets) - a plain array overwrite per
+// bucket each save, no diffing needed since AdminExercisesList always
+// shows/edits the full set for all four at once.
 export async function updateExerciseMetadata(
   id: string,
   muscleGroups: string[],
-  categoryTags: string[]
+  equipmentTags: string[],
+  typeTags: string[],
+  otherTags: string[]
 ) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
 
   await supabase
     .from('exercises')
-    .update({ muscle_groups: muscleGroups, category_tags: categoryTags })
+    .update({
+      muscle_groups: muscleGroups,
+      equipment_tags: equipmentTags,
+      type_tags: typeTags,
+      other_tags: otherTags,
+    })
     .eq('id', id)
 
-  revalidatePath('/admin/exercises')
+  revalidatePath('/admin/videos')
+}
+
+const TAG_BUCKET_COLUMNS = {
+  muscle: 'muscle_groups',
+  equipment: 'equipment_tags',
+  type: 'type_tags',
+  other: 'other_tags',
+} as const
+export type TagBucket = keyof typeof TAG_BUCKET_COLUMNS
+
+// Cleanup tool for near-duplicate tags that already made it into the
+// catalog (e.g. "Dumbbell" and "Dumbbells" both existing) - rewrites
+// every exercise carrying `fromTag` in the given bucket to carry
+// `toTag` instead (deduping if the exercise already had both), then
+// drops fromTag from that bucket's option list entirely since nothing
+// references it anymore. Scoped to whichever single bucket the tag
+// lives in - the same tag text could theoretically exist in two
+// different buckets (e.g. "Cardio" as a type tag vs someone typing it
+// into Other) and those are intentionally independent, not merged
+// together.
+export async function mergeTag(bucket: TagBucket, fromTag: string, toTag: string) {
+  const { supabase, isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const from = fromTag.trim()
+  const to = toTag.trim()
+  if (!from || !to || from === to) return
+
+  const column = TAG_BUCKET_COLUMNS[bucket]
+  const { data: rows } = await supabase
+    .from('exercises')
+    .select(`id, ${column}`)
+    .contains(column, [from])
+
+  for (const row of (rows || []) as unknown as ({ id: string } & Record<string, string[]>)[]) {
+    const current = row[column] || []
+    const next = Array.from(new Set(current.map((t) => (t === from ? to : t))))
+    await supabase
+      .from('exercises')
+      .update({ [column]: next })
+      .eq('id', row.id)
+  }
+
+  revalidatePath('/admin/videos')
 }
 
 // Editable metadata + description for an existing program, from
