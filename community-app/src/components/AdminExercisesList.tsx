@@ -43,6 +43,13 @@ export default function AdminExercisesList({
   const [draftMuscles, setDraftMuscles] = useState<string[]>([])
   const [draftTags, setDraftTags] = useState<string[]>([])
   const [newTagInput, setNewTagInput] = useState('')
+  // Tracks whether the currently-open row has un-saved edits - without
+  // this, clicking Edit on a different exercise (or Cancel on this
+  // one) silently threw away whatever was just typed/toggled, with no
+  // warning at all. Satish hit this directly: added a new tag, it
+  // never made it into the DB because the row got switched away from
+  // before Save was clicked on that specific row.
+  const [isDirty, setIsDirty] = useState(false)
 
   const tutorialSet = useMemo(() => new Set(hasTutorialIds), [hasTutorialIds])
   const demoSet = useMemo(() => new Set(hasDemoIds), [hasDemoIds])
@@ -62,21 +69,41 @@ export default function AdminExercisesList({
     return list
   }, [rows, search, onlyUnlabeled])
 
+  // Returns true if it's safe to abandon whatever's currently open
+  // (nothing unsaved, or the user explicitly confirmed discarding it).
+  function confirmDiscardIfDirty(): boolean {
+    if (!isDirty) return true
+    const current = rows.find((e) => e.id === expandedId)
+    return confirm(
+      `Discard unsaved changes to "${current?.name || 'this exercise'}"? They were never saved.`
+    )
+  }
+
   function startEdit(entry: ExerciseCatalogEntry) {
+    if (expandedId && expandedId !== entry.id && !confirmDiscardIfDirty()) return
     setExpandedId(entry.id)
     setDraftMuscles(entry.muscleGroups)
     setDraftTags(entry.categoryTags)
     setNewTagInput('')
+    setIsDirty(false)
+  }
+
+  function closeEdit() {
+    if (!confirmDiscardIfDirty()) return
+    setExpandedId(null)
+    setIsDirty(false)
   }
 
   function toggleMuscle(muscle: string) {
     setDraftMuscles((prev) =>
       prev.includes(muscle) ? prev.filter((m) => m !== muscle) : [...prev, muscle]
     )
+    setIsDirty(true)
   }
 
   function toggleTag(tag: string) {
     setDraftTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+    setIsDirty(true)
   }
 
   function addNewTag() {
@@ -84,6 +111,7 @@ export default function AdminExercisesList({
     if (!tag || draftTags.includes(tag)) return
     setDraftTags((prev) => [...prev, tag])
     setNewTagInput('')
+    setIsDirty(true)
   }
 
   async function save(id: string) {
@@ -94,6 +122,7 @@ export default function AdminExercisesList({
     )
     setSavingId(null)
     setExpandedId(null)
+    setIsDirty(false)
   }
 
   return (
@@ -153,7 +182,7 @@ export default function AdminExercisesList({
                 </div>
                 <button
                   type="button"
-                  onClick={() => (isExpanded ? setExpandedId(null) : startEdit(entry))}
+                  onClick={() => (isExpanded ? closeEdit() : startEdit(entry))}
                   className="text-xs font-medium text-zinc-400 hover:text-white transition shrink-0"
                 >
                   {isExpanded ? 'Cancel' : 'Edit'}
