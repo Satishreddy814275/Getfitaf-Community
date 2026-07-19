@@ -71,8 +71,10 @@ export default function AdminExercisesList({
 
   // Returns true if it's safe to abandon whatever's currently open
   // (nothing unsaved, or the user explicitly confirmed discarding it).
+  // Also counts unconfirmed text still sitting in the new-tag box as
+  // dirty - same class of silent-loss risk as an un-saved toggle.
   function confirmDiscardIfDirty(): boolean {
-    if (!isDirty) return true
+    if (!isDirty && !newTagInput.trim()) return true
     const current = rows.find((e) => e.id === expandedId)
     return confirm(
       `Discard unsaved changes to "${current?.name || 'this exercise'}"? They were never saved.`
@@ -115,14 +117,24 @@ export default function AdminExercisesList({
   }
 
   async function save(id: string) {
+    // Typing a tag and clicking Save (without a separate "+ Add" click
+    // first) silently dropped the typed text - it lived only in
+    // newTagInput, which save() never read. Save now folds in
+    // whatever's still sitting in the box itself, so there's no longer
+    // a second confirmation step required for a typed tag to count.
+    const pendingTag = newTagInput.trim()
+    const finalTags =
+      pendingTag && !draftTags.includes(pendingTag) ? [...draftTags, pendingTag] : draftTags
+
     setSavingId(id)
-    await updateExerciseMetadata(id, draftMuscles, draftTags)
+    await updateExerciseMetadata(id, draftMuscles, finalTags)
     setRows((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, muscleGroups: draftMuscles, categoryTags: draftTags } : e))
+      prev.map((e) => (e.id === id ? { ...e, muscleGroups: draftMuscles, categoryTags: finalTags } : e))
     )
     setSavingId(null)
     setExpandedId(null)
     setIsDirty(false)
+    setNewTagInput('')
   }
 
   return (
