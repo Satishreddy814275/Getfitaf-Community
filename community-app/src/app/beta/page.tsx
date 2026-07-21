@@ -11,7 +11,7 @@ import BetaStickyCTA from '@/components/BetaStickyCTA'
 import { renderRichText } from '@/lib/richText'
 import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
-import { getCoachPhotoUrl, getWaitlistCount } from '@/lib/betaLaunchSignals'
+import { getWaitlistCount } from '@/lib/betaLaunchSignals'
 
 // Single URL, two modes - see project_beta_launch_plan memory. Only
 // the CTA changes between "Join the waitlist" (before launch) and
@@ -47,10 +47,9 @@ export default async function BetaLandingPage() {
   // eslint-disable-next-line react-hooks/purity
   const isLive = Date.now() >= LAUNCH_AT
 
-  const [content, tierPreviews, coachPhotoUrl, waitlistCount] = await Promise.all([
+  const [content, tierPreviews, waitlistCount] = await Promise.all([
     getBetaPageContent(),
     getBetaTierPreviews(),
-    getCoachPhotoUrl(),
     getWaitlistCount(),
   ])
   const faqBlocks = parseFaqBlocks(content.faq)
@@ -140,19 +139,21 @@ export default async function BetaLandingPage() {
 
         {/* Who's behind this - trust/credibility before the details,
             since there's no track record or reviews to point to yet
-            for this specific beta. */}
-        {coachPhotoUrl && (
-          <div className="rounded-xl p-5 mb-10 bg-zinc-900/40 border border-zinc-800 flex items-center gap-4">
-            <Image
-              src={coachPhotoUrl}
-              alt="Satish"
-              width={64}
-              height={64}
-              className="rounded-full object-cover shrink-0"
-            />
-            <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(content.about_coach)}</div>
-          </div>
-        )}
+            for this specific beta. Uses the same dedicated headshot
+            already used in the Learn Portal lesson sign-offs (a real
+            photoshoot photo), not the generic Supabase profile
+            avatar - bundled as a static public asset since it's a
+            fixed brand photo, not user-editable data. */}
+        <div className="rounded-xl p-5 mb-10 bg-zinc-900/40 border border-zinc-800 flex items-center gap-4">
+          <Image
+            src="/satish-photo.jpg"
+            alt="Satish"
+            width={64}
+            height={64}
+            className="rounded-full object-cover shrink-0 aspect-square"
+          />
+          <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(content.about_coach)}</div>
+        </div>
 
         {/* What's included */}
         <div className="mb-14">
