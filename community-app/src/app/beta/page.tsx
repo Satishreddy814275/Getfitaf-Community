@@ -57,7 +57,7 @@ export default async function BetaLandingPage() {
           <p className="text-orange-500/90 text-xs font-semibold uppercase tracking-widest mt-2">
             Community Membership — Beta
           </p>
-          <div className="text-zinc-300 text-sm mt-6 max-w-lg mx-auto leading-relaxed text-left space-y-3">
+          <div className="text-zinc-300 text-sm mt-6 leading-relaxed text-left space-y-3">
             {renderRichText(content.hero)}
           </div>
         </div>
