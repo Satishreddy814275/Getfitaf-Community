@@ -57,13 +57,12 @@ export default async function BetaLandingPage() {
 
   return (
     <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
-      {/* Soft radial glow behind the hero - purely atmospheric, breaks
-          up what would otherwise be a flat black rectangle. Fixed
-          size/position, not tied to content height, so it never
-          stretches oddly on a long page. */}
+      {/* Tight radial glow behind the GETFIT AF wordmark only - fades
+          out before it reaches the body copy below, so it reads as an
+          accent behind the logo rather than a wash over the hero. */}
       <div
-        className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[900px] h-[600px]"
-        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.38) 0%, rgba(249,115,22,0.12) 40%, rgba(249,115,22,0) 72%)' }}
+        className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 w-[420px] h-[300px]"
+        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.45) 0%, rgba(249,115,22,0.1) 45%, rgba(249,115,22,0) 70%)' }}
         aria-hidden="true"
       />
 
