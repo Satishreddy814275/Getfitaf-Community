@@ -1,13 +1,17 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
+import Image from 'next/image'
 import { ListChecks, Scale, IndianRupee, HelpCircle, PersonStanding, Dumbbell, Building2 } from 'lucide-react'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
 import BetaProgressPreview from '@/components/BetaProgressPreview'
 import BetaCommunityPreview from '@/components/BetaCommunityPreview'
+import BetaCountdown from '@/components/BetaCountdown'
+import BetaStickyCTA from '@/components/BetaStickyCTA'
 import { renderRichText } from '@/lib/richText'
 import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
+import { getCoachPhotoUrl, getWaitlistCount } from '@/lib/betaLaunchSignals'
 
 // Single URL, two modes - see project_beta_launch_plan memory. Only
 // the CTA changes between "Join the waitlist" (before launch) and
@@ -43,14 +47,30 @@ export default async function BetaLandingPage() {
   // eslint-disable-next-line react-hooks/purity
   const isLive = Date.now() >= LAUNCH_AT
 
-  const [content, tierPreviews] = await Promise.all([getBetaPageContent(), getBetaTierPreviews()])
+  const [content, tierPreviews, coachPhotoUrl, waitlistCount] = await Promise.all([
+    getBetaPageContent(),
+    getBetaTierPreviews(),
+    getCoachPhotoUrl(),
+    getWaitlistCount(),
+  ])
   const faqBlocks = parseFaqBlocks(content.faq)
+  const howItWorksSteps = parseFaqBlocks(content.how_it_works)
 
   return (
-    <div className="min-h-full bg-[#0a0a0a]">
-      <div className="w-full max-w-2xl mx-auto py-16 px-4">
+    <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
+      {/* Soft radial glow behind the hero - purely atmospheric, breaks
+          up what would otherwise be a flat black rectangle. Fixed
+          size/position, not tied to content height, so it never
+          stretches oddly on a long page. */}
+      <div
+        className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] opacity-60"
+        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.16) 0%, rgba(249,115,22,0) 70%)' }}
+        aria-hidden="true"
+      />
+
+      <div className="w-full max-w-2xl mx-auto py-16 px-4 relative">
         {/* Hero */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
             GET<span className="text-orange-500">FIT</span> AF
           </h1>
@@ -62,8 +82,28 @@ export default async function BetaLandingPage() {
           </div>
         </div>
 
+        {/* How it works - quick 3-step overview before asking for
+            anything, so someone can grasp the shape of the offer
+            without reading the full What's Included section first. */}
+        {howItWorksSteps.length > 0 && (
+          <div className="grid sm:grid-cols-3 gap-3 mb-10">
+            {howItWorksSteps.map((step, i) => (
+              <div key={i} className="rounded-xl p-4 bg-zinc-900/40 border border-zinc-800 text-center">
+                <div className="w-7 h-7 rounded-full bg-orange-500 text-black text-sm font-bold flex items-center justify-center mx-auto mb-2">
+                  {i + 1}
+                </div>
+                <p className="text-white text-sm font-semibold mb-1">{step.question}</p>
+                <p className="text-zinc-400 text-xs leading-relaxed">{step.answer}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* CTA - top */}
-        <div className="rounded-2xl p-6 mb-12 bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
+        <div
+          id="waitlist-top"
+          className="rounded-2xl p-6 mb-10 bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20"
+        >
           {isLive ? (
             <div className="text-center">
               <p className="text-orange-500 text-sm font-semibold mb-3">
@@ -88,9 +128,31 @@ export default async function BetaLandingPage() {
                 Join the waitlist and we&apos;ll email you the second doors open.
               </p>
               <WaitlistForm />
+              <BetaCountdown launchAt={LAUNCH_AT} />
             </div>
           )}
+          {waitlistCount > 0 && (
+            <p className="text-zinc-500 text-xs text-center mt-3">
+              🔥 {waitlistCount} {waitlistCount === 1 ? 'person has' : 'people have'} already joined the waitlist
+            </p>
+          )}
         </div>
+
+        {/* Who's behind this - trust/credibility before the details,
+            since there's no track record or reviews to point to yet
+            for this specific beta. */}
+        {coachPhotoUrl && (
+          <div className="rounded-xl p-5 mb-10 bg-zinc-900/40 border border-zinc-800 flex items-center gap-4">
+            <Image
+              src={coachPhotoUrl}
+              alt="Satish"
+              width={64}
+              height={64}
+              className="rounded-full object-cover shrink-0"
+            />
+            <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(content.about_coach)}</div>
+          </div>
+        )}
 
         {/* What's included */}
         <div className="mb-14">
@@ -200,6 +262,8 @@ export default async function BetaLandingPage() {
           )}
         </div>
       </div>
+
+      <BetaStickyCTA isLive={isLive} />
     </div>
   )
 }

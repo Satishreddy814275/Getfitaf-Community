@@ -8,6 +8,15 @@ import { createAdminClient } from '@/lib/supabase/admin'
 export const BETA_PAGE_SECTIONS = [
   { key: 'hero', label: 'Hero — "Who is this for?"' },
   {
+    key: 'how_it_works',
+    label:
+      'How it works - 3 steps (first line of each block is the step title, rest is the description, blank line between steps)',
+  },
+  {
+    key: 'about_coach',
+    label: "Who's behind this (bio, sits next to your real profile photo)",
+  },
+  {
     key: 'whats_included_intro',
     label: "What's included — intro (6-week/tiers text, above the live program previews)",
   },
@@ -49,6 +58,8 @@ export type BetaPageContentKey = (typeof BETA_PAGE_SECTIONS)[number]['key']
 // beta_page_content migration.
 const DEFAULTS: Record<BetaPageContentKey, string> = {
   hero: '',
+  how_it_works: '',
+  about_coach: '',
   whats_included_intro: '',
   tier_no_equipment: '',
   tier_bands_dumbbells: '',
