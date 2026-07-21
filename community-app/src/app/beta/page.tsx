@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
+import { ListChecks, Scale, IndianRupee, HelpCircle, PersonStanding, Dumbbell, Building2 } from 'lucide-react'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
 import BetaProgressPreview from '@/components/BetaProgressPreview'
@@ -48,18 +50,20 @@ export default async function BetaLandingPage() {
     <div className="min-h-full bg-[#0a0a0a]">
       <div className="w-full max-w-2xl mx-auto py-16 px-4">
         {/* Hero */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-12">
           <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
             GET<span className="text-orange-500">FIT</span> AF
           </h1>
-          <p className="text-zinc-400 text-sm mt-2">Community Membership — Beta</p>
+          <p className="text-orange-500/90 text-xs font-semibold uppercase tracking-widest mt-2">
+            Community Membership — Beta
+          </p>
           <div className="text-zinc-300 text-sm mt-6 max-w-lg mx-auto leading-relaxed text-left space-y-3">
             {renderRichText(content.hero)}
           </div>
         </div>
 
         {/* CTA - top */}
-        <div className="glass rounded-2xl p-6 mb-10">
+        <div className="rounded-2xl p-6 mb-12 bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
           {isLive ? (
             <div className="text-center">
               <p className="text-orange-500 text-sm font-semibold mb-3">
@@ -89,22 +93,37 @@ export default async function BetaLandingPage() {
         </div>
 
         {/* What's included */}
-        <div className="mb-10">
-          <h3 className="text-white text-lg font-bold mb-4">What&apos;s included</h3>
-          <div className="text-sm text-zinc-300 space-y-3 mb-5">{renderRichText(content.whats_included_intro)}</div>
+        <div className="mb-14">
+          <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
+            <ListChecks className="w-5 h-5 text-orange-500" aria-hidden="true" />
+            What&apos;s included
+          </h3>
+          <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(content.whats_included_intro)}</div>
 
-          <div className="space-y-5 mb-5">
-            <TierPreviewCard description={content.tier_no_equipment} preview={tierPreviews.noEquipment} />
-            <TierPreviewCard description={content.tier_bands_dumbbells} preview={tierPreviews.bandsAndDumbbells} />
-            <TierPreviewCard description={content.tier_full_gym} preview={tierPreviews.fullGym} />
+          <div className="space-y-5 mb-6">
+            <TierPreviewCard
+              icon={<PersonStanding className="w-4 h-4 text-orange-400" aria-hidden="true" />}
+              description={content.tier_no_equipment}
+              preview={tierPreviews.noEquipment}
+            />
+            <TierPreviewCard
+              icon={<Dumbbell className="w-4 h-4 text-orange-400" aria-hidden="true" />}
+              description={content.tier_bands_dumbbells}
+              preview={tierPreviews.bandsAndDumbbells}
+            />
+            <TierPreviewCard
+              icon={<Building2 className="w-4 h-4 text-orange-400" aria-hidden="true" />}
+              description={content.tier_full_gym}
+              preview={tierPreviews.fullGym}
+            />
           </div>
 
-          <div className="glass rounded-xl p-4 mb-4">
+          <div className="glass rounded-xl p-5 mb-5">
             <div className="text-sm text-zinc-300 mb-3">{renderRichText(content.whats_included_logging)}</div>
             <BetaProgressPreview />
           </div>
 
-          <div className="glass rounded-xl p-4 mb-5">
+          <div className="glass rounded-xl p-5 mb-6">
             <div className="text-sm text-zinc-300 mb-3">{renderRichText(content.whats_included_community)}</div>
             <BetaCommunityPreview />
           </div>
@@ -113,36 +132,48 @@ export default async function BetaLandingPage() {
         </div>
 
         {/* What this is / isn't */}
-        <div className="mb-10">
-          <h3 className="text-white text-lg font-bold mb-4">What this is - and isn&apos;t</h3>
+        <div className="mb-14">
+          <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
+            <Scale className="w-5 h-5 text-orange-500" aria-hidden="true" />
+            What this is - and isn&apos;t
+          </h3>
           <div className="grid sm:grid-cols-2 gap-4">
-            <div className="glass rounded-xl p-4">
-              <p className="text-white text-sm font-semibold mb-2">This is</p>
-              <div className="space-y-2 text-sm text-zinc-300">{renderRichText(content.boundaries_this_is)}</div>
+            <div className="rounded-xl p-5 bg-orange-500/[0.06] border border-orange-500/25 border-l-4 border-l-orange-500">
+              <p className="text-orange-400 text-xs font-bold uppercase tracking-wide mb-2">This is</p>
+              <div className="space-y-2 text-sm text-zinc-200">{renderRichText(content.boundaries_this_is)}</div>
             </div>
-            <div className="glass rounded-xl p-4">
-              <p className="text-white text-sm font-semibold mb-2">This isn&apos;t</p>
+            <div className="rounded-xl p-5 bg-zinc-500/[0.06] border border-zinc-700 border-l-4 border-l-zinc-500">
+              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wide mb-2">This isn&apos;t</p>
               <div className="space-y-2 text-sm text-zinc-300">{renderRichText(content.boundaries_isnt)}</div>
             </div>
           </div>
         </div>
 
         {/* Pricing & terms */}
-        <div className="mb-10">
-          <h3 className="text-white text-lg font-bold mb-4">Pricing &amp; terms</h3>
-          <div className="glass rounded-xl p-4 space-y-2 text-sm text-zinc-300">
+        <div className="mb-14">
+          <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
+            <IndianRupee className="w-5 h-5 text-orange-500" aria-hidden="true" />
+            Pricing &amp; terms
+          </h3>
+          <div className="rounded-2xl p-6 space-y-3 text-sm text-zinc-200 bg-gradient-to-br from-orange-500/15 via-orange-500/5 to-transparent border border-orange-500/25">
             {renderRichText(content.pricing_terms)}
           </div>
         </div>
 
         {/* FAQ */}
-        <div className="mb-10">
-          <h3 className="text-white text-lg font-bold mb-4">FAQ</h3>
-          <div className="space-y-4 text-sm">
+        <div className="mb-14">
+          <h3 className="text-white text-lg font-bold mb-4 flex items-center gap-2">
+            <HelpCircle className="w-5 h-5 text-orange-500" aria-hidden="true" />
+            FAQ
+          </h3>
+          <div className="space-y-3 text-sm">
             {faqBlocks.map((block, i) => (
-              <div key={i}>
-                <p className="text-white font-semibold mb-1">{block.question}</p>
-                <div className="text-zinc-400 leading-relaxed space-y-2">{renderRichText(block.answer)}</div>
+              <div key={i} className="glass rounded-xl p-4">
+                <p className="text-white font-semibold mb-1.5 flex items-start gap-2">
+                  <span className="text-orange-500 shrink-0">Q.</span>
+                  {block.question}
+                </p>
+                <div className="text-zinc-400 leading-relaxed space-y-2 pl-5">{renderRichText(block.answer)}</div>
               </div>
             ))}
           </div>
@@ -190,10 +221,23 @@ function parseFaqBlocks(text: string): { question: string; answer: string }[] {
     .filter((b) => b.question)
 }
 
-function TierPreviewCard({ description, preview }: { description: string; preview: TierPreview }) {
+function TierPreviewCard({
+  icon,
+  description,
+  preview,
+}: {
+  icon: ReactNode
+  description: string
+  preview: TierPreview
+}) {
   return (
-    <div className="glass rounded-xl p-4">
-      <div className="text-sm text-zinc-300 mb-3">{renderRichText(description)}</div>
+    <div className="rounded-xl p-5 bg-zinc-900/40 border border-zinc-800 border-t-2 border-t-orange-500/50">
+      <div className="flex items-start gap-2.5 mb-3">
+        <span className="shrink-0 w-7 h-7 rounded-lg bg-orange-500/10 flex items-center justify-center mt-0.5">
+          {icon}
+        </span>
+        <div className="text-sm text-zinc-300">{renderRichText(description)}</div>
+      </div>
       {preview ? (
         <div className="border border-zinc-800 rounded-lg p-3 bg-zinc-950/40">
           <p className="text-zinc-500 text-[11px] uppercase tracking-wide mb-2">
