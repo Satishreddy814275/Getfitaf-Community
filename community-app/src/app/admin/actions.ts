@@ -1253,3 +1253,23 @@ export async function propagateDayStructuralChanges(
   revalidatePath('/admin/programs')
   revalidatePath('/workouts')
 }
+
+// Saves one section of the editable /beta landing page copy - see
+// betaPageContent.ts for the full section list and project_beta_launch_plan
+// memory for why this exists (Satish wants to edit the page's wording
+// himself, no code change per tweak). One section per call rather than
+// a single "save everything" action so a mistake in one field's editor
+// state can't blow away edits already saved in another field.
+export async function updateBetaPageContent(key: string, content: string) {
+  const { isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const admin = createAdminClient()
+  await admin
+    .from('beta_page_content')
+    .update({ content, updated_at: new Date().toISOString() })
+    .eq('key', key)
+
+  revalidatePath('/admin/beta-page')
+  revalidatePath('/beta')
+}

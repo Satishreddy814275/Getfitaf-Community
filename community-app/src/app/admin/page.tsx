@@ -92,6 +92,12 @@ export default async function AdminPage() {
           >
             Workout Library →
           </Link>
+          <Link
+            href="/admin/beta-page"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Beta Page →
+          </Link>
         </div>
       </div>
 
