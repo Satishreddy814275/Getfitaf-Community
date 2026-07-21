@@ -59,7 +59,20 @@ export async function updateSession(request: NextRequest) {
     // Authorization: Bearer <CRON_SECRET> header (checked inside the
     // route itself), not a session cookie, so it was also being
     // redirected to /login before ever running.
-    request.nextUrl.pathname.startsWith('/api/cron/expire-trials')
+    request.nextUrl.pathname.startsWith('/api/cron/expire-trials') ||
+    // /beta is the public beta-launch landing page (see
+    // project_beta_launch_plan memory) - has to be reachable by
+    // prospects who don't have an account yet, same reasoning as
+    // /join. Missing this exclusion meant every visitor without a
+    // session got redirected straight to /login before the page ever
+    // rendered - the whole point of a landing page is to be reachable
+    // by people who aren't signed up yet, so this made it
+    // unreachable by its actual target audience.
+    request.nextUrl.pathname.startsWith('/beta') ||
+    // /api/beta-waitlist is the waitlist signup endpoint the /beta
+    // page's form posts to - same "no session exists yet" situation
+    // as /api/beta-checkout, just a POST instead of a GET.
+    request.nextUrl.pathname.startsWith('/api/beta-waitlist')
 
   if (!user && !isPublicRoute) {
     // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
