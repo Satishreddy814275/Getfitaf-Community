@@ -57,24 +57,17 @@ export default async function BetaLandingPage() {
 
   return (
     <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
-      {/* Tight radial glow behind the GETFIT AF wordmark only - fades
-          out before it reaches the body copy below, so it reads as an
-          accent behind the logo rather than a wash over the hero. */}
-      <div
-        className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 w-[420px] h-[300px]"
-        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.45) 0%, rgba(249,115,22,0.1) 45%, rgba(249,115,22,0) 70%)' }}
-        aria-hidden="true"
-      />
-
       <div className="w-full max-w-2xl mx-auto py-16 px-4 relative">
         {/* Hero */}
         <div className="text-center mb-10">
-          <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
-            GET<span className="text-orange-500">FIT</span> AF
-          </h1>
-          <p className="text-orange-500/90 text-xs font-semibold uppercase tracking-widest mt-2">
-            Community Membership — Beta
-          </p>
+          <div className="inline-block rounded-2xl border border-orange-500/50 px-8 py-5">
+            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
+              GET<span className="text-orange-500">FIT</span> AF
+            </h1>
+            <p className="text-orange-500/90 text-xs font-semibold uppercase tracking-widest mt-2">
+              Community Membership — Beta
+            </p>
+          </div>
           <div className="text-zinc-300 text-sm mt-6 leading-relaxed text-left space-y-3">
             {renderRichText(content.hero)}
           </div>
