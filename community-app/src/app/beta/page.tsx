@@ -150,7 +150,7 @@ export default async function BetaLandingPage() {
             alt="Satish"
             width={64}
             height={64}
-            className="rounded-full object-cover shrink-0 aspect-square"
+            className="rounded-full object-cover object-top shrink-0 aspect-square"
           />
           <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(content.about_coach)}</div>
         </div>
