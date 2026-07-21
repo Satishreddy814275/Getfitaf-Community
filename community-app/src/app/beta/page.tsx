@@ -62,8 +62,8 @@ export default async function BetaLandingPage() {
           size/position, not tied to content height, so it never
           stretches oddly on a long page. */}
       <div
-        className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] opacity-60"
-        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.16) 0%, rgba(249,115,22,0) 70%)' }}
+        className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 w-[900px] h-[600px]"
+        style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.38) 0%, rgba(249,115,22,0.12) 40%, rgba(249,115,22,0) 72%)' }}
         aria-hidden="true"
       />
 
