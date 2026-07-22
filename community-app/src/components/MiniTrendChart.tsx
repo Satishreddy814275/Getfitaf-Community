@@ -98,8 +98,8 @@ export default function MiniTrendChart({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-24 touch-none"
-          preserveAspectRatio="none"
+          className="w-full touch-none"
+          style={{ aspectRatio: `${width} / ${height}` }}
           onPointerMove={(e) => updateHoverFromClientX(e.clientX)}
           onPointerDown={(e) => updateHoverFromClientX(e.clientX)}
           onPointerLeave={() => setHoverIndex(null)}
