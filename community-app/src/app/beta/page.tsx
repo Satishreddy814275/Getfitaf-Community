@@ -12,6 +12,7 @@ import {
   CalendarDays,
   MessagesSquare,
   LineChart,
+  Check,
 } from 'lucide-react'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
@@ -220,11 +221,16 @@ export default async function BetaLandingPage() {
             </p>
           )}
           {whatsIncludedIntro.liveItems.length > 0 && (
-            <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300 mb-6">
+            <div className="space-y-2.5 mb-6">
               {whatsIncludedIntro.liveItems.map((item, i) => (
-                <li key={i}>{item}</li>
+                <div key={i} className="flex items-start gap-2.5">
+                  <span className="w-7 h-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <Check className="w-3.5 h-3.5 text-orange-400" aria-hidden="true" />
+                  </span>
+                  <span className="text-sm text-zinc-300 leading-relaxed">{item}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           {whatsIncludedIntro.rest && (
             <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(whatsIncludedIntro.rest)}</div>
