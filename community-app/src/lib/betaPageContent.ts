@@ -19,7 +19,8 @@ export const BETA_PAGE_SECTIONS = [
   },
   {
     key: 'whats_included_intro',
-    label: "What's included — intro (6-week/tiers text, above the live program previews)",
+    label:
+      "What's included — intro. First 3 lines are the icon feature list (one short line each), blank line, then the rest as normal paragraphs (6-week/tiers text, above the live program previews)",
   },
   {
     key: 'tier_no_equipment',

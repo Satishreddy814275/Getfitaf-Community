@@ -1,7 +1,18 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import Image from 'next/image'
-import { ListChecks, Scale, IndianRupee, HelpCircle, PersonStanding, Dumbbell, Building2 } from 'lucide-react'
+import {
+  ListChecks,
+  Scale,
+  IndianRupee,
+  HelpCircle,
+  PersonStanding,
+  Dumbbell,
+  Building2,
+  CalendarDays,
+  MessagesSquare,
+  LineChart,
+} from 'lucide-react'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
 import BetaProgressPreview from '@/components/BetaProgressPreview'
@@ -55,6 +66,7 @@ export default async function BetaLandingPage() {
   const faqBlocks = parseFaqBlocks(content.faq)
   const howItWorksSteps = parseFaqBlocks(content.how_it_works)
   const coachBio = parseCoachBio(content.about_coach)
+  const whatsIncludedIntro = parseFeatureIntro(content.whats_included_intro)
 
   return (
     <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
@@ -182,7 +194,22 @@ export default async function BetaLandingPage() {
             <ListChecks className="w-5 h-5 text-orange-500" aria-hidden="true" />
             What&apos;s included
           </h3>
-          <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(content.whats_included_intro)}</div>
+          {whatsIncludedIntro.features.length > 0 && (
+            <div className="space-y-2.5 mb-4">
+              {whatsIncludedIntro.features.map((feature, i) => {
+                const Icon = [CalendarDays, MessagesSquare, LineChart][i % 3]
+                return (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <span className="w-7 h-7 rounded-lg bg-orange-500/10 flex items-center justify-center shrink-0 mt-0.5">
+                      <Icon className="w-3.5 h-3.5 text-orange-400" aria-hidden="true" />
+                    </span>
+                    <span className="text-sm text-zinc-300 leading-relaxed">{feature}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(whatsIncludedIntro.rest)}</div>
 
           <div className="space-y-5 mb-6">
             <TierPreviewCard
@@ -327,6 +354,27 @@ function parseCoachBio(text: string): { credential: string; stats: string[]; bod
     .map((s) => s.trim())
     .filter(Boolean)
   return { credential, stats, body }
+}
+
+// What's included intro format (see betaPageContent.ts label): the
+// first block is one feature per line (rendered as a small icon list -
+// icons just cycle through a fixed set, so this only really reads well
+// with 3 lines), then a blank line, then the rest as normal paragraphs
+// rendered via renderRichText. Falls back to rendering everything as
+// plain prose (no icon list) if there's no blank line to split on, so
+// older/simpler content never disappears.
+function parseFeatureIntro(text: string): { features: string[]; rest: string } {
+  if (!text || !text.trim()) return { features: [], rest: '' }
+  const [firstBlock, ...restBlocks] = text.trim().split(/\n\s*\n/)
+  const rest = restBlocks.join('\n\n')
+  if (!firstBlock || !rest) {
+    return { features: [], rest: text.trim() }
+  }
+  const features = firstBlock
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return { features, rest }
 }
 
 function TierPreviewCard({
