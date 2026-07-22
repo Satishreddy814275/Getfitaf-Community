@@ -54,6 +54,7 @@ export default async function BetaLandingPage() {
   ])
   const faqBlocks = parseFaqBlocks(content.faq)
   const howItWorksSteps = parseFaqBlocks(content.how_it_works)
+  const coachBio = parseCoachBio(content.about_coach)
 
   return (
     <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
@@ -135,16 +136,44 @@ export default async function BetaLandingPage() {
             already used in the Learn Portal lesson sign-offs (a real
             photoshoot photo), not the generic Supabase profile
             avatar - bundled as a static public asset since it's a
-            fixed brand photo, not user-editable data. */}
-        <div className="rounded-xl p-5 mb-10 bg-zinc-900/40 border border-zinc-800 flex items-center gap-4">
-          <Image
-            src="/satish-photo.jpg"
-            alt="Satish"
-            width={64}
-            height={64}
-            className="rounded-full object-cover object-top shrink-0 aspect-square"
-          />
-          <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(content.about_coach)}</div>
+            fixed brand photo, not user-editable data. Stacked layout
+            (photo/name/credential/stats centered on top, story below)
+            rather than side-by-side, since the credentials + stats +
+            founder story is a longer read than the old one-line bio -
+            side-by-side made it feel cramped. Stats are pulled out of
+            the prose into pills since they're the strongest trust
+            signal on a page with no track record yet. */}
+        <div className="rounded-xl p-6 mb-10 bg-zinc-900/40 border border-zinc-800">
+          <div className="flex flex-col items-center text-center">
+            <Image
+              src="/satish-photo.jpg"
+              alt="Satish"
+              width={76}
+              height={76}
+              className="rounded-full object-cover object-top border-2 border-orange-500/60 aspect-square mb-3"
+            />
+            <p className="text-white text-base font-bold">Satish</p>
+            {coachBio.credential && (
+              <p className="text-orange-500/90 text-[10px] font-semibold uppercase tracking-widest mt-1">
+                {coachBio.credential}
+              </p>
+            )}
+            {coachBio.stats.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2 mt-3.5">
+                {coachBio.stats.map((stat, i) => (
+                  <span
+                    key={i}
+                    className="text-orange-300 text-[11px] bg-orange-500/10 border border-orange-500/30 rounded-lg px-3 py-1.5"
+                  >
+                    {stat}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="text-sm text-zinc-300 leading-relaxed space-y-3 mt-4 text-left">
+            {renderRichText(coachBio.body)}
+          </div>
         </div>
 
         {/* What's included */}
@@ -276,6 +305,28 @@ function parseFaqBlocks(text: string): { question: string; answer: string }[] {
       return { question: lines[0] || '', answer: lines.slice(1).join('\n').trim() }
     })
     .filter((b) => b.question)
+}
+
+// Coach bio format (see betaPageContent.ts label): line 1 is the
+// credential line, line 2 is a "|"-separated list of stat pills (e.g.
+// "7+ years|1,000+ clients coached"), then a blank line, then the
+// story as normal paragraphs rendered via renderRichText. Falls back
+// to treating the whole thing as the story if it doesn't match the
+// format, so older/simpler content never disappears.
+function parseCoachBio(text: string): { credential: string; stats: string[]; body: string } {
+  if (!text || !text.trim()) return { credential: '', stats: [], body: '' }
+  const [headerBlock, ...bodyBlocks] = text.trim().split(/\n\s*\n/)
+  const body = bodyBlocks.join('\n\n')
+  if (!headerBlock || !body) {
+    return { credential: '', stats: [], body: text.trim() }
+  }
+  const headerLines = headerBlock.split('\n')
+  const credential = headerLines[0]?.trim() || ''
+  const stats = (headerLines[1] || '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return { credential, stats, body }
 }
 
 function TierPreviewCard({

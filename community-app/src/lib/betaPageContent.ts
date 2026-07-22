@@ -14,7 +14,8 @@ export const BETA_PAGE_SECTIONS = [
   },
   {
     key: 'about_coach',
-    label: "Who's behind this (bio, sits next to your real profile photo)",
+    label:
+      "Who's behind this - line 1: credential line, line 2: stats separated by | (e.g. 7+ years|1,000+ clients coached), blank line, then the story as normal paragraphs",
   },
   {
     key: 'whats_included_intro',
