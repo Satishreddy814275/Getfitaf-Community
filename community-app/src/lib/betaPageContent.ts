@@ -20,7 +20,7 @@ export const BETA_PAGE_SECTIONS = [
   {
     key: 'whats_included_intro',
     label:
-      "What's included — intro. First 3 lines are the icon feature list (one short line each), blank line, then the rest as normal paragraphs (6-week/tiers text, above the live program previews)",
+      "What's included — intro. Block 1: 3 short lines for the icon feature list. Block 2: the \"proof\" line (shown as a highlighted badge, e.g. \"I've already built...\"). Block 3: first line is the \"What's live now\" label, remaining lines are bullet points. Separate each block with a blank line.",
   },
   {
     key: 'tier_no_equipment',

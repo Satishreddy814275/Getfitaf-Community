@@ -209,7 +209,26 @@ export default async function BetaLandingPage() {
               })}
             </div>
           )}
-          <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(whatsIncludedIntro.rest)}</div>
+          {whatsIncludedIntro.proof && (
+            <div className="bg-orange-500/[0.08] border border-orange-500/30 rounded-lg px-3.5 py-3 mb-4">
+              <span className="text-orange-300 text-xs leading-relaxed">{whatsIncludedIntro.proof}</span>
+            </div>
+          )}
+          {whatsIncludedIntro.liveLabel && (
+            <p className="text-orange-500/90 text-[10px] font-semibold uppercase tracking-widest mb-2">
+              {whatsIncludedIntro.liveLabel}
+            </p>
+          )}
+          {whatsIncludedIntro.liveItems.length > 0 && (
+            <ul className="list-disc list-inside space-y-1 text-sm text-zinc-300 mb-6">
+              {whatsIncludedIntro.liveItems.map((item, i) => (
+                <li key={i}>{item}</li>
+              ))}
+            </ul>
+          )}
+          {whatsIncludedIntro.rest && (
+            <div className="text-sm text-zinc-300 space-y-3 mb-6">{renderRichText(whatsIncludedIntro.rest)}</div>
+          )}
 
           <div className="space-y-5 mb-6">
             <TierPreviewCard
@@ -356,25 +375,46 @@ function parseCoachBio(text: string): { credential: string; stats: string[]; bod
   return { credential, stats, body }
 }
 
-// What's included intro format (see betaPageContent.ts label): the
-// first block is one feature per line (rendered as a small icon list -
-// icons just cycle through a fixed set, so this only really reads well
-// with 3 lines), then a blank line, then the rest as normal paragraphs
-// rendered via renderRichText. Falls back to rendering everything as
-// plain prose (no icon list) if there's no blank line to split on, so
-// older/simpler content never disappears.
-function parseFeatureIntro(text: string): { features: string[]; rest: string } {
-  if (!text || !text.trim()) return { features: [], rest: '' }
-  const [firstBlock, ...restBlocks] = text.trim().split(/\n\s*\n/)
-  const rest = restBlocks.join('\n\n')
-  if (!firstBlock || !rest) {
-    return { features: [], rest: text.trim() }
+// What's included intro format (see betaPageContent.ts label): block 1
+// is one feature per line (rendered as a small icon list - icons just
+// cycle through a fixed set, so this only really reads well with 3
+// lines); block 2 is the "proof" line (rendered as a tinted badge, not
+// prose); block 3's first line is the "What's live now" label, its
+// remaining lines are rendered as a plain bullet list. Falls back to
+// rendering everything after the features as plain prose (old
+// behavior) if there's no third block, so a simpler edit never breaks.
+function parseFeatureIntro(text: string): {
+  features: string[]
+  proof: string
+  liveLabel: string
+  liveItems: string[]
+  rest: string
+} {
+  const empty = { features: [], proof: '', liveLabel: '', liveItems: [], rest: '' }
+  if (!text || !text.trim()) return empty
+  const blocks = text.trim().split(/\n\s*\n/)
+  const [firstBlock, proofBlock, liveBlock, ...restBlocks] = blocks
+  if (!firstBlock || !proofBlock) {
+    return { ...empty, rest: text.trim() }
   }
   const features = firstBlock
     .split('\n')
     .map((l) => l.trim())
     .filter(Boolean)
-  return { features, rest }
+  if (!liveBlock) {
+    return { features, proof: '', liveLabel: '', liveItems: [], rest: proofBlock.trim() }
+  }
+  const liveLines = liveBlock
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)
+  return {
+    features,
+    proof: proofBlock.trim(),
+    liveLabel: liveLines[0] || '',
+    liveItems: liveLines.slice(1),
+    rest: restBlocks.join('\n\n'),
+  }
 }
 
 function TierPreviewCard({
