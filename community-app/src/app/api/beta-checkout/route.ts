@@ -1,4 +1,5 @@
 import Stripe from 'stripe'
+import { createClient } from '@/lib/supabase/server'
 
 // Needs the Node runtime (not Edge) — same reason as
 // src/app/api/stripe-webhook: the Stripe SDK requires it.
@@ -28,6 +29,19 @@ function getStripe() {
 // GET (not POST) on purpose, so this can be used as a plain link in an
 // acceptance email — no client-side JS or form needed, same as a
 // Payment Link would be.
+//
+// Requires a signed-in GetFit AF account before creating any Stripe
+// session. Previously this went straight to Stripe for anyone,
+// anonymous or not — but the webhook grants access by matching the
+// Stripe customer's email to an existing profiles row, and for a
+// brand-new beta signup with no account yet, that match will almost
+// always fail: Stripe's webhook fires within seconds of payment,
+// well before someone would get around to creating an account on the
+// post-payment /feed → /login bounce. That meant nearly every new
+// signup landing in unmatched_stripe_payments for Satish to grant
+// access to by hand instead of it happening automatically. Requiring
+// login first means the matching profiles row already exists the
+// moment Stripe fires the webhook.
 export async function GET(req: Request) {
   const priceId = process.env.STRIPE_LOW_TICKET_PRICE_ID
   const couponId = process.env.STRIPE_BETA_COUPON_ID
@@ -39,19 +53,32 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url)
-  // Pass ?email=<the address they signed up with> when generating this
-  // link for an approved applicant. Prefilling it here (rather than
-  // letting Stripe collect it fresh at checkout) means the Stripe
-  // customer's email matches profiles.email exactly, which is what the
-  // webhook's findProfileByEmail lookup relies on — a typo'd email at
-  // checkout would otherwise land the payment in
-  // unmatched_stripe_payments instead of granting access.
-  const email = url.searchParams.get('email') || undefined
 
   // Derived from the incoming request rather than hardcoded, so this
   // works the same on a Vercel preview deployment and on the real
   // production domain without needing a separate env var for it.
   const origin = url.origin
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    // Sends them to create an account (or sign back in) first, then
+    // straight back here to actually start checkout - see the
+    // `next` handling in login/actions.ts and auth/callback/route.ts.
+    return Response.redirect(
+      `${origin}/login?next=${encodeURIComponent('/api/beta-checkout')}`,
+      303
+    )
+  }
+
+  // The authenticated account's own email, not a client-suppliable
+  // query param - guarantees this matches profiles.email exactly
+  // (it's the same row the webhook will look up), and can't be
+  // spoofed by hitting this URL with a different ?email= value.
+  const email = user.email
 
   const stripe = getStripe()
 

@@ -71,9 +71,12 @@ function LoginForm() {
     setMagicLinkStatus('sending')
     clearStaleAuthCookies()
     const supabase = createClient()
+    const callbackUrl = next
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+      : `${window.location.origin}/auth/callback`
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email: email.trim(),
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: callbackUrl },
     })
     if (otpError) {
       setMagicLinkStatus('error')
@@ -87,9 +90,12 @@ function LoginForm() {
     setGoogleLoading(true)
     clearStaleAuthCookies()
     const supabase = createClient()
+    const callbackUrl = next
+      ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`
+      : `${window.location.origin}/auth/callback`
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: callbackUrl },
     })
     if (oauthError) {
       setGoogleLoading(false)
