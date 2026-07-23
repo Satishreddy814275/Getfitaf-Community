@@ -317,10 +317,10 @@ export default async function BetaLandingPage() {
                 <div className="text-center">
                   <p className="text-zinc-500 text-[11px] uppercase tracking-widest mb-1">Your first month</p>
                   <p className="text-white text-4xl font-extrabold leading-none">{pricingTerms.heroPrice}</p>
-                  {pricingTerms.heroSubtext && (
-                    <div className="text-zinc-400 text-xs mt-2.5">{renderRichText(pricingTerms.heroSubtext)}</div>
-                  )}
                 </div>
+                {pricingTerms.heroSubtext && (
+                  <div className="text-zinc-400 text-xs mt-3 text-left">{renderRichText(pricingTerms.heroSubtext)}</div>
+                )}
                 <div className="h-px bg-orange-500/20 my-4" />
                 <div className="text-sm text-zinc-200 space-y-3">{renderRichText(pricingTerms.rest)}</div>
               </>
