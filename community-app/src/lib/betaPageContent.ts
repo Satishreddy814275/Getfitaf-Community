@@ -48,7 +48,11 @@ export const BETA_PAGE_SECTIONS = [
   },
   { key: 'boundaries_this_is', label: 'What this is (boundaries, left column)' },
   { key: 'boundaries_isnt', label: "What this isn't (boundaries, right column)" },
-  { key: 'pricing_terms', label: 'Pricing & terms' },
+  {
+    key: 'pricing_terms',
+    label:
+      'Pricing & terms. Block 1: just the price (e.g. "₹249"). Block 2: the smaller line under it (e.g. the month-2 price/comparison). Block 3+: the rest of the terms (cancel anytime, etc.) shown below a divider.',
+  },
   { key: 'faq', label: 'FAQ' },
 ] as const
 

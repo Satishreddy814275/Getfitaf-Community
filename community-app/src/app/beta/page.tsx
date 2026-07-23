@@ -69,6 +69,7 @@ export default async function BetaLandingPage() {
   const howItWorksSteps = parseFaqBlocks(content.how_it_works)
   const coachBio = parseCoachBio(content.about_coach)
   const whatsIncludedIntro = parseFeatureIntro(content.whats_included_intro)
+  const pricingTerms = parsePricingTerms(content.pricing_terms)
 
   return (
     <div className="min-h-full bg-[#0a0a0a] relative overflow-hidden">
@@ -310,8 +311,22 @@ export default async function BetaLandingPage() {
             <IndianRupee className="w-5 h-5 text-orange-500" aria-hidden="true" />
             Pricing &amp; terms
           </h3>
-          <div className="rounded-2xl p-6 space-y-3 text-sm text-zinc-200 bg-gradient-to-br from-orange-500/15 via-orange-500/5 to-transparent border border-orange-500/25">
-            {renderRichText(content.pricing_terms)}
+          <div className="rounded-2xl p-6 bg-gradient-to-br from-orange-500/15 via-orange-500/5 to-transparent border border-orange-500/25">
+            {pricingTerms.heroPrice ? (
+              <>
+                <div className="text-center">
+                  <p className="text-zinc-500 text-[11px] uppercase tracking-widest mb-1">Your first month</p>
+                  <p className="text-white text-4xl font-extrabold leading-none">{pricingTerms.heroPrice}</p>
+                  {pricingTerms.heroSubtext && (
+                    <div className="text-zinc-400 text-xs mt-2.5">{renderRichText(pricingTerms.heroSubtext)}</div>
+                  )}
+                </div>
+                <div className="h-px bg-orange-500/20 my-4" />
+                <div className="text-sm text-zinc-200 space-y-3">{renderRichText(pricingTerms.rest)}</div>
+              </>
+            ) : (
+              <div className="text-sm text-zinc-200 space-y-3">{renderRichText(content.pricing_terms)}</div>
+            )}
           </div>
         </div>
 
@@ -398,6 +413,23 @@ function parseCoachBio(text: string): { credential: string; stats: string[]; bod
     .map((s) => s.trim())
     .filter(Boolean)
   return { credential, stats, body }
+}
+
+// Pricing & terms format (see betaPageContent.ts label): block 1 is
+// just the headline price (e.g. "₹249"), block 2 is the smaller
+// subtext under it (e.g. the month-2 comparison line), then everything
+// after is the rest of the terms (cancel-anytime, etc.) rendered below
+// a divider. Falls back to rendering the whole field as plain prose
+// (old card layout, no big price) if there's no third block, so a
+// simpler edit never breaks.
+function parsePricingTerms(text: string): { heroPrice: string; heroSubtext: string; rest: string } {
+  if (!text || !text.trim()) return { heroPrice: '', heroSubtext: '', rest: '' }
+  const [priceBlock, subtextBlock, ...restBlocks] = text.trim().split(/\n\s*\n/)
+  const rest = restBlocks.join('\n\n')
+  if (!priceBlock || !subtextBlock || !rest) {
+    return { heroPrice: '', heroSubtext: '', rest: text.trim() }
+  }
+  return { heroPrice: priceBlock.trim(), heroSubtext: subtextBlock.trim(), rest }
 }
 
 // Splits a blank-line-separated field into one string per paragraph -
