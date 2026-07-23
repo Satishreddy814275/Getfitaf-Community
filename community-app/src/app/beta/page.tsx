@@ -13,6 +13,7 @@ import {
   MessagesSquare,
   LineChart,
   Check,
+  X,
 } from 'lucide-react'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
@@ -275,12 +276,30 @@ export default async function BetaLandingPage() {
           </h3>
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="rounded-xl p-5 bg-orange-500/[0.06] border border-orange-500/25 border-l-4 border-l-orange-500">
-              <p className="text-orange-400 text-xs font-bold uppercase tracking-wide mb-2">This is</p>
-              <div className="space-y-2 text-sm text-zinc-200">{renderRichText(content.boundaries_this_is)}</div>
+              <p className="text-orange-400 text-xs font-bold uppercase tracking-wide mb-3">This is</p>
+              <div className="space-y-2.5">
+                {splitParagraphs(content.boundaries_this_is).map((point, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded mt-0.5 bg-orange-500/15 text-orange-500 text-[9px] font-bold flex items-center justify-center shrink-0">
+                      <Check className="w-2.5 h-2.5" aria-hidden="true" />
+                    </span>
+                    <div className="text-sm text-zinc-200 leading-relaxed">{renderRichText(point)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="rounded-xl p-5 bg-zinc-500/[0.06] border border-zinc-700 border-l-4 border-l-zinc-500">
-              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wide mb-2">This isn&apos;t</p>
-              <div className="space-y-2 text-sm text-zinc-300">{renderRichText(content.boundaries_isnt)}</div>
+              <p className="text-zinc-400 text-xs font-bold uppercase tracking-wide mb-3">This isn&apos;t</p>
+              <div className="space-y-2.5">
+                {splitParagraphs(content.boundaries_isnt).map((point, i) => (
+                  <div key={i} className="flex items-start gap-2">
+                    <span className="w-4 h-4 rounded mt-0.5 bg-zinc-500/20 text-zinc-400 text-[9px] font-bold flex items-center justify-center shrink-0">
+                      <X className="w-2.5 h-2.5" aria-hidden="true" />
+                    </span>
+                    <div className="text-sm text-zinc-300 leading-relaxed">{renderRichText(point)}</div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -379,6 +398,20 @@ function parseCoachBio(text: string): { credential: string; stats: string[]; bod
     .map((s) => s.trim())
     .filter(Boolean)
   return { credential, stats, body }
+}
+
+// Splits a blank-line-separated field into one string per paragraph -
+// used for the "This is" / "This isn't" boundary points, where each
+// paragraph becomes its own check/cross row instead of one long block
+// of prose. Each point still goes through renderRichText individually
+// so **bold**/*italic* inside a point still works.
+function splitParagraphs(text: string): string[] {
+  if (!text || !text.trim()) return []
+  return text
+    .trim()
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
 }
 
 // What's included intro format (see betaPageContent.ts label): block 1
