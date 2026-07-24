@@ -79,12 +79,13 @@ export default async function FeedPage({
   // Nobody should ever land on a blank, empty-looking feed with no
   // explanation — that's a dead end, not an experience. If someone's
   // logged in but has no active membership in either space (most
-  // commonly: signed up but never actually paid), send them to /join
-  // instead, which explains the situation and gives them a way to
-  // pay. /join itself detects that they're already logged in and
-  // adjusts its messaging accordingly (see src/app/join/page.tsx).
+  // commonly: signed up but never actually paid), send them straight
+  // to /beta, which explains the situation and gives them a way to
+  // pay. Used to bounce through /join first, but /join is now just a
+  // permanent redirect to /beta (see src/app/join/page.tsx) - going
+  // there directly skips the pointless extra hop.
   if (!isAdmin && !isApproved && !hasLowTicket) {
-    redirect('/join')
+    redirect('/beta')
   }
 
   const posts = (postsRes.data as unknown as Post[] | null) || []

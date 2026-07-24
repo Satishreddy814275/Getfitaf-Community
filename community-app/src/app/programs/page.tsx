@@ -56,7 +56,7 @@ export default async function ProgramsPage() {
   // Same access gate as /workouts itself - no point offering a program
   // picker to someone who wouldn't be able to log against it anyway.
   if (!isAdmin && !hasLowTicket) {
-    redirect('/join')
+    redirect('/beta')
   }
 
   const templateRows = templatesRes.data || []

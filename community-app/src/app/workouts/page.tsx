@@ -29,7 +29,7 @@ export default async function WorkoutsPage() {
   const weightUnit: 'kg' | 'lbs' = profileRes.data?.weight_unit === 'lbs' ? 'lbs' : 'kg'
 
   if (!isAdmin && !hasLowTicket) {
-    redirect('/join')
+    redirect('/beta')
   }
 
   const plan = await getActiveWorkoutPlan(user.id)
