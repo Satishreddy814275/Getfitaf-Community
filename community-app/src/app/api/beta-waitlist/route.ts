@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { syncToMailchimp } from '@/lib/syncToMailchimp'
 
 export const runtime = 'nodejs'
 
@@ -10,14 +11,12 @@ function isValidEmail(email: string) {
 }
 
 // POST-only capture for the /beta waitlist form. Writes to
-// public.beta_waitlist rather than pushing straight into the existing
-// Mailchimp audience on purpose — that audience's automation trigger
-// ("Subscribed to audience") fires the 97-day onboarding drip, which
-// is the wrong sequence for someone who's just joined a waitlist. See
-// the beta_waitlist migration comment for the full reasoning. Satish
-// syncs this list to Mailchimp (or wherever) deliberately, on his own
-// timeline, rather than that happening automatically the moment this
-// page ships.
+// public.beta_waitlist first, then best-effort syncs to a dedicated
+// "Community Beta Waitlist" Mailchimp audience (see syncToMailchimp.ts)
+// — deliberately NOT the main GetFit AF audience, whose automation
+// trigger ("Subscribed to audience") fires the 97-day onboarding drip,
+// the wrong sequence for someone who's just joined a waitlist. See the
+// beta_waitlist migration comment for the original reasoning.
 export async function POST(req: Request) {
   let email: unknown
   try {
@@ -46,6 +45,10 @@ export async function POST(req: Request) {
     console.error('beta-waitlist: failed to insert:', error.message)
     return Response.json({ error: 'Something went wrong. Try again in a moment.' }, { status: 500 })
   }
+
+  // Best-effort - see syncToMailchimp.ts for why this never throws and
+  // never blocks the signup response on its own account.
+  await syncToMailchimp(normalizedEmail)
 
   return Response.json({ ok: true })
 }
