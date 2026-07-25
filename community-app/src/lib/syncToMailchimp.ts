@@ -14,7 +14,7 @@ import crypto from 'crypto'
 // ID in the URL is what decides which audience gets written to. A
 // Mailchimp hiccup should never fail the actual waitlist signup, so
 // this logs and returns rather than throwing.
-export async function syncToMailchimp(email: string) {
+export async function syncToMailchimp(email: string, name?: string) {
   const apiKey = process.env.MAILCHIMP_API_KEY
   const listId = process.env.MAILCHIMP_BETA_WAITLIST_LIST_ID
 
@@ -54,6 +54,12 @@ export async function syncToMailchimp(email: string) {
           // that already unsubscribed themselves from this audience
           // won't silently flip them back to subscribed.
           status_if_new: 'subscribed',
+          // FNAME is Mailchimp's default merge field for first name -
+          // already exists on every audience without extra setup.
+          // Omitted (rather than sent as '') when name isn't passed, so
+          // old callers without a name don't blank out a field that may
+          // already be set from a previous sync.
+          ...(name ? { merge_fields: { FNAME: name } } : {}),
         }),
       }
     )

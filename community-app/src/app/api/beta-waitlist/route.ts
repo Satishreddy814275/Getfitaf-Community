@@ -19,9 +19,11 @@ function isValidEmail(email: string) {
 // beta_waitlist migration comment for the original reasoning.
 export async function POST(req: Request) {
   let email: unknown
+  let name: unknown
   try {
     const body = await req.json()
     email = body?.email
+    name = body?.name
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 })
   }
@@ -30,7 +32,15 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Enter a valid email address' }, { status: 400 })
   }
 
+  // Required as of the name-field addition — see the beta_waitlist
+  // migration comment for why the column itself stays nullable
+  // (pre-existing rows have no name on file).
+  if (typeof name !== 'string' || !name.trim()) {
+    return Response.json({ error: 'Enter your first name' }, { status: 400 })
+  }
+
   const normalizedEmail = email.trim().toLowerCase()
+  const trimmedName = name.trim()
   const supabase = createAdminClient()
 
   // onConflict on the unique email column — resubmitting the same
@@ -39,7 +49,10 @@ export async function POST(req: Request) {
   // just mean "you're on the list."
   const { error } = await supabase
     .from('beta_waitlist')
-    .upsert({ email: normalizedEmail }, { onConflict: 'email', ignoreDuplicates: true })
+    .upsert(
+      { email: normalizedEmail, name: trimmedName },
+      { onConflict: 'email', ignoreDuplicates: true }
+    )
 
   if (error) {
     console.error('beta-waitlist: failed to insert:', error.message)
@@ -48,7 +61,7 @@ export async function POST(req: Request) {
 
   // Best-effort - see syncToMailchimp.ts for why this never throws and
   // never blocks the signup response on its own account.
-  await syncToMailchimp(normalizedEmail)
+  await syncToMailchimp(normalizedEmail, trimmedName)
 
   return Response.json({ ok: true })
 }

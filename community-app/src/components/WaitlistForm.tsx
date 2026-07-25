@@ -7,6 +7,7 @@ import { useState } from 'react'
 // the page that needs interactivity/state - everything else on /beta
 // is static marketing copy.
 export default function WaitlistForm() {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -20,7 +21,7 @@ export default function WaitlistForm() {
       const res = await fetch('/api/beta-waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ name, email }),
       })
       const data = await res.json()
 
@@ -51,6 +52,14 @@ export default function WaitlistForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-2">
+      <input
+        type="text"
+        required
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Your first name"
+        className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/50 transition"
+      />
       <div className="flex flex-col sm:flex-row gap-2">
         <input
           type="email"
