@@ -1,6 +1,7 @@
 import Stripe from 'stripe'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { notifyUnmatchedPayment } from '@/lib/notifyUnmatchedPayment'
+import { removeFromMailchimpWaitlist } from '@/lib/removeFromMailchimpWaitlist'
 
 // Needs the Node runtime (not Edge) — the Stripe SDK and raw-body
 // signature verification below both require it.
@@ -102,6 +103,13 @@ async function handleSubscriptionCreated(
     },
     { onConflict: 'profile_id,space' }
   )
+
+  // This is the moment someone actually becomes a member - pull them
+  // out of the Mailchimp waitlist sequence (Day 4+ emails and the
+  // launch-countdown broadcasts) so a paying member never gets a "3
+  // days left, don't miss your spot" email after they've already
+  // joined. Best-effort - see removeFromMailchimpWaitlist.ts.
+  await removeFromMailchimpWaitlist(email)
 }
 
 // Shared by payment_succeeded and payment_failed — both need to find
