@@ -4,9 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
 import { compressImage } from '@/lib/compressImage'
+import type { Space } from '@/types'
 
 export default function PostComposer({
   isAdmin = false,
+  postSpace,
   initialLessonId = null,
   initialLessonTitle = null,
   // Generic pre-fill, independent of the lesson-completion mechanism
@@ -20,6 +22,13 @@ export default function PostComposer({
   initialContent = null,
 }: {
   isAdmin?: boolean
+  // Which space a new post gets tagged with, passed down explicitly
+  // from FeedTabs' space filter rather than guessed server-side (see
+  // feed/actions.ts createPost). Null specifically means "ambiguous" -
+  // an admin sitting on the merged "All spaces" view - in which case
+  // this renders a hint instead of a form, rather than silently
+  // defaulting to one space like it used to.
+  postSpace: Space | null
   initialLessonId?: string | null
   initialLessonTitle?: string | null
   initialContent?: string | null
@@ -62,11 +71,16 @@ export default function PostComposer({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim() && !file) return
+    // Belt-and-suspenders alongside the disabled form below - the
+    // submit button is already disabled while postSpace is null, but
+    // this guards against any other way handleSubmit could fire.
+    if (!postSpace) return
 
     setUploading(true)
     const formData = new FormData()
     formData.set('content', content)
     formData.set('is_announcement', String(isAdmin && isAnnouncement))
+    formData.set('space', postSpace)
     if (lessonId) formData.set('lesson_id', lessonId)
 
     if (file) {
@@ -107,6 +121,17 @@ export default function PostComposer({
     setLessonId(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     setUploading(false)
+  }
+
+  // Ambiguous target space (admin on the merged "All spaces" view) -
+  // show a hint instead of a form nobody can safely submit, rather than
+  // silently guessing which space a new post belongs to.
+  if (!postSpace) {
+    return (
+      <div className="glass rounded-2xl p-4 text-sm text-zinc-400">
+        Select Premium or Low-ticket above to post here.
+      </div>
+    )
   }
 
   return (

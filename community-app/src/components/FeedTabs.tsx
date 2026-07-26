@@ -6,15 +6,16 @@ import Image from 'next/image'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
-import type { Post, LeaderboardRow } from '@/types'
+import type { Post, LeaderboardRow, Space } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
-type SpaceFilter = 'all' | 'premium' | 'low_ticket'
+type SpaceFilter = 'all' | Space
 
 export default function FeedTabs({
   posts,
   currentUserId,
   isAdmin,
+  availableSpaces,
   initialLessonId,
   initialLessonTitle,
   initialContent,
@@ -25,6 +26,12 @@ export default function FeedTabs({
   posts: Post[]
   currentUserId: string
   isAdmin: boolean
+  // Which spaces this specific person has real access to (see
+  // feed/page.tsx) - drives whether the space switcher below shows up
+  // at all (only when there's more than one) and which options it
+  // offers. Single-space members (the vast majority) never see it,
+  // same experience as before this existed.
+  availableSpaces: Space[]
   initialLessonId: string | null
   initialLessonTitle: string | null
   // Plain pre-fill text, independent of the lesson-completion pair
@@ -45,10 +52,24 @@ export default function FeedTabs({
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
   const [postNotFound, setPostNotFound] = useState(false)
   const [search, setSearch] = useState('')
-  // Admin-only - regular members' feed is already scoped to a single
-  // space by RLS, so this control would have nothing to actually
-  // filter for them.
-  const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>('all')
+  // Only meaningful for someone with access to more than one space -
+  // regular single-space members' feed is already fully scoped by RLS,
+  // so this has nothing to actually switch for them (canFilterSpace
+  // below stays false and the whole control never renders). Admins
+  // default to the merged "All spaces" view (unchanged from before);
+  // a non-admin with real dual access instead defaults straight into
+  // their primary space, since "all" has no obvious post-target for
+  // them and would just mean an extra tap before they can post at all.
+  const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>(
+    isAdmin ? 'all' : availableSpaces[0] || 'premium'
+  )
+  const canFilterSpace = availableSpaces.length > 1
+  // What a new post from this composer should be tagged with. Null
+  // specifically means "ambiguous" (admin sitting on the merged "All
+  // spaces" view) - PostComposer treats null as "pick a space first"
+  // rather than silently guessing, which is the exact bug this whole
+  // feature replaces.
+  const postSpace: Space | null = spaceFilter === 'all' ? null : spaceFilter
 
   // Drives the overlay's fade/scale transition. Kept separate from
   // selectedPost itself: opening needs a render with the "hidden"
@@ -200,14 +221,19 @@ export default function FeedTabs({
             placeholder="Search members or posts..."
             className="w-full glass rounded-full px-4 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 transition"
           />
-          {isAdmin && (
+          {canFilterSpace && (
             <div className="flex items-center gap-1.5">
               {(
-                [
-                  { key: 'all', label: 'All spaces' },
-                  { key: 'premium', label: 'Premium' },
-                  { key: 'low_ticket', label: 'Low-ticket' },
-                ] as { key: SpaceFilter; label: string }[]
+                (isAdmin
+                  ? [
+                      { key: 'all', label: 'All spaces' },
+                      { key: 'premium', label: 'Premium' },
+                      { key: 'low_ticket', label: 'Low-ticket' },
+                    ]
+                  : availableSpaces.map((s) => ({
+                      key: s,
+                      label: s === 'premium' ? 'Premium' : 'Low-Ticket Community',
+                    }))) as { key: SpaceFilter; label: string }[]
               ).map((opt) => (
                 <button
                   key={opt.key}
@@ -237,6 +263,7 @@ export default function FeedTabs({
         <div className="mb-6">
           <PostComposer
             isAdmin={isAdmin}
+            postSpace={postSpace}
             initialLessonId={initialLessonId}
             initialLessonTitle={initialLessonTitle}
             initialContent={initialContent}

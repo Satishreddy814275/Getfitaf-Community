@@ -6,7 +6,7 @@ import InstallAppBanner from '@/components/InstallAppBanner'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
-import type { Post, LeaderboardRow } from '@/types'
+import type { Post, LeaderboardRow, Space } from '@/types'
 
 export default async function FeedPage({
   searchParams,
@@ -76,6 +76,18 @@ export default async function FeedPage({
   const hasLowTicket = !!membershipRes.data
   const hasSelectedProgram = !!enrollmentRes.data
 
+  // Which spaces this person actually has access to - drives whether
+  // FeedTabs shows a space switcher at all, and which spaces it offers.
+  // Admins get both regardless of their own approved/membership state
+  // (matches the is_admin() bypass in has_space_access()). Everyone
+  // else: premium via the existing `approved` flag, low_ticket via the
+  // membership row already fetched above - either, neither, or both.
+  // Order is fixed (premium first) so a dual-access member's default
+  // tab matches what a premium-only member already sees today.
+  const availableSpaces: Space[] = isAdmin
+    ? ['premium', 'low_ticket']
+    : [...(isApproved ? (['premium'] as const) : []), ...(hasLowTicket ? (['low_ticket'] as const) : [])]
+
   // Nobody should ever land on a blank, empty-looking feed with no
   // explanation — that's a dead end, not an experience. If someone's
   // logged in but has no active membership in either space (most
@@ -139,6 +151,7 @@ export default async function FeedPage({
           posts={posts}
           currentUserId={user.id}
           isAdmin={isAdmin}
+          availableSpaces={availableSpaces}
           initialLessonId={lessonId}
           initialLessonTitle={lessonTitle}
           initialContent={initialContent}

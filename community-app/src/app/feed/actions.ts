@@ -18,18 +18,30 @@ export async function createPost(formData: FormData) {
 
   if (!content && !mediaUrl) return
 
-  // Tag the post with whichever space this member belongs to, so it
-  // only shows up in that space's feed (see migration-spaces.sql). A
-  // member could in principle belong to both — nobody does yet, so
-  // this just takes the first membership found rather than needing a
-  // space-switcher in the composer UI.
-  const { data: membership } = await supabase
-    .from('space_memberships')
-    .select('space')
-    .eq('profile_id', user.id)
-    .limit(1)
-    .maybeSingle()
-  const space = membership?.space || 'premium'
+  // Tag the post with whichever space the composer says it's for (see
+  // migration-spaces.sql for the RLS side). FeedTabs now passes this
+  // explicitly based on whichever space tab is active (and refuses to
+  // render a submittable composer at all when that's ambiguous - see
+  // PostComposer) - this matters for anyone with access to more than
+  // one space (admins today, dual-access members after an upgrade),
+  // since a post's correct space can no longer be guessed correctly
+  // from membership rows alone once someone has more than one.
+  const requestedSpace = formData.get('space') as string | null
+  let space: string
+  if (requestedSpace === 'premium' || requestedSpace === 'low_ticket') {
+    space = requestedSpace
+  } else {
+    // Defensive fallback for any caller that doesn't pass an explicit
+    // space (there shouldn't be one after this change, but this avoids
+    // a hard failure if one ever shows up) - same lookup as before.
+    const { data: membership } = await supabase
+      .from('space_memberships')
+      .select('space')
+      .eq('profile_id', user.id)
+      .limit(1)
+      .maybeSingle()
+    space = membership?.space || 'premium'
+  }
 
   await supabase.from('posts').insert({
     author_id: user.id,
