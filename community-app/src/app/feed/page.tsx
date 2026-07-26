@@ -6,6 +6,8 @@ import InstallAppBanner from '@/components/InstallAppBanner'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
+import RulesGate from '@/components/RulesGate'
+import { getCommunityGuidelines } from '@/lib/communityGuidelines'
 import type { Post, LeaderboardRow, Space } from '@/types'
 
 export default async function FeedPage({
@@ -40,6 +42,12 @@ export default async function FeedPage({
   // completion pair above (see PostComposer's own comment on why they
   // stay separate).
   const initialContent = params.prefill || null
+
+  // Kicked off alongside the queries below rather than awaited inline -
+  // it's a separate admin-client read (see communityGuidelines.ts), not
+  // part of this page's own supabase client / RLS-scoped batch, but
+  // there's no reason to block one on the other.
+  const guidelinesPromise = getCommunityGuidelines()
 
   const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, enrollmentRes] =
     await Promise.all([
@@ -100,6 +108,7 @@ export default async function FeedPage({
     redirect('/beta')
   }
 
+  const guidelines = await guidelinesPromise
   const posts = (postsRes.data as unknown as Post[] | null) || []
   const streak = typeof streakRes.data === 'number' ? streakRes.data : 0
   const allRankings = (leaderboardRes.data as LeaderboardRow[] | null) || []
@@ -132,15 +141,22 @@ export default async function FeedPage({
           the card that was already there underneath. Once a program's
           actually picked, both disappear for good and only the "Choose
           Your Program" nav link remains. */}
-      {hasLowTicket && !hasSelectedProgram && (
-        <>
-          <WorkoutBuilderCard href="/programs" />
+      {hasLowTicket && !hasSelectedProgram && <WorkoutBuilderCard href="/programs" />}
+
+      {/* Gates the program-picker popup (and anything else added here
+          later) behind a one-time Community Guidelines acknowledgment -
+          see RulesGate. Applies to every member, not just low-ticket,
+          since the guidelines govern the whole group; the program popup
+          itself still only renders for low-ticket members without a
+          program picked, same condition as before. */}
+      <RulesGate userId={user.id} intro={guidelines.intro} rules={guidelines.rules}>
+        {hasLowTicket && !hasSelectedProgram && (
           <WorkoutBuilderPromptModal
             href="/programs"
             storageKey={`program-prompt-dismissed-${user.id}`}
           />
-        </>
-      )}
+        )}
+      </RulesGate>
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">
         {/* Tabs, mobile leaderboard teaser, composer, and feed — FeedTabs

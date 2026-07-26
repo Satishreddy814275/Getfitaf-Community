@@ -170,6 +170,7 @@ export default function AppNav({
           <div className="flex items-center gap-4">
             <NotificationBell initialNotifications={notifications} />
             <NavLink href="/leaderboard">Leaderboard</NavLink>
+            <NavLink href="/guidelines">Guidelines</NavLink>
             <NavLink href="/profile">Edit Profile</NavLink>
             {isAdmin && <NavLink href="/admin">Admin</NavLink>}
             {showLessons ? (
@@ -271,6 +272,13 @@ export default function AppNav({
                 Daily lessons - coming soon for this membership.
               </p>
             )}
+            <Link
+              href="/guidelines"
+              onClick={() => setMoreOpen(false)}
+              className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+            >
+              Guidelines
+            </Link>
             <Link
               href="/profile"
               onClick={() => setMoreOpen(false)}

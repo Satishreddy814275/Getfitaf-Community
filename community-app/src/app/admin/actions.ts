@@ -1286,3 +1286,21 @@ export async function updateBetaPageContent(key: string, content: string) {
   revalidatePath('/admin/beta-page')
   revalidatePath('/beta')
 }
+
+// Saves the Community Guidelines shown in the first-time rules modal and
+// on /guidelines - see communityGuidelines.ts for the intro/rules_text
+// authoring convention. Single row (id=1), so no key param needed like
+// updateBetaPageContent above.
+export async function updateCommunityGuidelines(intro: string, rulesText: string) {
+  const { isAdmin } = await requireAdmin()
+  if (!isAdmin) return
+
+  const admin = createAdminClient()
+  await admin
+    .from('community_guidelines')
+    .update({ intro, rules_text: rulesText, updated_at: new Date().toISOString() })
+    .eq('id', 1)
+
+  revalidatePath('/admin/guidelines')
+  revalidatePath('/guidelines')
+}

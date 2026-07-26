@@ -98,6 +98,12 @@ export default async function AdminPage() {
           >
             Beta Page →
           </Link>
+          <Link
+            href="/admin/guidelines"
+            className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+          >
+            Guidelines →
+          </Link>
         </div>
       </div>
 

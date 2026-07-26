@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import { Pin } from 'lucide-react'
 import { addComment, editPost, toggleLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
@@ -86,9 +87,10 @@ export default function PostCard({
       {/* Text section — header, pin/announcement labels, caption */}
       <div className="p-5">
         {post.pinned && (
-          <p className="text-xs font-semibold text-zinc-400 mb-2 flex items-center gap-1.5">
-            📌 Pinned
-          </p>
+          <span className="inline-flex items-center gap-1 mb-2 px-2.5 py-1 rounded-full text-xs font-semibold text-[#fb923c] bg-[rgba(249,115,22,0.12)] border border-[rgba(249,115,22,0.3)]">
+            <Pin className="w-3 h-3 rotate-45" strokeWidth={2.5} />
+            Pinned
+          </span>
         )}
         {post.is_announcement && (
           <p className="text-xs font-semibold text-orange-400 mb-2 flex items-center gap-1.5">
