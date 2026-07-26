@@ -146,7 +146,12 @@ export default function AppNav({
   const [moreOpen, setMoreOpen] = useState(false)
   const { sessionActive } = useSessionActive()
   const showWorkouts = hasLowTicket || isAdmin
-  const showLessons = isAdmin || isApproved
+  // Low-ticket members now get a self-guided, day-drip version of the
+  // lesson content on learn.getfitaf.fitness/dashboard.html (see
+  // supabase-migration-community-spaces.sql's space_memberships and
+  // dashboard.html's isLowTicketOnly/unlockedDay) - no longer just
+  // "coming soon" for this membership tier.
+  const showLessons = isAdmin || isApproved || hasLowTicket
 
   return (
     <>
