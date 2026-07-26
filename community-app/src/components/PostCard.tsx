@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { addComment, toggleLike } from '@/app/feed/actions'
+import { addComment, editPost, toggleLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
 import LikeSummary from './LikeSummary'
@@ -32,10 +32,18 @@ export default function PostCard({
   // actually about.
   const [showComments, setShowComments] = useState(!!initialCommentId)
   const [imageExpanded, setImageExpanded] = useState(false)
+  // Editing own-post text - admins can edit any post, matching the
+  // same trust level as their existing delete rights (see
+  // migration-pinned-posts.sql's posts_update policy, which this
+  // reuses as-is).
+  const [editing, setEditing] = useState(false)
+  const [editContent, setEditContent] = useState(post.content || '')
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
   const likeCount = post.likes.length
   const hasMedia = !!post.media_url
+  const canEdit = post.profiles?.id === currentUserId || isAdmin
 
   async function handleComment(e: React.FormEvent) {
     e.preventDefault()
@@ -44,6 +52,27 @@ export default function PostCard({
     formData.set('content', commentText)
     await addComment(post.id, formData)
     setCommentText('')
+  }
+
+  function startEditing() {
+    setEditContent(post.content || '')
+    setEditing(true)
+  }
+
+  function cancelEditing() {
+    setEditContent(post.content || '')
+    setEditing(false)
+  }
+
+  async function handleSaveEdit() {
+    const trimmed = editContent.trim()
+    if (!trimmed) return
+    setSavingEdit(true)
+    const formData = new FormData()
+    formData.set('content', trimmed)
+    await editPost(post.id, formData)
+    setSavingEdit(false)
+    setEditing(false)
   }
 
   return (
@@ -74,6 +103,7 @@ export default function PostCard({
             </p>
             <p className="text-xs text-zinc-500 flex items-center gap-1.5">
               {formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}
+              {post.edited_at && <span title={new Date(post.edited_at).toLocaleString()}>(edited)</span>}
               {isAdmin && (
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap ${
@@ -87,12 +117,52 @@ export default function PostCard({
               )}
             </p>
           </div>
+
+          {canEdit && !editing && (
+            <button
+              type="button"
+              onClick={startEditing}
+              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition shrink-0"
+            >
+              Edit
+            </button>
+          )}
         </div>
 
-        {post.content && (
-          <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-200">
-            {post.content}
-          </p>
+        {editing ? (
+          <div className="mt-3">
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              rows={3}
+              autoFocus
+              className="w-full resize-none rounded-lg bg-zinc-900 border border-zinc-700 text-sm p-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
+            />
+            <div className="flex items-center gap-2 mt-2">
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={savingEdit || !editContent.trim()}
+                className="text-sm font-medium text-orange-500 hover:text-orange-400 disabled:opacity-40 transition"
+              >
+                {savingEdit ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={savingEdit}
+                className="text-sm text-zinc-500 hover:text-zinc-300 disabled:opacity-40 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          post.content && (
+            <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-200">
+              {post.content}
+            </p>
+          )
         )}
       </div>
 

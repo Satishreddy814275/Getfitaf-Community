@@ -52,6 +52,10 @@ export interface Post {
   pinned: boolean
   space: Space
   created_at: string
+  // Null = never edited. Set by editPost() in feed/actions.ts whenever
+  // a post's content is saved after the fact - drives the "(edited)"
+  // indicator in PostCard.
+  edited_at: string | null
   profiles: Profile | null
   comments: Comment[]
   likes: Like[]

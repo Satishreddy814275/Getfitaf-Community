@@ -56,6 +56,28 @@ export async function createPost(formData: FormData) {
   revalidatePath('/feed')
 }
 
+export async function editPost(postId: string, formData: FormData) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  const content = ((formData.get('content') as string) || '').trim()
+  if (!content) return
+
+  // RLS (posts_update - see migration-pinned-posts.sql) already scopes
+  // this to the post's own author or an admin, same policy the pin
+  // toggle uses - this update simply no-ops (0 rows affected) rather
+  // than erroring if someone who isn't either somehow calls it.
+  await supabase
+    .from('posts')
+    .update({ content, edited_at: new Date().toISOString() })
+    .eq('id', postId)
+
+  revalidatePath('/feed')
+}
+
 export async function addComment(
   postId: string,
   formData: FormData,
