@@ -157,6 +157,45 @@ export interface WorkoutPlanDay {
   // that apply to the whole day rather than any one exercise. Optional,
   // absent on older AI-generated plans.
   notes?: string
+  // Open-vocabulary tag ('upper', 'lower', 'cardio', 'full_body', ...)
+  // used to find a same-focus day in another equipment tier when a
+  // member on a gym program can't make it to the gym - see
+  // getHomeWorkoutOptions in workouts/actions.ts. Deliberately not tied
+  // to day number or program length (those can and do differ between
+  // tiers, e.g. a future push/pull/legs gym split vs. a 3-day at-home
+  // upper/lower/cardio rotation) - matching by this tag instead of
+  // position is what makes that divergence a non-issue. Null/absent on
+  // days that don't have a clean equivalent elsewhere (e.g. Foundations'
+  // "Basic Prep").
+  focus?: string | null
+  exercises: WorkoutExercise[]
+}
+
+// One published program's day, annotated with which program it came
+// from - the shape getHomeWorkoutOptions returns for the "can't make
+// it to the gym" picker. Deliberately a flat snapshot (program name +
+// day, not ids the picker has to re-resolve) since it's built
+// server-side from data the picker never needs to re-fetch.
+export interface HomeWorkoutOption {
+  programId: string
+  programName: string
+  week: number
+  day: number
+  label: string
+  exercises: WorkoutExercise[]
+}
+
+// A member-applied home-workout substitute for one specific (week, day)
+// occurrence of their current plan (see workout_day_overrides,
+// applyHomeWorkoutSwap in workouts/actions.ts). Presence of one (keyed
+// by "${week}-${day}" in WorkoutDayPicker) means the day's own
+// exercises are replaced by these for display and logging - a one-time
+// swap, not a standing change to the program itself.
+export interface WorkoutDayOverride {
+  week: number
+  day: number
+  sourceProgramName: string
+  sourceLabel: string
   exercises: WorkoutExercise[]
 }
 

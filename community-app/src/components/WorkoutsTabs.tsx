@@ -6,13 +6,21 @@ import WorkoutDayPicker from './WorkoutDayPicker'
 import WorkoutHistoryList from './WorkoutHistoryList'
 import { useSessionActive } from './SessionActiveProvider'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
-import type { WorkoutPlanDay, LastLoggedSet, WorkoutHistoryGroup, WorkoutExerciseSwap } from '@/types'
+import type {
+  WorkoutPlanDay,
+  LastLoggedSet,
+  WorkoutHistoryGroup,
+  WorkoutExerciseSwap,
+  WorkoutDayOverride,
+} from '@/types'
 
 type Tab = 'current' | 'history'
 
 export default function WorkoutsTabs({
   generationId,
   days,
+  requiresGym,
+  dayOverrides,
   completedCells,
   lastByExercise,
   history,
@@ -23,6 +31,10 @@ export default function WorkoutsTabs({
 }: {
   generationId: string
   days: WorkoutPlanDay[]
+  // Whether the currently-enrolled program needs a gym - drives whether
+  // WorkoutDayPicker offers the home-workout-substitute option at all.
+  requiresGym: boolean
+  dayOverrides: Record<string, WorkoutDayOverride>
   completedCells: string[]
   lastByExercise: Record<string, LastLoggedSet>
   history: WorkoutHistoryGroup[]
@@ -100,6 +112,8 @@ export default function WorkoutsTabs({
         <WorkoutDayPicker
           generationId={generationId}
           days={days}
+          requiresGym={requiresGym}
+          dayOverrides={dayOverrides}
           completedCells={completedCells}
           lastByExercise={lastByExercise}
           history={history}

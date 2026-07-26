@@ -4,6 +4,13 @@ import type { WorkoutPlanDay } from '@/types'
 export interface ActiveWorkoutPlan {
   generationId: string
   days: WorkoutPlanDay[]
+  // Which program template this enrollment points at, and whether it
+  // needs a gym - drives whether the "can't make it to the gym today"
+  // swap option shows at all (see getHomeWorkoutOptions in
+  // workouts/actions.ts). Home-tier members never see it - there's
+  // nothing to substitute away from.
+  programTemplateId: string
+  requiresGym: boolean
 }
 
 // Finds the plan a member should be logging against: their most
@@ -38,14 +45,19 @@ export async function getActiveWorkoutPlan(profileId: string): Promise<ActiveWor
 
   const { data: template } = await admin
     .from('program_templates')
-    .select('structured_plan')
+    .select('structured_plan, requires_gym')
     .eq('id', enrollment.program_template_id)
     .maybeSingle()
 
   const days = (template?.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days
   if (!Array.isArray(days) || days.length === 0) return null
 
-  return { generationId: enrollment.id, days }
+  return {
+    generationId: enrollment.id,
+    days,
+    programTemplateId: enrollment.program_template_id,
+    requiresGym: !!template?.requires_gym,
+  }
 }
 
 // Regenerating a plan (the free-text-feedback tweak, up to 3x per

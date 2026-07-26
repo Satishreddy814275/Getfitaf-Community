@@ -5,7 +5,14 @@ import { getActiveWorkoutPlan } from '@/lib/workoutPlan'
 import { buildLogAsDurationLookup } from '@/lib/workoutBlocks'
 import WorkoutsTabs from '@/components/WorkoutsTabs'
 import type { ExerciseVideo } from '@/lib/exerciseVideos'
-import type { LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup, WorkoutHistorySet } from '@/types'
+import type {
+  LastLoggedSet,
+  WorkoutDayOverride,
+  WorkoutExercise,
+  WorkoutExerciseSwap,
+  WorkoutHistoryGroup,
+  WorkoutHistorySet,
+} from '@/types'
 
 export default async function WorkoutsPage() {
   const supabase = await createClient()
@@ -81,6 +88,7 @@ export default async function WorkoutsPage() {
     { data: videosData },
     { data: swapsData },
     { data: allSessions },
+    { data: dayOverridesData },
   ] = await Promise.all([
     // Scoped to ONLY the current generation, not aggregated across past
     // regenerations - a regenerated plan can have different exercises
@@ -138,6 +146,16 @@ export default async function WorkoutsPage() {
       .eq('profile_id', user.id)
       .not('completed_at', 'is', null)
       .order('completed_at', { ascending: false }),
+
+    // Home-workout substitutes this member has picked for specific
+    // occurrences of the current plan - see applyHomeWorkoutSwap in
+    // actions.ts. Scoped to the current generation, same reasoning as
+    // swapsData above.
+    supabase
+      .from('workout_day_overrides')
+      .select('week_number, day_number, source_program_name, source_label, exercises')
+      .eq('profile_id', user.id)
+      .eq('generation_id', plan.generationId),
   ])
 
   const completedCells = Array.from(
@@ -149,6 +167,17 @@ export default async function WorkoutsPage() {
     videoUrl: v.video_url,
     coachNotes: v.coach_notes || undefined,
   }))
+
+  const dayOverrides: Record<string, WorkoutDayOverride> = {}
+  for (const row of dayOverridesData || []) {
+    dayOverrides[`${row.week_number}-${row.day_number}`] = {
+      week: row.week_number,
+      day: row.day_number,
+      sourceProgramName: row.source_program_name,
+      sourceLabel: row.source_label,
+      exercises: row.exercises as WorkoutExercise[],
+    }
+  }
 
   const swaps: WorkoutExerciseSwap[] = (swapsData || []).map((s) => ({
     weekNumber: s.week_number,
@@ -231,6 +260,8 @@ export default async function WorkoutsPage() {
       <WorkoutsTabs
         generationId={plan.generationId}
         days={plan.days}
+        requiresGym={plan.requiresGym}
+        dayOverrides={dayOverrides}
         completedCells={completedCells}
         lastByExercise={lastByExercise}
         history={history}

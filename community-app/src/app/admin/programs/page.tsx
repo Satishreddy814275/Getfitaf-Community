@@ -34,7 +34,7 @@ export default async function AdminProgramsPage() {
       supabase
         .from('program_templates')
         .select(
-          'id, name, level, equipment_tier, duration_weeks, description, is_published, structured_plan'
+          'id, name, level, equipment_tier, duration_weeks, description, is_published, requires_gym, structured_plan'
         )
         .order('created_at'),
 

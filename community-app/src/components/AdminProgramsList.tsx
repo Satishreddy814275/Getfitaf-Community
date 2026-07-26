@@ -33,6 +33,13 @@ interface ProgramRow {
   duration_weeks: number
   description: string | null
   is_published: boolean
+  // Drives whether members enrolled in this program see the "can't
+  // make it to the gym today?" home-workout-swap option - see
+  // getHomeWorkoutOptions in workouts/actions.ts. Independent of
+  // equipment_tier's free text (which has some casing/naming drift -
+  // see the home-workout-backup migration) - this is the one
+  // authoritative signal code actually branches on.
+  requires_gym: boolean
   // Editable here via "Edit day" (see DayEditor) - grouping into
   // rounds, ungrouping, renaming/swapping exercises, and tweaking
   // sets/reps/rest/timer/trackWeight all live in that one screen, so
@@ -724,6 +731,7 @@ function DayEditor({
   label,
   exercises,
   notes,
+  focus,
   exercisePool,
   allDays,
   onClose,
@@ -734,12 +742,14 @@ function DayEditor({
   label: string
   exercises: WorkoutPlanDay['exercises']
   notes?: string
+  focus?: string | null
   exercisePool: ExercisePoolEntry[]
   allDays: WorkoutPlanDay[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [blocks, setBlocks] = useState<EditableBlock[]>(() => collapseExercisesToBlocks(exercises))
+  const [focusText, setFocusText] = useState(focus || '')
   // Snapshot of the day's structure exactly as it was when this editor
   // was opened - never updated after that - so handleSave can diff
   // "what changed structurally this session" regardless of how many
@@ -886,7 +896,7 @@ function DayEditor({
       (d) => d.label === label && !(d.week === week && d.day === day) && d.exercises.length > 0
     )
 
-    await updateProgramDay(programId, week, day, blocks, notesText.trim() || null)
+    await updateProgramDay(programId, week, day, blocks, notesText.trim() || null, focusText.trim() || null)
 
     if (changes.length > 0 && siblings.length > 0) {
       await propagateDayStructuralChanges(programId, label, week, day, changes)
@@ -925,6 +935,24 @@ function DayEditor({
           rows={2}
           className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white placeholder-zinc-700"
         />
+      </div>
+
+      <div>
+        <label className="text-[11px] uppercase tracking-wide text-zinc-500 mb-1 block">
+          Focus tag (for home-workout matching)
+        </label>
+        <input
+          type="text"
+          value={focusText}
+          onChange={(e) => setFocusText(e.target.value)}
+          placeholder="e.g. upper, lower, cardio, full_body - leave blank if nothing comparable exists elsewhere"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white placeholder-zinc-700"
+        />
+        <p className="text-[10px] text-zinc-600 mt-1">
+          Used to find a same-focus day in another equipment tier when a gym member can&apos;t make it in - same tag
+          text on a day in any other published program makes it a candidate, regardless of program name or day
+          number.
+        </p>
       </div>
 
       {PHASES.map((phase) => {
@@ -1362,6 +1390,11 @@ function DayPreview({
           {day.isCardio && (
             <span className="ml-2 text-[10px] uppercase tracking-wide text-orange-400">Cardio</span>
           )}
+          {day.focus && (
+            <span className="ml-2 text-[10px] uppercase tracking-wide text-zinc-500 border border-zinc-700 rounded px-1 py-0.5">
+              {day.focus}
+            </span>
+          )}
         </span>
         <span className="text-xs text-zinc-600">
           {isEmpty ? 'Rest / empty' : `${day.exercises.length} exercises`} {open ? '▲' : '▼'}
@@ -1378,6 +1411,7 @@ function DayPreview({
               label={day.label}
               exercises={day.exercises}
               notes={day.notes}
+              focus={day.focus}
               exercisePool={exercisePool}
               allDays={allDays}
               onClose={() => setIsEditingDay(false)}
@@ -1850,6 +1884,7 @@ function ProgramCard({
   const [equipmentTier, setEquipmentTier] = useState(program.equipment_tier)
   const [durationWeeks, setDurationWeeks] = useState(String(program.duration_weeks))
   const [description, setDescription] = useState(program.description || '')
+  const [requiresGym, setRequiresGym] = useState(program.requires_gym)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function startEdit() {
@@ -1858,6 +1893,7 @@ function ProgramCard({
     setEquipmentTier(program.equipment_tier)
     setDurationWeeks(String(program.duration_weeks))
     setDescription(program.description || '')
+    setRequiresGym(program.requires_gym)
     setIsEditing(true)
   }
 
@@ -1877,6 +1913,7 @@ function ProgramCard({
       equipmentTier,
       durationWeeks: Number(durationWeeks) || program.duration_weeks,
       description,
+      requiresGym,
     })
     setIsSaving(false)
     setIsEditing(false)
@@ -1982,6 +2019,20 @@ function ProgramCard({
               className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
             />
           </div>
+          <div className="flex items-end">
+            <label className="flex items-center gap-2 text-xs text-zinc-400">
+              <input
+                type="checkbox"
+                checked={requiresGym}
+                onChange={(e) => setRequiresGym(e.target.checked)}
+                className="accent-orange-500"
+              />
+              Requires a gym
+              <span className="text-zinc-600">
+                (members on this program see &quot;can&apos;t make it to the gym today?&quot;)
+              </span>
+            </label>
+          </div>
         </div>
         <PublishToggle isPublished={isPublished} onToggle={handleToggle} pending={isTogglePending} />
       </div>
@@ -2075,6 +2126,7 @@ function NewProgramForm() {
   const [equipmentTier, setEquipmentTier] = useState('')
   const [durationWeeks, setDurationWeeks] = useState('4')
   const [description, setDescription] = useState('')
+  const [requiresGym, setRequiresGym] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
 
   async function handleCreate() {
@@ -2086,6 +2138,7 @@ function NewProgramForm() {
       equipmentTier,
       durationWeeks: Number(durationWeeks) || 1,
       description,
+      requiresGym,
     })
     setIsSaving(false)
     setName('')
@@ -2093,6 +2146,7 @@ function NewProgramForm() {
     setEquipmentTier('')
     setDurationWeeks('4')
     setDescription('')
+    setRequiresGym(false)
     setOpen(false)
     router.refresh()
   }
@@ -2151,6 +2205,17 @@ function NewProgramForm() {
             placeholder="e.g. minimal_equipment"
             className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600"
           />
+        </div>
+        <div className="flex items-end">
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              checked={requiresGym}
+              onChange={(e) => setRequiresGym(e.target.checked)}
+              className="accent-orange-500"
+            />
+            Requires a gym
+          </label>
         </div>
       </div>
       <div>

@@ -2,7 +2,14 @@
 
 import { Fragment, useEffect, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { logWorkoutSession, requestExerciseVideo, swapExercise } from '@/app/workouts/actions'
+import {
+  applyHomeWorkoutSwap,
+  getHomeWorkoutOptions,
+  logWorkoutSession,
+  requestExerciseVideo,
+  revertHomeWorkoutSwap,
+  swapExercise,
+} from '@/app/workouts/actions'
 import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
@@ -27,7 +34,14 @@ import {
   Sparkles,
   Rocket,
 } from 'lucide-react'
-import type { WorkoutPlanDay, LastLoggedSet, WorkoutExerciseSwap, WorkoutHistoryGroup } from '@/types'
+import type {
+  WorkoutPlanDay,
+  LastLoggedSet,
+  WorkoutExerciseSwap,
+  WorkoutHistoryGroup,
+  WorkoutDayOverride,
+  HomeWorkoutOption,
+} from '@/types'
 
 interface SetRow {
   weight: string
@@ -63,6 +77,14 @@ interface Cell {
   label: string
   notes?: string
   exercises: CellExercise[]
+  // Focus tag carried straight from the template day (see the `focus`
+  // field on WorkoutPlanDay) - drives whether the home-workout-swap
+  // control has anything to offer for this cell at all.
+  focus?: string | null
+  // Set when a workout_day_overrides row exists for this occurrence -
+  // exercises above are already the substitute's, not the gym
+  // program's own, and this carries where they came from for display.
+  substitute?: { sourceProgramName: string; sourceLabel: string }
 }
 
 // Applies any swaps for this day/week on top of the template's
@@ -116,6 +138,131 @@ function resolveExercises(
           perSide: ex.perSide,
         }
   })
+}
+
+// "Can't make it to the gym today?" - shown only on days that belong
+// to a gym-tier program AND carry a focus tag (see the `focus` field
+// comment in types/index.ts). Two states: an already-applied
+// substitute shows a badge + revert; otherwise a trigger that loads
+// same-focus options from every other published non-gym program on
+// demand (not eagerly - most days on most visits, nobody taps this).
+function HomeWorkoutSwapControl({
+  generationId,
+  cell,
+  onApplied,
+}: {
+  generationId: string
+  cell: Cell
+  onApplied: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [options, setOptions] = useState<HomeWorkoutOption[] | null>(null)
+  const [applying, setApplying] = useState(false)
+  const [reverting, setReverting] = useState(false)
+
+  if (cell.substitute) {
+    return (
+      <div className="mt-3 rounded-xl px-3 py-2.5 bg-orange-500/5 border border-orange-500/20 flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs text-zinc-400">
+          <span className="text-orange-400 font-medium">🏠 Home substitute</span> - from{' '}
+          {cell.substitute.sourceProgramName} ({cell.substitute.sourceLabel})
+        </p>
+        <button
+          type="button"
+          disabled={reverting}
+          onClick={async () => {
+            setReverting(true)
+            await revertHomeWorkoutSwap(generationId, cell.week, cell.day)
+            setReverting(false)
+            onApplied()
+          }}
+          className="text-xs font-medium text-zinc-400 hover:text-white transition disabled:opacity-50 shrink-0"
+        >
+          {reverting ? 'Reverting...' : 'Revert to gym version'}
+        </button>
+      </div>
+    )
+  }
+
+  // No focus tag on this day (an older/unfinished day, or genuinely a
+  // one-off with nothing comparable elsewhere) - nothing to match
+  // against, so the control simply doesn't render rather than offering
+  // a picker with zero real options.
+  if (!cell.focus) return null
+
+  async function handleOpen() {
+    setOpen(true)
+    if (options === null) {
+      setLoading(true)
+      const result = await getHomeWorkoutOptions(cell.focus)
+      setOptions(result)
+      setLoading(false)
+    }
+  }
+
+  async function handlePick(option: HomeWorkoutOption) {
+    setApplying(true)
+    await applyHomeWorkoutSwap({ generationId, week: cell.week, day: cell.day, option })
+    setApplying(false)
+    setOpen(false)
+    onApplied()
+  }
+
+  return (
+    <div className="mt-3">
+      {!open ? (
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="text-xs font-medium text-zinc-400 hover:text-white transition underline decoration-dotted underline-offset-4"
+        >
+          Can&apos;t make it to the gym today?
+        </button>
+      ) : (
+        <div className="rounded-xl px-3 py-2.5 bg-zinc-900/60 border border-zinc-800">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-zinc-300 font-medium">Swap today for a home workout</p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-zinc-600 hover:text-white text-xs"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          {loading && <p className="text-xs text-zinc-600">Loading options...</p>}
+          {!loading && options && options.length === 0 && (
+            <p className="text-xs text-zinc-600">No matching home workout available for this day yet.</p>
+          )}
+          {!loading && options && options.length > 0 && (
+            <div className="space-y-1.5">
+              {options.map((opt) => (
+                <div
+                  key={`${opt.programId}-${opt.week}-${opt.day}`}
+                  className="flex items-center justify-between gap-3 bg-zinc-900/60 rounded-lg px-2.5 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-medium truncate">{opt.label}</p>
+                    <p className="text-zinc-500 text-[11px] truncate">{opt.programName}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={applying}
+                    onClick={() => handlePick(opt)}
+                    className="text-[11px] font-semibold text-orange-400 hover:text-orange-300 disabled:opacity-50 transition shrink-0"
+                  >
+                    {applying ? 'Using...' : 'Use this'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 const DRAFT_KEY_PREFIX = 'workout-draft-'
@@ -466,6 +613,8 @@ function playRestBeep() {
 export default function WorkoutDayPicker({
   generationId,
   days,
+  requiresGym,
+  dayOverrides,
   completedCells,
   lastByExercise,
   history,
@@ -476,6 +625,11 @@ export default function WorkoutDayPicker({
 }: {
   generationId: string
   days: WorkoutPlanDay[]
+  // Whether the currently-enrolled program needs a gym - the home-
+  // workout-swap control only ever shows for these; home-tier members
+  // have nothing to substitute away from.
+  requiresGym: boolean
+  dayOverrides: Record<string, WorkoutDayOverride>
   completedCells: string[]
   lastByExercise: Record<string, LastLoggedSet>
   history: WorkoutHistoryGroup[]
@@ -1038,14 +1192,42 @@ export default function WorkoutDayPicker({
   // correct regardless of the order rows happened to be inserted in.
   const allCells: Cell[] = [...days]
     .sort((a, b) => a.week - b.week || a.day - b.day)
-    .map((day) => ({
-      key: `${day.week}-${day.day}`,
-      week: day.week,
-      day: day.day,
-      label: day.label,
-      notes: day.notes,
-      exercises: resolveExercises(day, day.week, swaps),
-    }))
+    .map((day) => {
+      const key = `${day.week}-${day.day}`
+      const override = dayOverrides[key]
+      // A substituted day's exercises come straight from the override
+      // snapshot, not the gym program's own content - per-exercise
+      // swaps are keyed to the gym day's original exercise names, which
+      // don't exist in the substitute, so there's nothing for
+      // resolveExercises to (usefully) do here.
+      const exercises: CellExercise[] = override
+        ? override.exercises.map((ex) => ({
+            originalName: ex.name,
+            name: ex.name,
+            sets: ex.sets,
+            reps: ex.reps,
+            trackWeight: ex.trackWeight,
+            logAsDuration: ex.logAsDuration,
+            restSeconds: ex.restSeconds,
+            timerSeconds: ex.timerSeconds,
+            round: ex.round,
+            phase: ex.phase,
+            perSide: ex.perSide,
+          }))
+        : resolveExercises(day, day.week, swaps)
+      return {
+        key,
+        week: day.week,
+        day: day.day,
+        label: day.label,
+        notes: day.notes,
+        exercises,
+        focus: day.focus,
+        substitute: override
+          ? { sourceProgramName: override.sourceProgramName, sourceLabel: override.sourceLabel }
+          : undefined,
+      }
+    })
 
   const weekNumbers = Array.from(new Set(allCells.map((c) => c.week))).sort((a, b) => a - b)
 
@@ -3654,6 +3836,13 @@ export default function WorkoutDayPicker({
                             )
                           })}
                         </div>
+                        {requiresGym && (
+                          <HomeWorkoutSwapControl
+                            generationId={generationId}
+                            cell={cell}
+                            onApplied={() => router.refresh()}
+                          />
+                        )}
                         <button
                           onClick={() => openStartPopup(cell)}
                           className="w-full mt-3 bg-orange-500 hover:bg-orange-400 text-black text-sm font-semibold py-2.5 rounded-xl transition"

@@ -408,6 +408,7 @@ export async function updateProgramMetadata(
     equipmentTier: string
     durationWeeks: number
     description: string
+    requiresGym: boolean
   }
 ) {
   const { supabase, isAdmin } = await requireAdmin()
@@ -427,6 +428,7 @@ export async function updateProgramMetadata(
       equipment_tier: equipmentTier,
       duration_weeks: Math.max(1, Math.round(fields.durationWeeks) || 1),
       description: description || null,
+      requires_gym: fields.requiresGym,
     })
     .eq('id', id)
 
@@ -462,6 +464,7 @@ export async function createProgram(fields: {
   equipmentTier: string
   durationWeeks: number
   description: string
+  requiresGym: boolean
 }): Promise<string | null> {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return null
@@ -480,6 +483,7 @@ export async function createProgram(fields: {
       equipment_tier: equipmentTier,
       duration_weeks: Math.max(1, Math.round(fields.durationWeeks) || 1),
       description: description || null,
+      requires_gym: fields.requiresGym,
       is_published: false,
       structured_plan: { days: [] },
     })
@@ -1115,7 +1119,12 @@ export async function updateProgramDay(
   week: number,
   day: number,
   blocks: EditableBlock[],
-  notes: string | null
+  notes: string | null,
+  // Open-vocabulary tag ('upper', 'lower', 'cardio', 'full_body', ...) -
+  // see the `focus` field comment on WorkoutPlanDay in types/index.ts.
+  // null clears it (a day with nothing comparable elsewhere, e.g. a
+  // rest/intro day).
+  focus: string | null = null
 ) {
   const { supabase, isAdmin } = await requireAdmin()
   if (!isAdmin) return
@@ -1134,12 +1143,16 @@ export async function updateProgramDay(
   const exercises = expandBlocksToExercises(blocks)
   const withExercises = replaceDayExercises(plan.days, week, day, exercises)
   const trimmedNotes = notes?.trim() || null
+  const trimmedFocus = focus?.trim().toLowerCase() || null
 
   plan.days = withExercises.map((d) => {
     if (d.week !== week || d.day !== day) return d
-    if (trimmedNotes) return { ...d, notes: trimmedNotes }
-    const { notes: _drop, ...rest } = d
-    return rest as WorkoutPlanDay
+    const { notes: _drop, focus: _dropFocus, ...rest } = d
+    return {
+      ...rest,
+      ...(trimmedNotes ? { notes: trimmedNotes } : {}),
+      ...(trimmedFocus ? { focus: trimmedFocus } : {}),
+    } as WorkoutPlanDay
   })
 
   await supabase.from('program_templates').update({ structured_plan: plan }).eq('id', programId)
