@@ -68,6 +68,21 @@ export default function PostComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Auto-grow the textarea as content changes - resetting height to
+  // 'auto' first (rather than only ever growing) lets it shrink back
+  // down too, e.g. after deleting a few lines or clearing the field on
+  // submit. The visual cap lives in CSS (max-h-[...] + overflow-y-auto
+  // on the textarea below) rather than here, so this can freely ask
+  // for whatever height the content needs and the browser just clips
+  // it and starts scrolling once that CSS max is hit - no min/max math
+  // to keep in sync in two places.
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    textarea.style.height = 'auto'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [content])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim() && !file) return
@@ -153,8 +168,7 @@ export default function PostComposer({
         value={content}
         onChange={(e) => setContent(e.target.value)}
         placeholder="Share an update, win, or question with the group..."
-        className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500"
-        rows={3}
+        className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500 min-h-[96px] max-h-[320px] overflow-y-auto"
       />
       {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
       {isAdmin && (
