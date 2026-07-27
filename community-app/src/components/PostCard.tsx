@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import { Pin } from 'lucide-react'
 import { addComment, editPost, toggleLike } from '@/app/feed/actions'
@@ -9,6 +9,7 @@ import LikeButton from './LikeButton'
 import LikeSummary from './LikeSummary'
 import CommentThread from './CommentThread'
 import FormattedPostText from './FormattedPostText'
+import { useMarkdownShortcuts } from '@/lib/useMarkdownShortcuts'
 import type { Post } from '@/types'
 
 export default function PostCard({
@@ -41,6 +42,11 @@ export default function PostCard({
   const [editing, setEditing] = useState(false)
   const [editContent, setEditContent] = useState(post.content || '')
   const [savingEdit, setSavingEdit] = useState(false)
+  const editTextareaRef = useRef<HTMLTextAreaElement>(null)
+  // Same Cmd/Ctrl+B, Cmd/Ctrl+I shortcuts as PostComposer's textarea -
+  // see useMarkdownShortcuts. Was missing here before, so bold/italic
+  // only worked on new posts, not on edits to existing ones.
+  const handleEditKeyDown = useMarkdownShortcuts(editContent, setEditContent, editTextareaRef)
 
   const liked = post.likes.some((l) => l.user_id === currentUserId)
   const likeCount = post.likes.length
@@ -135,8 +141,10 @@ export default function PostCard({
         {editing ? (
           <div className="mt-3">
             <textarea
+              ref={editTextareaRef}
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleEditKeyDown}
               rows={3}
               autoFocus
               className="w-full resize-none rounded-lg bg-zinc-900 border border-zinc-700 text-sm p-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"

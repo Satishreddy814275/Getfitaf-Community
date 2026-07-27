@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { createPost } from '@/app/feed/actions'
 import { compressImage } from '@/lib/compressImage'
+import { useMarkdownShortcuts } from '@/lib/useMarkdownShortcuts'
 import type { Space } from '@/types'
 
 export default function PostComposer({
@@ -87,43 +88,9 @@ export default function PostComposer({
   // (**bold**, _italic_) rather than a full rich-text editor, since
   // content is still stored and posted as plain text. FormattedPostText
   // (used in PostCard) is what turns these markers back into real
-  // bold/italic on the feed side. Wraps the current selection if there
-  // is one; otherwise inserts an empty pair of markers with the cursor
-  // left in between, so someone can just start typing formatted text
-  // with no selection to make first.
-  function applyFormatting(marker: string) {
-    const textarea = textareaRef.current
-    if (!textarea) return
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const before = content.slice(0, start)
-    const selected = content.slice(start, end)
-    const after = content.slice(end)
-
-    setContent(`${before}${marker}${selected}${marker}${after}`)
-
-    // Selection/cursor restoration has to wait for React to actually
-    // re-render the textarea with the new value - setSelectionRange
-    // called synchronously here would apply to the stale DOM value.
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (!el) return
-      el.focus()
-      const cursor = selected ? start + marker.length * 2 + selected.length : start + marker.length
-      el.setSelectionRange(cursor, cursor)
-    })
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (!(e.metaKey || e.ctrlKey)) return
-    if (e.key === 'b' || e.key === 'B') {
-      e.preventDefault()
-      applyFormatting('**')
-    } else if (e.key === 'i' || e.key === 'I') {
-      e.preventDefault()
-      applyFormatting('_')
-    }
-  }
+  // bold/italic on the feed side. Also used by PostCard's edit-post
+  // textarea - see useMarkdownShortcuts.
+  const handleKeyDown = useMarkdownShortcuts(content, setContent, textareaRef)
 
   // Shared by the Cancel button and (already existing) post-on-submit
   // reset - a full wipe back to the composer's empty state, including

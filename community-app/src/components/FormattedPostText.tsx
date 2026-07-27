@@ -37,8 +37,23 @@ export default function FormattedPostText({ text }: { text: string }) {
   return (
     <>
       {parseFormattedText(text).map((seg, i) => {
-        if (seg.type === 'bold') return <strong key={i}>{seg.content}</strong>
-        if (seg.type === 'italic') return <em key={i}>{seg.content}</em>
+        // Explicit font-bold/italic classes rather than relying on the
+        // browser's bare <strong>/<em> default weight - against
+        // Manrope (loaded at 400/500/600/700/800, see layout.tsx) the
+        // UA default didn't read as clearly bold as it should have.
+        // font-bold pins it to the actual 700 weight instead of
+        // whatever the browser computes for the unitless "bolder"
+        // keyword.
+        if (seg.type === 'bold') return (
+          <strong key={i} className="font-bold text-white">
+            {seg.content}
+          </strong>
+        )
+        if (seg.type === 'italic') return (
+          <em key={i} className="italic">
+            {seg.content}
+          </em>
+        )
         return <span key={i}>{seg.content}</span>
       })}
     </>
