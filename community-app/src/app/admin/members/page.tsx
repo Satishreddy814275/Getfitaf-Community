@@ -26,8 +26,17 @@ export default async function AdminMembersPage() {
 
   if (!profile?.is_admin) redirect('/feed')
 
+  // Service-role client, needed specifically because this query reads
+  // `email` - the `authenticated` role's column grant on profiles no
+  // longer includes it (see fix_profiles_visibility_for_display
+  // migration), so the regular RLS-bound `supabase` client would fail
+  // on this select even for an admin. Declared here (rather than
+  // further down, where it already existed for the workout_sessions
+  // query below) so both usages share the one instance.
+  const adminSupabase = createAdminClient()
+
   const [{ data: members }, { data: memberships }] = await Promise.all([
-    supabase
+    adminSupabase
       .from('profiles')
       .select('id, full_name, avatar_url, approved, created_at, email')
       .order('full_name'),
@@ -51,7 +60,6 @@ export default async function AdminMembersPage() {
   // query across all low-ticket members instead of one-per-member.
   const lowTicketMembers = membersWithSpace.filter((m) => m.hasLowTicket)
   const memberIds = lowTicketMembers.map((m) => m.id)
-  const adminSupabase = createAdminClient()
 
   const [plans, sessionsRes] = await Promise.all([
     Promise.all(

@@ -63,6 +63,36 @@ export default function FeedTabs({
   const [spaceFilter, setSpaceFilter] = useState<SpaceFilter>(
     isAdmin ? 'all' : availableSpaces[0] || 'premium'
   )
+  // Restored from localStorage below, once mounted - a plain
+  // deterministic default here (rather than reading localStorage
+  // directly in the initializer) avoids a server/client hydration
+  // mismatch, since this is still server-rendered once before the
+  // browser takes over. A one-frame flash of the default before the
+  // effect corrects it is an acceptable tradeoff for that.
+  const spaceStorageKey = `space-filter-${currentUserId}`
+
+  // Without this, a page refresh (or just navigating back to /feed
+  // later) always reset back to the hardcoded default above - "All
+  // spaces" for admins, or your first available space for a
+  // dual-access member - even if you'd deliberately switched to
+  // something else. Only trusts the stored value if it's still valid
+  // for this person (an admin's stored 'low_ticket', or a dual-access
+  // member's stored space) - falls back to the same default otherwise,
+  // e.g. on a first-ever visit or if their access changed since.
+  useEffect(() => {
+    const stored = window.localStorage.getItem(spaceStorageKey)
+    if (!stored) return
+    const isValid = stored === 'all' ? isAdmin : availableSpaces.includes(stored as Space)
+    if (isValid) setSpaceFilter(stored as SpaceFilter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Keeps localStorage in sync with whatever's currently selected,
+  // including the correction the effect above might just have made.
+  useEffect(() => {
+    window.localStorage.setItem(spaceStorageKey, spaceFilter)
+  }, [spaceFilter, spaceStorageKey])
+
   const canFilterSpace = availableSpaces.length > 1
   // What a new post from this composer should be tagged with. Null
   // specifically means "ambiguous" (admin sitting on the merged "All
