@@ -200,7 +200,7 @@ export async function getHomeWorkoutOptions(focus: string | null | undefined): P
 
   const { data: programs } = await supabase
     .from('program_templates')
-    .select('id, name, structured_plan')
+    .select('id, name, structured_plan, equipment_tier')
     .eq('is_published', true)
     .eq('requires_gym', false)
 
@@ -224,6 +224,7 @@ export async function getHomeWorkoutOptions(focus: string | null | undefined): P
       options.push({
         programId: program.id,
         programName: program.name,
+        equipmentTier: program.equipment_tier,
         week: day.week,
         day: day.day,
         label: day.label,

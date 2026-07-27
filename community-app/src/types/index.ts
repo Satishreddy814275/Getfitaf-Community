@@ -179,6 +179,11 @@ export interface WorkoutPlanDay {
 export interface HomeWorkoutOption {
   programId: string
   programName: string
+  // Raw program_templates.equipment_tier value, formatted for display
+  // via formatEquipmentTier (see lib/equipmentTier.ts) rather than
+  // pre-formatted here, so the picker can style/lay it out however it
+  // needs to.
+  equipmentTier: string | null
   week: number
   day: number
   label: string

@@ -14,6 +14,7 @@ import { parseTargetSetCount } from '@/lib/workoutPlan'
 import { findExerciseVideo, youtubeSearchUrl, type ExerciseVideo } from '@/lib/exerciseVideos'
 import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBlocks'
 import { convertWeightForDisplay, convertWeightToKgForStorage, type WeightUnit } from '@/lib/weightUnit'
+import { formatEquipmentTier } from '@/lib/equipmentTier'
 import MiniTrendChart from './MiniTrendChart'
 import {
   Timer,
@@ -246,6 +247,9 @@ function HomeWorkoutSwapControl({
                   <div className="min-w-0">
                     <p className="text-white text-xs font-medium truncate">{opt.label}</p>
                     <p className="text-zinc-500 text-[11px] truncate">{opt.programName}</p>
+                    <span className="inline-block mt-1 text-[10px] font-medium text-zinc-400 bg-zinc-800/70 border border-zinc-700/50 rounded-full px-2 py-0.5">
+                      {formatEquipmentTier(opt.equipmentTier)}
+                    </span>
                   </div>
                   <button
                     type="button"
