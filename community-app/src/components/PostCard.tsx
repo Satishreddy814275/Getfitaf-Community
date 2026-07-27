@@ -8,6 +8,7 @@ import Avatar from './Avatar'
 import LikeButton from './LikeButton'
 import LikeSummary from './LikeSummary'
 import CommentThread from './CommentThread'
+import FormattedPostText from './FormattedPostText'
 import type { Post } from '@/types'
 
 export default function PostCard({
@@ -162,7 +163,7 @@ export default function PostCard({
         ) : (
           post.content && (
             <p className="mt-3 text-[15px] leading-relaxed whitespace-pre-wrap text-zinc-200">
-              {post.content}
+              <FormattedPostText text={post.content} />
             </p>
           )
         )}

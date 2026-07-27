@@ -83,6 +83,61 @@ export default function PostComposer({
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [content])
 
+  // Cmd/Ctrl+B and Cmd/Ctrl+I - lightweight markdown-style formatting
+  // (**bold**, _italic_) rather than a full rich-text editor, since
+  // content is still stored and posted as plain text. FormattedPostText
+  // (used in PostCard) is what turns these markers back into real
+  // bold/italic on the feed side. Wraps the current selection if there
+  // is one; otherwise inserts an empty pair of markers with the cursor
+  // left in between, so someone can just start typing formatted text
+  // with no selection to make first.
+  function applyFormatting(marker: string) {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const before = content.slice(0, start)
+    const selected = content.slice(start, end)
+    const after = content.slice(end)
+
+    setContent(`${before}${marker}${selected}${marker}${after}`)
+
+    // Selection/cursor restoration has to wait for React to actually
+    // re-render the textarea with the new value - setSelectionRange
+    // called synchronously here would apply to the stale DOM value.
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (!el) return
+      el.focus()
+      const cursor = selected ? start + marker.length * 2 + selected.length : start + marker.length
+      el.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (!(e.metaKey || e.ctrlKey)) return
+    if (e.key === 'b' || e.key === 'B') {
+      e.preventDefault()
+      applyFormatting('**')
+    } else if (e.key === 'i' || e.key === 'I') {
+      e.preventDefault()
+      applyFormatting('_')
+    }
+  }
+
+  // Shared by the Cancel button and (already existing) post-on-submit
+  // reset - a full wipe back to the composer's empty state, including
+  // the lesson chip and the native file input's own internal value
+  // (clearing the File state alone leaves the browser's file picker
+  // still showing the previously chosen filename).
+  function resetComposer() {
+    setContent('')
+    setFile(null)
+    setIsAnnouncement(false)
+    setLessonId(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!content.trim() && !file) return
@@ -130,11 +185,7 @@ export default function PostComposer({
     }
 
     await createPost(formData)
-    setContent('')
-    setFile(null)
-    setIsAnnouncement(false)
-    setLessonId(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    resetComposer()
     setUploading(false)
   }
 
@@ -167,6 +218,7 @@ export default function PostComposer({
         ref={textareaRef}
         value={content}
         onChange={(e) => setContent(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder="Share an update, win, or question with the group..."
         className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500 min-h-[96px] max-h-[320px] overflow-y-auto"
       />
@@ -190,13 +242,27 @@ export default function PostComposer({
           onChange={(e) => setFile(e.target.files?.[0] || null)}
           className="text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:text-zinc-300 file:text-xs hover:file:bg-zinc-700"
         />
-        <button
-          type="submit"
-          disabled={uploading || (!content.trim() && !file)}
-          className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-lg disabled:opacity-40 transition"
-        >
-          {uploading ? 'Posting...' : 'Post'}
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Only shown once there's actually something to discard -
+              text, a file, or a lesson chip - rather than sitting there
+              doing nothing on an empty composer. */}
+          {(content.trim() || file || lessonId) && !uploading && (
+            <button
+              type="button"
+              onClick={resetComposer}
+              className="text-zinc-400 hover:text-white text-sm font-medium px-3 py-2 rounded-lg transition"
+            >
+              Cancel
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={uploading || (!content.trim() && !file)}
+            className="bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold px-4 py-2 rounded-lg disabled:opacity-40 transition"
+          >
+            {uploading ? 'Posting...' : 'Post'}
+          </button>
+        </div>
       </div>
     </form>
   )
