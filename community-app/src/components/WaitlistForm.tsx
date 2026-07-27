@@ -2,6 +2,13 @@
 
 import { useState } from 'react'
 
+// The address campaigns actually send from - shown post-signup so
+// people can copy it into their contacts rather than typing it by
+// hand. Not read from env since it's a fixed, publicly-shown value,
+// not a secret - hardcoding it here avoids adding a new env var for a
+// single display string.
+const SENDER_EMAIL = 'satish@getfitaf.fitness'
+
 // Client component for the pre-Aug-1 mode of /beta. Kept separate from
 // the page itself (a server component) since this is the one piece of
 // the page that needs interactivity/state - everything else on /beta
@@ -11,6 +18,21 @@ export default function WaitlistForm() {
   const [email, setEmail] = useState('')
   const [status, setStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  // Best-effort - the Clipboard API can fail in older browsers or
+  // non-HTTPS contexts, and the address is already shown as plain
+  // text right next to the button, so a failure here just means the
+  // person copies it manually instead of getting the "Copied" state.
+  async function handleCopyEmail() {
+    try {
+      await navigator.clipboard.writeText(SENDER_EMAIL)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // no-op, see comment above
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -46,6 +68,33 @@ export default function WaitlistForm() {
           We&apos;ll email you the moment doors open on Aug 1 - first come, first served for the
           50 spots at ₹249.
         </p>
+        {/* Sets expectations right after signup instead of leaving
+            people to wonder if the confirmation email actually sent -
+            plain copy-to-clipboard button (works the same on every
+            device, unlike a vCard download) plus a Gmail-specific tip,
+            since that's the strongest deliverability signal available
+            to a recipient. */}
+        <div className="mt-3 pt-3 border-t border-orange-500/20 text-left">
+          <p className="text-zinc-400 text-xs">
+            You should get a confirmation email from us shortly. If you don&apos;t see it, check
+            your Promotions or Spam tab.
+          </p>
+          <div className="mt-2 flex items-center gap-2 bg-zinc-900/60 border border-zinc-800 rounded-lg px-3 py-2">
+            <span className="text-white text-xs flex-1 truncate">{SENDER_EMAIL}</span>
+            <button
+              type="button"
+              onClick={handleCopyEmail}
+              className="text-orange-400 hover:text-orange-300 text-xs font-semibold whitespace-nowrap transition"
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p className="text-zinc-500 text-[11px] mt-2">
+            Add this to your contacts so future emails land in your inbox, not Promotions. On
+            Gmail, if you find us in Promotions, drag that email into Primary once and we&apos;ll
+            stay there.
+          </p>
+        </div>
       </div>
     )
   }
