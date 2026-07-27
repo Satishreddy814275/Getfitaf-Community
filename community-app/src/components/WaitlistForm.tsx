@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { ArrowRight } from 'lucide-react'
 
 // The address campaigns actually send from - shown post-signup so
 // people can copy it into their contacts rather than typing it by
@@ -89,11 +90,30 @@ export default function WaitlistForm() {
               {copied ? 'Copied' : 'Copy'}
             </button>
           </div>
-          <p className="text-zinc-500 text-[11px] mt-2">
-            Add this to your contacts so future emails land in your inbox, not Promotions. On
-            Gmail, if you find us in Promotions, drag that email into Primary once and we&apos;ll
-            stay there.
-          </p>
+          {/* Split into short arrow-led pointers instead of one dense
+              paragraph - easier to scan than a wall of text, per
+              Satish's feedback. */}
+          <div className="mt-2 flex flex-col gap-1.5">
+            <div className="flex items-start gap-1.5">
+              <ArrowRight className="w-3 h-3 text-orange-400 mt-0.5 shrink-0" />
+              <span className="text-zinc-500 text-[11px] leading-relaxed">
+                Not in your inbox yet? Check Promotions or Spam.
+              </span>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <ArrowRight className="w-3 h-3 text-orange-400 mt-0.5 shrink-0" />
+              <span className="text-zinc-500 text-[11px] leading-relaxed">
+                Add this address to your contacts.
+              </span>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <ArrowRight className="w-3 h-3 text-orange-400 mt-0.5 shrink-0" />
+              <span className="text-zinc-500 text-[11px] leading-relaxed">
+                On Gmail, did you find our email in the Promotions tab? Drag it into Primary and
+                it&apos;ll stay there next time.
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     )
