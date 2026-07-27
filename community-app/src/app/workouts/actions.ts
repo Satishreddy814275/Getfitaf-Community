@@ -205,11 +205,22 @@ export async function getHomeWorkoutOptions(focus: string | null | undefined): P
     .eq('requires_gym', false)
 
   const options: HomeWorkoutOption[] = []
+  // A 4-week program repeats the same label (e.g. "Upper Body A") once
+  // per week - that's the right way to store it (each week is its own
+  // distinct exercises/progression), but showing all 4 to the member
+  // as if they were different options is just visual noise, since only
+  // the label and program name are shown here. Dedupe to one entry per
+  // (program, label), keeping the earliest week's version.
+  const seen = new Set<string>()
   for (const program of programs || []) {
     const days = (program.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []
-    for (const day of days) {
+    const sortedDays = [...days].sort((a, b) => a.week - b.week || a.day - b.day)
+    for (const day of sortedDays) {
       if (day.focus !== focus) continue
       if (!day.exercises || day.exercises.length === 0) continue
+      const dedupeKey = `${program.id}::${day.label}`
+      if (seen.has(dedupeKey)) continue
+      seen.add(dedupeKey)
       options.push({
         programId: program.id,
         programName: program.name,
