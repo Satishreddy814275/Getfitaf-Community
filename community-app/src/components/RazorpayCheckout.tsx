@@ -135,42 +135,29 @@ export default function RazorpayCheckout({
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       {spotsRemaining !== null && (
-        <p className="text-orange-400 text-xs font-semibold text-center">
+        <p className="text-orange-400 text-xs font-semibold text-center mb-4">
           {spotsRemaining} spot{spotsRemaining === 1 ? '' : 's'} left at this price
         </p>
       )}
 
-      <div className="flex justify-center">
-        <div className="inline-flex flex-col items-start gap-1.5">
-          {discounted ? (
-            <>
-              <p className="text-zinc-400 text-xs flex items-center gap-1.5">
-                <span className="text-orange-500">→</span>₹249 for your first month
-              </p>
-              <p className="text-zinc-400 text-xs flex items-center gap-1.5">
-                <span className="text-orange-500">→</span>₹499/month from month two
-              </p>
-              <p className="text-zinc-400 text-xs flex items-center gap-1.5">
-                <span className="text-orange-500">→</span>Cancel anytime
-              </p>
-            </>
-          ) : (
-            <>
-              <p className="text-zinc-400 text-xs flex items-center gap-1.5">
-                <span className="text-orange-500">→</span>₹499/month
-              </p>
-              <p className="text-zinc-400 text-xs flex items-center gap-1.5">
-                <span className="text-orange-500">→</span>Cancel anytime
-              </p>
-            </>
-          )}
-        </div>
+      <div className="text-center mb-1">
+        <span className="text-white text-4xl font-medium">
+          {discounted ? '₹249' : '₹499'}
+        </span>
+        <span className="text-zinc-500 text-sm ml-1">
+          {discounted ? 'first month' : '/month'}
+        </span>
       </div>
+      <p className="text-zinc-500 text-xs text-center mb-5">
+        {discounted ? 'then ₹499/month · cancel anytime' : 'Cancel anytime'}
+      </p>
+
+      <div className="h-px bg-zinc-800 mb-5" />
 
       {discounted && (
-        <p className="text-zinc-500 text-xs text-center">
+        <p className="text-zinc-500 text-xs text-center mb-4">
           Choose carefully. The ₹249 discount only applies to the method you pick here.
         </p>
       )}
@@ -181,7 +168,7 @@ export default function RazorpayCheckout({
             type="button"
             onClick={() => handlePay('upi')}
             disabled={pending !== null}
-            className="h-11 flex items-center justify-center gap-1.5 whitespace-nowrap bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl transition text-sm"
+            className="h-11 flex items-center justify-center gap-1.5 whitespace-nowrap bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-full transition text-sm"
           >
             {pending === 'upi' ? (
               'Opening…'
@@ -196,7 +183,7 @@ export default function RazorpayCheckout({
             type="button"
             onClick={() => handlePay('card')}
             disabled={pending !== null}
-            className="h-11 flex items-center justify-center gap-1.5 whitespace-nowrap bg-zinc-800 hover:bg-zinc-700 disabled:opacity-60 text-white font-bold rounded-xl transition text-sm border border-zinc-700"
+            className="h-11 flex items-center justify-center gap-1.5 whitespace-nowrap bg-transparent hover:bg-zinc-900 disabled:opacity-60 text-white font-bold rounded-full transition text-sm border border-zinc-700"
           >
             {pending === 'card' ? (
               'Opening…'
@@ -214,19 +201,19 @@ export default function RazorpayCheckout({
             type="button"
             onClick={() => handlePay(null)}
             disabled={pending !== null}
-            className="w-full h-11 flex items-center justify-center whitespace-nowrap bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-xl transition text-sm"
+            className="w-full h-11 flex items-center justify-center whitespace-nowrap bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold rounded-full transition text-sm"
           >
-            {pending === 'single' ? 'Opening…' : 'Continue · ₹499/month'}
+            {pending === 'single' ? 'Opening…' : 'Continue'}
           </button>
-          <p className="text-zinc-600 text-[11px] text-center mt-2">
+          <p className="text-zinc-600 text-[11px] text-center mt-3">
             Choose your payment method on the next screen.
           </p>
         </div>
       )}
 
-      {error && <p className="text-red-400 text-xs text-center">{error}</p>}
+      {error && <p className="text-red-400 text-xs text-center mt-3">{error}</p>}
 
-      <p className="text-zinc-600 text-[10px] flex items-center justify-center gap-1.5">
+      <p className="text-zinc-600 text-[10px] flex items-center justify-center gap-1.5 mt-4">
         <LockIcon />
         Payments secured by Razorpay
       </p>

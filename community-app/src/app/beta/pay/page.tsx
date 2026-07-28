@@ -33,9 +33,10 @@ export default async function RazorpayPayPage() {
 
   return (
     <div className="min-h-full bg-[#0a0a0a] flex items-center justify-center px-4 py-16">
-      <div className="w-full max-w-md">
-        <div className="rounded-2xl p-6 bg-gradient-to-br from-orange-500/10 to-transparent border border-orange-500/20">
-          <p className="text-orange-500 text-sm font-semibold mb-4 text-center">
+      <div className="w-full max-w-sm">
+        <div className="rounded-2xl p-7 bg-[#111111] border border-zinc-800">
+          <div className="w-8 h-0.5 bg-orange-500 mx-auto mb-4" />
+          <p className="text-zinc-200 text-sm font-medium tracking-wide mb-5 text-center">
             Reserve your spot
           </p>
           <RazorpayCheckout email={user.email} discounted={discounted} spotsRemaining={spotsRemaining} />
