@@ -17,7 +17,12 @@ interface RazorpaySubscriptionEntity {
   status: string
   current_end?: number | null
   offer_id?: string | null
-  notes?: { profile_id?: string; email?: string; method?: string } | null
+  notes?: {
+    profile_id?: string
+    email?: string
+    method?: string
+    discount_applied?: string
+  } | null
 }
 
 interface RazorpayWebhookPayload {
@@ -127,10 +132,16 @@ async function handleActivated(
   // actually confirmed - not at the moment someone merely clicked Pay
   // (see createRazorpaySubscription in beta/razorpay-actions.ts). That
   // way an abandoned checkout never burns a slot that a real paying
-  // member could have used. offer_id on the subscription entity is
-  // Razorpay's own record of whether the discount was actually
-  // attached to this specific subscription at creation time.
-  if (subscription.offer_id) {
+  // member could have used.
+  //
+  // Uses notes.discount_applied (stamped by us at subscription-creation
+  // time) rather than subscription.offer_id - a real test payment
+  // (2026-07-28) charged the discounted ₹249 rate but offer_id read
+  // falsy on the activated event, so it can't be trusted here. notes
+  // already round-trips reliably (it's how findProfileFromNotes matches
+  // the subscription back to a profile above), so this is a more
+  // reliable signal than an echo we don't fully control.
+  if (subscription.notes?.discount_applied === '1') {
     await supabase.from('beta_discount_redemptions').insert({
       profile_id: profileId,
       razorpay_subscription_id: subscription.id,
@@ -239,24 +250,6 @@ export async function POST(req: Request) {
   }
 
   const subscription = body.payload.subscription?.entity
-
-  // TEMP DIAGNOSTIC — remove once we've confirmed whether Razorpay
-  // echoes offer_id back on the subscription entity for real events.
-  // A real card payment (test2, 2026-07-28) charged the discounted
-  // ₹249 rate but left beta_discount_redemptions empty, meaning
-  // subscription.offer_id read falsy in handleActivated despite the
-  // offer clearly being attached at creation time. No DB constraint
-  // explains a silent insert failure, so this logs the raw entity to
-  // see what Razorpay actually sent.
-  if (subscription) {
-    console.log('[razorpay-webhook] TEMP DIAGNOSTIC', {
-      event: body.event,
-      subscriptionId: subscription.id,
-      offerId: subscription.offer_id,
-      notes: subscription.notes,
-      status: subscription.status,
-    })
-  }
 
   try {
     if (subscription) {

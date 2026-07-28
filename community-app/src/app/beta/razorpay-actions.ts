@@ -86,7 +86,22 @@ export async function createRazorpaySubscription(method: RazorpayMethod | null) 
     // activates with the discount attached (see BETA_DISCOUNT_CAP
     // comment in lib/razorpay.ts for why that's counted on confirmed
     // payment, not here at creation time).
-    notes: { profile_id: user.id, email: user.email, method: method ?? 'none' },
+    //
+    // discount_applied is stamped here rather than left for the webhook
+    // to infer from Razorpay's own subscription.offer_id echo - a real
+    // test payment (2026-07-28) charged the discounted rate but
+    // subscription.offer_id read falsy on the activated event, an
+    // undocumented gap in what Razorpay actually sends back. We already
+    // know deterministically, server-side, whether an offer was
+    // attached (see applyDiscount above) - no need to guess it back
+    // from Razorpay's payload when notes already round-trips reliably
+    // (profile_id/email matching in findProfileFromNotes proves this).
+    notes: {
+      profile_id: user.id,
+      email: user.email,
+      method: method ?? 'none',
+      discount_applied: applyDiscount ? '1' : '0',
+    },
   }
   if (offerId) body.offer_id = offerId
 
