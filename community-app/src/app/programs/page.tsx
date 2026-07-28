@@ -88,21 +88,25 @@ export default async function ProgramsPage() {
 
   if (enrollmentRes.data) {
     const enrollment = enrollmentRes.data
-    const { data: template } = await supabase
-      .from('program_templates')
-      .select('name, level, equipment_tier, duration_weeks, structured_plan')
-      .eq('id', enrollment.program_template_id)
-      .maybeSingle()
-
-    if (template) {
-      const days = ((template.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[]
-      const { data: sessions } = await supabase
+    // Neither query depends on the other's result (sessions only needs
+    // enrollment.id/user.id, not the template row), so batched instead
+    // of run serially.
+    const [{ data: template }, { data: sessions }] = await Promise.all([
+      supabase
+        .from('program_templates')
+        .select('name, level, equipment_tier, duration_weeks, structured_plan')
+        .eq('id', enrollment.program_template_id)
+        .maybeSingle(),
+      supabase
         .from('workout_sessions')
         .select('week_number, day_number')
         .eq('profile_id', user.id)
         .eq('generation_id', enrollment.id)
-        .not('completed_at', 'is', null)
+        .not('completed_at', 'is', null),
+    ])
 
+    if (template) {
+      const days = ((template.structured_plan as { days?: WorkoutPlanDay[] } | null)?.days || []) as WorkoutPlanDay[]
       const doneCells = new Set((sessions || []).map((s) => `${s.week_number}-${s.day_number}`)).size
 
       currentProgram = {
