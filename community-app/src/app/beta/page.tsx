@@ -106,7 +106,7 @@ export default async function BetaLandingPage() {
                 Doors are open - 50 spots, first come first served
               </p>
               <a
-                href="/api/beta-checkout"
+                href="/beta/pay"
                 className="inline-block w-full sm:w-auto text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl transition text-sm"
               >
                 Reserve your spot - ₹249 first month
@@ -343,7 +343,7 @@ export default async function BetaLandingPage() {
           {isLive ? (
             <div className="text-center">
               <a
-                href="/api/beta-checkout"
+                href="/beta/pay"
                 className="inline-block w-full sm:w-auto text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl transition text-sm"
               >
                 Reserve your spot - ₹249 first month

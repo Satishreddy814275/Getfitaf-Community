@@ -32,7 +32,7 @@ export default function BetaStickyCTA({ isLive }: { isLive: boolean }) {
           </p>
           {isLive ? (
             <a
-              href="/api/beta-checkout"
+              href="/beta/pay"
               className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition whitespace-nowrap"
             >
               Reserve your spot
