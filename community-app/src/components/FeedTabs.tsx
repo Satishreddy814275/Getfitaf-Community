@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
+import { loadMorePosts } from '@/app/feed/actions'
 import type { Post, LeaderboardRow, Space } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
@@ -13,6 +14,7 @@ type SpaceFilter = 'all' | Space
 
 export default function FeedTabs({
   posts,
+  hasMorePosts,
   currentUserId,
   isAdmin,
   availableSpaces,
@@ -23,7 +25,13 @@ export default function FeedTabs({
   initialCommentId,
   leaderboardRows,
 }: {
+  // Always the current first page from the server - stays authoritative
+  // after a create/edit/delete triggers a re-render (see combinedPosts
+  // below), unlike scrolledPosts which is purely additive client state.
   posts: Post[]
+  // Whether a second page exists at all, as of the first page load -
+  // see scrolledHasMore below for what drives further loads after that.
+  hasMorePosts: boolean
   currentUserId: string
   isAdmin: boolean
   // Which spaces this specific person has real access to (see
@@ -166,9 +174,73 @@ export default function FeedTabs({
     router.replace('/feed')
   }, [initialPostId, router])
 
+  // --- Infinite scroll ---
+  // scrolledPosts is purely additive client state - everything loaded
+  // via loadMore, beyond the first page the server already sent. It's
+  // deliberately NOT the source of truth for the first page's own
+  // content: creating/editing/deleting a post re-renders this component
+  // with a fresh `posts` prop (Next's implicit post-server-action
+  // refresh), and combinedPosts below always prefers that fresh prop
+  // over anything stale sitting in scrolledPosts.
+  const [scrolledPosts, setScrolledPosts] = useState<Post[]>([])
+  // Seeded once from the initial page length - deliberately NOT reset
+  // when the `posts` prop changes later (e.g. after creating a post),
+  // since that would make the next loadMore() call re-fetch posts
+  // already showing. A post created/deleted between here and the next
+  // scroll can shift this by one either way - the same acceptable
+  // drift already covered by the pagination comment in feed/page.tsx.
+  const [offset, setOffset] = useState(posts.length)
+  const [hasMore, setHasMore] = useState(hasMorePosts)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+
+  // Always posts (fresh from the server) first, then whatever's been
+  // scrolled in beyond it - deduped by id so a post that arrived in
+  // both (e.g. it was already scrolled into view, then the whole first
+  // page refreshed after an unrelated create/edit elsewhere) isn't
+  // rendered twice.
+  const combinedPosts = useMemo(() => {
+    const seen = new Set(posts.map((p) => p.id))
+    return [...posts, ...scrolledPosts.filter((p) => !seen.has(p.id))]
+  }, [posts, scrolledPosts])
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    const result = await loadMorePosts(offset)
+    setScrolledPosts((prev) => [...prev, ...result.posts])
+    setOffset((prev) => prev + result.posts.length)
+    setHasMore(result.hasMore)
+    setLoadingMore(false)
+  }
+
+  // Only wired up for the Posts tab - Announcements/Media are filtered
+  // views over whatever's already loaded there, rather than each
+  // getting their own independent pagination. Re-subscribes whenever
+  // the values loadMore's own guard reads change, so the closure it
+  // fires never sees a stale hasMore/loadingMore/offset.
+  useEffect(() => {
+    if (tab !== 'posts' || !hasMore) return
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore()
+      },
+      { rootMargin: '400px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, hasMore, loadingMore, offset])
+
   // Single combined search — matches either the poster's name or the
   // post text, so one box covers "find a member" and "find a keyword"
-  // without a second input crowding the tab row.
+  // without a second input crowding the tab row. Only searches posts
+  // already loaded (this page plus anything scrolled in), not the
+  // member's full history - matches the same scope tradeoff pagination
+  // itself makes, and keeps the search box from needing its own
+  // separate server round-trip.
   const query = search.trim().toLowerCase()
 
   // Memoized so typing in an unrelated input, or any other re-render
@@ -177,8 +249,8 @@ export default function FeedTabs({
   // render - each stage only recomputes when its own actual inputs
   // change.
   const spaceScopedPosts = useMemo(
-    () => (spaceFilter === 'all' ? posts : posts.filter((p) => p.space === spaceFilter)),
-    [posts, spaceFilter]
+    () => (spaceFilter === 'all' ? combinedPosts : combinedPosts.filter((p) => p.space === spaceFilter)),
+    [combinedPosts, spaceFilter]
   )
   const filteredPosts = useMemo(
     () =>
@@ -311,6 +383,17 @@ export default function FeedTabs({
                 ? `No posts or members match "${search.trim()}".`
                 : 'No posts yet - be the first to share something with the group.'}
             </p>
+          )}
+          {/* Load-more trigger - only meaningful once there's at least
+              one post and more to fetch. A search/space filter doesn't
+              hide this: it's about whether more RAW posts exist on the
+              server, independent of how many currently match the
+              filter, so scrolling can still surface further matches
+              from posts not yet loaded. */}
+          {filteredPosts.length > 0 && hasMore && (
+            <div ref={sentinelRef} className="py-6 text-center text-xs text-zinc-500">
+              {loadingMore ? 'Loading more...' : ''}
+            </div>
           )}
         </div>
       )}

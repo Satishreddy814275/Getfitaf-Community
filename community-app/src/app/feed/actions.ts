@@ -2,6 +2,33 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { FEED_PAGE_SIZE, FEED_POST_SELECT } from '@/lib/feedPosts'
+import type { Post } from '@/types'
+
+// Infinite-scroll continuation of the first page feed/page.tsx already
+// loaded - same select, same three-key order, just offset forward by
+// however many posts the caller already has. Goes through the normal
+// (RLS-scoped) client, same as the initial load, so a scrolled-in post
+// respects the same space access a member already has - nothing extra
+// to check here.
+export async function loadMorePosts(offset: number): Promise<{ posts: Post[]; hasMore: boolean }> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { posts: [], hasMore: false }
+
+  const { data } = await supabase
+    .from('posts')
+    .select(FEED_POST_SELECT)
+    .order('pinned', { ascending: false })
+    .order('is_announcement', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + FEED_PAGE_SIZE - 1)
+
+  const posts = (data as unknown as Post[] | null) || []
+  return { posts, hasMore: posts.length === FEED_PAGE_SIZE }
+}
 
 export async function createPost(formData: FormData) {
   const supabase = await createClient()

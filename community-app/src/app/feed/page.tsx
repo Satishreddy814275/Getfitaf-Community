@@ -8,6 +8,7 @@ import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
 import RulesGate from '@/components/RulesGate'
 import { getCommunityGuidelines } from '@/lib/communityGuidelines'
+import { FEED_PAGE_SIZE, FEED_POST_SELECT } from '@/lib/feedPosts'
 import type { Post, LeaderboardRow, Space } from '@/types'
 
 export default async function FeedPage({
@@ -58,19 +59,26 @@ export default async function FeedPage({
         .eq('profile_id', user.id)
         .eq('space', 'low_ticket')
         .maybeSingle(),
+      // First page only now (see loadMorePosts in feed/actions.ts for
+      // the rest) - this query used to pull every post ever made, plus
+      // every comment/like on each, unbounded. Fine at low post counts,
+      // but it only grows from here and would eventually make every
+      // single feed visit slower. Same three-key order as before
+      // (pinned, then announcements, then newest), which is also why
+      // plain offset pagination is safe here without a compound
+      // cursor: a post's position in that order never changes once
+      // it's been fetched, so `.range()` can't reshuffle something a
+      // later page already showed. The one real edge case - a new post
+      // getting pinned or created while someone's mid-scroll - just
+      // means an occasional repeat or one-post gap until they refresh,
+      // acceptable at this community's size.
       supabase
         .from('posts')
-        .select(
-          `
-      id, content, media_url, media_type, is_announcement, pinned, space, created_at, edited_at,
-      profiles ( id, full_name, avatar_url ),
-      comments ( id, content, created_at, parent_comment_id, profiles ( id, full_name, avatar_url ), comment_likes ( id, user_id, profiles ( id, full_name, avatar_url ) ) ),
-      likes ( id, user_id, profiles ( id, full_name, avatar_url ) )
-    `
-        )
+        .select(FEED_POST_SELECT)
         .order('pinned', { ascending: false })
         .order('is_announcement', { ascending: false })
-        .order('created_at', { ascending: false }),
+        .order('created_at', { ascending: false })
+        .range(0, FEED_PAGE_SIZE - 1),
       supabase.rpc('get_user_streak', { uid: user.id }),
       supabase.rpc('get_community_leaderboard'),
       // program_enrollments has proper RLS (owner-scoped), unlike the
@@ -109,7 +117,28 @@ export default async function FeedPage({
   }
 
   const guidelines = await guidelinesPromise
-  const posts = (postsRes.data as unknown as Post[] | null) || []
+  let posts = (postsRes.data as unknown as Post[] | null) || []
+  // First page fetched exactly FEED_PAGE_SIZE rows means there's
+  // probably more to scroll to - the same "did this page fill up"
+  // heuristic .range() pagination normally uses instead of a separate
+  // count query.
+  const hasMorePosts = posts.length === FEED_PAGE_SIZE
+
+  // Notification links (?post=<id>) used to always work because every
+  // post was loaded - now that only the first page is, an old post a
+  // notification points at might not be in it. FeedTabs' own lookup
+  // (posts.find) is unchanged; this just makes sure the target post is
+  // actually present in the array it's searching, one extra query only
+  // when it's needed.
+  if (initialPostId && !posts.some((p) => p.id === initialPostId)) {
+    const { data: linkedPost } = await supabase
+      .from('posts')
+      .select(FEED_POST_SELECT)
+      .eq('id', initialPostId)
+      .maybeSingle()
+    if (linkedPost) posts = [linkedPost as unknown as Post, ...posts]
+  }
+
   const streak = typeof streakRes.data === 'number' ? streakRes.data : 0
   const allRankings = (leaderboardRes.data as LeaderboardRow[] | null) || []
   const topFive = allRankings.slice(0, 5)
@@ -165,6 +194,7 @@ export default async function FeedPage({
             rendered as a direct grid child here, not wrapped in a div. */}
         <FeedTabs
           posts={posts}
+          hasMorePosts={hasMorePosts}
           currentUserId={user.id}
           isAdmin={isAdmin}
           availableSpaces={availableSpaces}
