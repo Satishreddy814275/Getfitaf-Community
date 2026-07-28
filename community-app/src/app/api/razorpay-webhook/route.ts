@@ -240,6 +240,24 @@ export async function POST(req: Request) {
 
   const subscription = body.payload.subscription?.entity
 
+  // TEMP DIAGNOSTIC — remove once we've confirmed whether Razorpay
+  // echoes offer_id back on the subscription entity for real events.
+  // A real card payment (test2, 2026-07-28) charged the discounted
+  // ₹249 rate but left beta_discount_redemptions empty, meaning
+  // subscription.offer_id read falsy in handleActivated despite the
+  // offer clearly being attached at creation time. No DB constraint
+  // explains a silent insert failure, so this logs the raw entity to
+  // see what Razorpay actually sent.
+  if (subscription) {
+    console.log('[razorpay-webhook] TEMP DIAGNOSTIC', {
+      event: body.event,
+      subscriptionId: subscription.id,
+      offerId: subscription.offer_id,
+      notes: subscription.notes,
+      status: subscription.status,
+    })
+  }
+
   try {
     if (subscription) {
       switch (body.event) {
