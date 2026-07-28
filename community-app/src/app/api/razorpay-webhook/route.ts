@@ -141,12 +141,25 @@ async function handleActivated(
   // already round-trips reliably (it's how findProfileFromNotes matches
   // the subscription back to a profile above), so this is a more
   // reliable signal than an echo we don't fully control.
+  //
+  // upsert + ignoreDuplicates (not insert) because handleActivated can
+  // legitimately run twice for the same subscription - handleCharged
+  // below falls back to calling this if `activated` and `charged`
+  // arrive close together and it doesn't yet see a membership row. A
+  // real test (test3, 2026-07-28) hit exactly this race and logged two
+  // redemptions for one real signup. razorpay_subscription_id now has a
+  // unique constraint (see the dedupe_and_constrain_beta_discount_redemptions
+  // migration), so this safely no-ops on the second call instead of
+  // double-counting against the 55-cap.
   if (subscription.notes?.discount_applied === '1') {
-    await supabase.from('beta_discount_redemptions').insert({
-      profile_id: profileId,
-      razorpay_subscription_id: subscription.id,
-      method: subscription.notes?.method || 'unknown',
-    })
+    await supabase.from('beta_discount_redemptions').upsert(
+      {
+        profile_id: profileId,
+        razorpay_subscription_id: subscription.id,
+        method: subscription.notes?.method || 'unknown',
+      },
+      { onConflict: 'razorpay_subscription_id', ignoreDuplicates: true }
+    )
   }
 
   // This is the moment someone actually becomes a member — pull them

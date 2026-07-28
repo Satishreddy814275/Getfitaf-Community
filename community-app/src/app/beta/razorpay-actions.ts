@@ -134,6 +134,26 @@ export async function createRazorpaySubscription(method: RazorpayMethod | null) 
   return { subscriptionId: data.id as string, email: user.email as string, discounted: applyDiscount }
 }
 
+// Polled from RazorpayCheckout right after Razorpay's client-side
+// payment-success callback fires, before redirecting to /feed. Access
+// is actually granted by the webhook (a separate, asynchronous
+// server-to-server call from Razorpay) - without this, someone could
+// land on /feed a few seconds before that webhook lands and briefly
+// see Lessons/Workouts still locked, which reads as broken even though
+// it resolves itself moments later. Reuses the same access check as
+// the /beta and /beta/pay redirects (hasExistingAccess) rather than a
+// bespoke "does this specific subscription have a row yet" query,
+// since what actually matters to the person waiting is "do I have
+// access now," not which code path granted it.
+export async function checkBetaAccessGranted(): Promise<boolean> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return false
+  return hasExistingAccess(supabase, user.id)
+}
+
 // Razorpay has no hosted equivalent of Stripe's Billing Portal, so
 // cancellation has to be a real API call from our own UI rather than a
 // redirect. cancel_at_cycle_end keeps the same "you won't be billed

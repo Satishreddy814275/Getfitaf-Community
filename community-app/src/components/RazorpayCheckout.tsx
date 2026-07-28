@@ -2,7 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createRazorpaySubscription, type RazorpayMethod } from '@/app/beta/razorpay-actions'
+import {
+  createRazorpaySubscription,
+  checkBetaAccessGranted,
+  type RazorpayMethod,
+} from '@/app/beta/razorpay-actions'
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 declare global {
   interface Window {
@@ -79,7 +87,25 @@ export default function RazorpayCheckout({
 }) {
   const router = useRouter()
   const [pending, setPending] = useState<RazorpayMethod | 'single' | null>(null)
+  const [activating, setActivating] = useState(false)
   const [error, setError] = useState('')
+
+  // Access is granted by an async webhook, not by Razorpay's
+  // client-side success callback - polls for up to ~12s so the person
+  // doesn't land on /feed and briefly see Lessons/Workouts still
+  // locked while the webhook catches up (see checkBetaAccessGranted's
+  // comment for why this exists). If it never lands within that
+  // window, sends them on anyway rather than leaving them stuck - /feed
+  // already tolerates access arriving a moment after it loads, this is
+  // purely about not showing a confusing in-between state.
+  async function waitForAccessThenRedirect() {
+    const maxAttempts = 12
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (await checkBetaAccessGranted()) break
+      if (attempt < maxAttempts - 1) await sleep(1000)
+    }
+    router.push('/feed')
+  }
 
   async function handlePay(method: RazorpayMethod | null) {
     setError('')
@@ -105,10 +131,12 @@ export default function RazorpayCheckout({
         theme: { color: '#f97316' },
         // The webhook (api/razorpay-webhook) is the real source of
         // truth for granting access, same as the Stripe flow - this
-        // just moves them on to /feed, which already redirects back
-        // if access somehow isn't there yet by the time they land.
+        // shows a brief "activating" state and polls for it rather
+        // than redirecting instantly, so /feed doesn't load a beat
+        // before the webhook has actually landed.
         handler: () => {
-          router.push('/feed')
+          setActivating(true)
+          waitForAccessThenRedirect()
         },
         modal: {
           ondismiss: () => setPending(null),
@@ -132,6 +160,16 @@ export default function RazorpayCheckout({
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       setPending(null)
     }
+  }
+
+  if (activating) {
+    return (
+      <div className="py-8 text-center">
+        <div className="w-8 h-8 border-2 border-zinc-700 border-t-orange-500 rounded-full animate-spin mx-auto mb-4" />
+        <p className="text-white text-sm font-semibold mb-1">Activating your access…</p>
+        <p className="text-zinc-500 text-xs">This usually takes just a few seconds.</p>
+      </div>
+    )
   }
 
   return (
