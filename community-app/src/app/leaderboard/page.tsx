@@ -11,6 +11,31 @@ export default async function LeaderboardPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  // Previously this page only checked "are you logged in" - meaning
+  // any account, paid or not, could see every real member's name and
+  // activity. Same access rule /feed and /workouts already enforce:
+  // no active membership in either space means no view here either,
+  // straight to /beta instead.
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('is_admin, approved')
+    .eq('id', user.id)
+    .single()
+  const { data: membership } = await supabase
+    .from('space_memberships')
+    .select('space')
+    .eq('profile_id', user.id)
+    .eq('space', 'low_ticket')
+    .maybeSingle()
+
+  const isAdmin = !!profile?.is_admin
+  const isApproved = !!profile?.approved
+  const hasLowTicket = !!membership
+
+  if (!isAdmin && !isApproved && !hasLowTicket) {
+    redirect('/beta')
+  }
+
   const { data } = await supabase.rpc('get_community_leaderboard')
   const rows = (data as LeaderboardRow[] | null) || []
 

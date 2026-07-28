@@ -7,6 +7,7 @@ import NotificationBell from './NotificationBell'
 import ExternalNavLink from './ExternalNavLink'
 import { signOut } from '@/app/login/actions'
 import { useSessionActive } from './SessionActiveProvider'
+import { isBetaLive } from '@/lib/betaLaunch'
 import type { Notification } from '@/types'
 
 function isPathActive(pathname: string, href: string) {
@@ -152,6 +153,12 @@ export default function AppNav({
   // dashboard.html's isLowTicketOnly/unlockedDay) - no longer just
   // "coming soon" for this membership tier.
   const showLessons = isAdmin || isApproved || hasLowTicket
+  // Drives what someone without Lessons/Workouts access sees in their
+  // place, below - plain "opens August 1" text before launch (not
+  // clickable, so nobody can jump the gate early via a nav link), a
+  // "join to unlock" link straight to /beta/pay once the beta is
+  // actually live. Same date beta/page.tsx itself switches on.
+  const isLive = isBetaLive()
 
   return (
     <>
@@ -181,16 +188,33 @@ export default function AppNav({
               >
                 Go to your lessons
               </ExternalNavLink>
-            ) : (
-              <span
-                className="text-sm font-medium text-zinc-600"
-                title="Daily lessons for this membership are on the way"
+            ) : isLive ? (
+              <Link
+                href="/beta/pay"
+                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
               >
-                Daily lessons - coming soon
+                Join to unlock your lessons
+              </Link>
+            ) : (
+              <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
+                Daily lessons - opens August 1
               </span>
             )}
             {showPrograms && <NavLink href="/programs">Choose Your Program</NavLink>}
-            {showWorkouts && <NavLink href="/workouts">Workouts</NavLink>}
+            {showWorkouts ? (
+              <NavLink href="/workouts">Workouts</NavLink>
+            ) : isLive ? (
+              <Link
+                href="/beta/pay"
+                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+              >
+                Join to unlock your workouts
+              </Link>
+            ) : (
+              <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
+                Workouts - opens August 1
+              </span>
+            )}
             <form action={signOut}>
               <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
                 Sign out
@@ -229,9 +253,21 @@ export default function AppNav({
       {!sessionActive && (
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
           <BottomTab href="/feed" label="Feed" icon="home" />
-          {showWorkouts && <BottomTab href="/workouts" label="Workouts" icon="barbell" />}
+          {showWorkouts ? (
+            <BottomTab href="/workouts" label="Workouts" icon="barbell" />
+          ) : isLive ? (
+            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+              <TabIcon name="barbell" className="text-orange-500" />
+              <span className="text-[10px] font-semibold text-orange-500">Join</span>
+            </Link>
+          ) : (
+            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+              <TabIcon name="barbell" className="text-zinc-700" />
+              <span className="text-[10px] font-semibold text-zinc-700">Workouts</span>
+            </div>
+          )}
           <BottomTab href="/leaderboard" label="Ranks" icon="trophy" />
-          {showLessons && (
+          {showLessons ? (
             <a
               href="https://learn.getfitaf.fitness/dashboard.html"
               className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
@@ -239,6 +275,16 @@ export default function AppNav({
               <TabIcon name="book" className="text-zinc-500" />
               <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
             </a>
+          ) : isLive ? (
+            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+              <TabIcon name="book" className="text-orange-500" />
+              <span className="text-[10px] font-semibold text-orange-500">Join</span>
+            </Link>
+          ) : (
+            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+              <TabIcon name="book" className="text-zinc-700" />
+              <span className="text-[10px] font-semibold text-zinc-700">Lessons</span>
+            </div>
           )}
           <button
             onClick={() => setMoreOpen(true)}
@@ -267,11 +313,18 @@ export default function AppNav({
                 Choose Your Program
               </Link>
             )}
-            {!showLessons && (
-              <p className="text-xs text-zinc-600 px-3 py-2">
-                Daily lessons - coming soon for this membership.
-              </p>
-            )}
+            {!showLessons &&
+              (isLive ? (
+                <Link
+                  href="/beta/pay"
+                  onClick={() => setMoreOpen(false)}
+                  className="block w-full text-left text-sm font-medium text-orange-500 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+                >
+                  Join to unlock your lessons
+                </Link>
+              ) : (
+                <p className="text-xs text-zinc-600 px-3 py-2">Daily lessons - opens August 1.</p>
+              ))}
             <Link
               href="/guidelines"
               onClick={() => setMoreOpen(false)}

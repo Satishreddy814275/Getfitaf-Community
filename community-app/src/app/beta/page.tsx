@@ -25,17 +25,12 @@ import { renderRichText } from '@/lib/richText'
 import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
 import { getWaitlistCount } from '@/lib/betaLaunchSignals'
+import { LAUNCH_AT, isBetaLive } from '@/lib/betaLaunch'
 
 // Single URL, two modes - see project_beta_launch_plan memory. Only
 // the CTA changes between "Join the waitlist" (before launch) and
 // "Reserve your spot" (from launch day on); every other section on
 // the page is identical throughout, built once rather than twice.
-//
-// 2026-08-01T00:00:00+05:30 - IST, since that's the timezone this
-// launches in. Comparing against Date.now() means this page flips
-// modes on its own at midnight on launch day with no manual edit or
-// redeploy needed.
-const LAUNCH_AT = new Date('2026-08-01T00:00:00+05:30').getTime()
 
 export const metadata: Metadata = {
   title: 'GetFit AF Community — Beta Launch',
@@ -52,13 +47,7 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 
 export default async function BetaLandingPage() {
-  // Deliberate: this is a Server Component, computed fresh per
-  // request (not a client re-render), so there's no "unstable across
-  // renders" concern the react-hooks/purity rule is guarding against -
-  // same reasoning already used for the Date.now() call in
-  // AdminTemplatesList.tsx.
-  // eslint-disable-next-line react-hooks/purity
-  const isLive = Date.now() >= LAUNCH_AT
+  const isLive = isBetaLive()
 
   const [content, tierPreviews, waitlistCount] = await Promise.all([
     getBetaPageContent(),
