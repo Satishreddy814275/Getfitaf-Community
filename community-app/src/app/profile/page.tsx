@@ -4,6 +4,7 @@ import Link from 'next/link'
 import ProfileForm from '@/components/ProfileForm'
 import InstallAppRow from '@/components/InstallAppRow'
 import BodyWeightCard from '@/components/BodyWeightCard'
+import RazorpayMembershipCard from '@/components/RazorpayMembershipCard'
 import type { BodyWeightEntry } from '@/types'
 
 export default async function ProfilePage() {
@@ -14,14 +15,25 @@ export default async function ProfilePage() {
   if (!user) redirect('/login')
 
   // Independent of each other (neither reads the other's result), so
-  // batched into one round-trip instead of two serial ones.
-  const [{ data: profile }, { data: bodyWeightRows }] = await Promise.all([
+  // batched into one round-trip instead of three serial ones.
+  const [{ data: profile }, { data: bodyWeightRows }, { data: membership }] = await Promise.all([
     supabase.from('profiles').select('full_name, avatar_url, weight_unit').eq('id', user.id).single(),
     supabase
       .from('body_weight_logs')
       .select('id, weight_kg, logged_date')
       .eq('profile_id', user.id)
       .order('logged_date', { ascending: true }),
+    // Only a Razorpay-originated membership has anything to manage
+    // here - premium access and manually-granted low-ticket access
+    // don't carry a razorpay_subscription_id, so the card below stays
+    // hidden for those rather than showing a cancel button that has
+    // nothing real to cancel.
+    supabase
+      .from('space_memberships')
+      .select('razorpay_subscription_id, current_period_end, cancel_at_period_end')
+      .eq('profile_id', user.id)
+      .eq('space', 'low_ticket')
+      .maybeSingle(),
   ])
 
   const weightUnit: 'kg' | 'lbs' = profile?.weight_unit === 'lbs' ? 'lbs' : 'kg'
@@ -54,6 +66,13 @@ export default async function ProfilePage() {
       />
 
       <BodyWeightCard weightUnit={weightUnit} entries={bodyWeightEntries} />
+
+      {membership?.razorpay_subscription_id && (
+        <RazorpayMembershipCard
+          currentPeriodEnd={membership.current_period_end}
+          cancelAtPeriodEnd={membership.cancel_at_period_end}
+        />
+      )}
 
       <InstallAppRow />
     </div>

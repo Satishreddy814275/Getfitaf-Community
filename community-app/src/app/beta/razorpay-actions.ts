@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import {
   getRazorpayAuth,
   isBetaDiscountAvailable,
+  LOW_TICKET_SPACE,
   RAZORPAY_SUBSCRIPTION_TOTAL_COUNT,
 } from '@/lib/razorpay'
 
@@ -95,4 +96,64 @@ export async function createRazorpaySubscription(method: RazorpayMethod) {
   }
 
   return { subscriptionId: data.id as string, email: user.email as string, discounted: applyDiscount }
+}
+
+// Razorpay has no hosted equivalent of Stripe's Billing Portal, so
+// cancellation has to be a real API call from our own UI rather than a
+// redirect. cancel_at_cycle_end keeps the same "you won't be billed
+// again, but you have access until the cycle finishes" policy as the
+// (still-unbuilt) Stripe portal was meant to have - status only
+// actually flips to cancelled, and space_memberships only gets its row
+// deleted (see handleRevoked in api/razorpay-webhook), once the
+// current cycle really ends. cancel_at_period_end here is purely a
+// local flag so the profile page can show "cancels on [date]" in the
+// meantime instead of re-showing the Cancel button.
+export async function cancelRazorpaySubscription() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  // RLS (space_memberships_select_own) already restricts this to the
+  // signed-in user's own row.
+  const { data: membership } = await supabase
+    .from('space_memberships')
+    .select('id, razorpay_subscription_id')
+    .eq('profile_id', user.id)
+    .eq('space', LOW_TICKET_SPACE)
+    .maybeSingle()
+
+  if (!membership?.razorpay_subscription_id) {
+    throw new Error('No active Razorpay membership found to cancel.')
+  }
+
+  const res = await fetch(
+    `https://api.razorpay.com/v1/subscriptions/${membership.razorpay_subscription_id}/cancel`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: getRazorpayAuth(),
+      },
+      body: JSON.stringify({ cancel_at_cycle_end: 1 }),
+    }
+  )
+
+  const data = await res.json()
+  if (!res.ok) {
+    console.error('Razorpay subscription cancellation failed:', data)
+    throw new Error(data?.error?.description || 'Could not cancel membership. Please try again.')
+  }
+
+  // Only select_own (read) and an admin-only write policy exist on
+  // this table - a regular member has no UPDATE policy of their own,
+  // so this write has to go through the admin client. Ownership was
+  // already confirmed by the RLS-scoped select above.
+  await createAdminClient()
+    .from('space_memberships')
+    .update({ cancel_at_period_end: true })
+    .eq('id', membership.id)
+
+  return { ok: true }
 }
