@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import RazorpayCheckout from '@/components/RazorpayCheckout'
+import { checkBetaDiscountAvailable } from '@/app/beta/razorpay-actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +23,14 @@ export default async function RazorpayPayPage() {
     redirect('/beta')
   }
 
+  // Decided server-side, before render, so the price shown on the page
+  // always matches what Razorpay will actually charge - see
+  // BETA_DISCOUNT_CAP in lib/razorpay.ts. Re-checked again inside
+  // createRazorpaySubscription at the moment of the actual click, so a
+  // stale value here (e.g. the cap fills between page load and click)
+  // can't cause a mismatch either.
+  const discounted = await checkBetaDiscountAvailable()
+
   return (
     <div className="min-h-full bg-[#0a0a0a] flex items-center justify-center px-4 py-16">
       <div className="w-full max-w-md">
@@ -30,9 +39,9 @@ export default async function RazorpayPayPage() {
             Reserve your spot
           </p>
           <p className="text-zinc-500 text-xs mb-5 text-center">
-            ₹249 your first month, then ₹499/month. Cancel anytime.
+            {discounted ? '₹249 your first month, then ₹499/month.' : '₹499/month.'} Cancel anytime.
           </p>
-          <RazorpayCheckout email={user.email} />
+          <RazorpayCheckout email={user.email} discounted={discounted} />
         </div>
       </div>
     </div>

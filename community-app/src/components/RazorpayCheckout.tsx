@@ -36,7 +36,13 @@ function loadRazorpayScript(): Promise<void> {
 // confirming visually (only one tab shows) during the real-payment
 // test pass, since this is the one piece of the integration most
 // worth double-checking against Razorpay's current widget behavior.
-export default function RazorpayCheckout({ email }: { email: string }) {
+export default function RazorpayCheckout({
+  email,
+  discounted,
+}: {
+  email: string
+  discounted: boolean
+}) {
   const router = useRouter()
   const [loadingMethod, setLoadingMethod] = useState<RazorpayMethod | null>(null)
   const [error, setError] = useState('')
@@ -45,7 +51,13 @@ export default function RazorpayCheckout({ email }: { email: string }) {
     setError('')
     setLoadingMethod(method)
     try {
-      const { subscriptionId } = await createRazorpaySubscription(method)
+      // discounted here reflects the actual decision made at the
+      // moment this specific subscription was created server-side -
+      // more authoritative than the `discounted` prop, which only
+      // reflects the cap's state as of the earlier page load, in the
+      // (rare) case the cap fills in between.
+      const { subscriptionId, discounted: actuallyDiscounted } =
+        await createRazorpaySubscription(method)
       await loadRazorpayScript()
 
       const methodFlags =
@@ -57,7 +69,9 @@ export default function RazorpayCheckout({ email }: { email: string }) {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
         subscription_id: subscriptionId,
         name: 'GetFit AF',
-        description: 'Community Membership - first month ₹249',
+        description: actuallyDiscounted
+          ? 'Community Membership - first month ₹249'
+          : 'Community Membership - ₹499/month',
         prefill: { email },
         method: methodFlags,
         theme: { color: '#f97316' },
@@ -79,11 +93,15 @@ export default function RazorpayCheckout({ email }: { email: string }) {
     }
   }
 
+  const price = discounted ? '₹249' : '₹499'
+
   return (
     <div className="space-y-3">
-      <p className="text-zinc-400 text-xs text-center">
-        Choose carefully — the ₹249 discount only applies to the method you pick here.
-      </p>
+      {discounted && (
+        <p className="text-zinc-400 text-xs text-center">
+          Choose carefully — the ₹249 discount only applies to the method you pick here.
+        </p>
+      )}
       <div className="grid sm:grid-cols-2 gap-3">
         <button
           type="button"
@@ -91,7 +109,7 @@ export default function RazorpayCheckout({ email }: { email: string }) {
           disabled={loadingMethod !== null}
           className="bg-orange-500 hover:bg-orange-600 disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl transition text-sm"
         >
-          {loadingMethod === 'upi' ? 'Opening…' : 'Pay with UPI — ₹249'}
+          {loadingMethod === 'upi' ? 'Opening…' : `Pay with UPI — ${price}`}
         </button>
         <button
           type="button"
@@ -99,11 +117,13 @@ export default function RazorpayCheckout({ email }: { email: string }) {
           disabled={loadingMethod !== null}
           className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl transition text-sm border border-zinc-700"
         >
-          {loadingMethod === 'card' ? 'Opening…' : 'Pay with Card — ₹249'}
+          {loadingMethod === 'card' ? 'Opening…' : `Pay with Card — ${price}`}
         </button>
       </div>
       {error && <p className="text-red-400 text-xs text-center">{error}</p>}
-      <p className="text-zinc-600 text-[11px] text-center">Then ₹499/month. Cancel anytime.</p>
+      <p className="text-zinc-600 text-[11px] text-center">
+        {discounted ? 'Then ₹499/month.' : 'Billed monthly.'} Cancel anytime.
+      </p>
     </div>
   )
 }
