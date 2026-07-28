@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import RazorpayCheckout from '@/components/RazorpayCheckout'
 import { getBetaCheckoutState } from '@/app/beta/razorpay-actions'
+import { hasExistingAccess } from '@/lib/existingAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +22,18 @@ export default async function RazorpayPayPage() {
   }
   if (!user.email) {
     redirect('/beta')
+  }
+
+  // Page-level backstop against an existing premium or already-paying
+  // low-ticket member landing here directly (old bookmark, shared
+  // link) and being shown a real checkout for something they already
+  // have. beta/page.tsx checks this too, but someone can reach this
+  // URL without going through that page first, so it's checked again
+  // here rather than trusted from upstream. The actual hard stop
+  // against being charged twice is the same check repeated inside
+  // createRazorpaySubscription itself - see the comment there for why.
+  if (await hasExistingAccess(supabase, user.id)) {
+    redirect('/feed')
   }
 
   // Decided server-side, before render, so the page never shows a

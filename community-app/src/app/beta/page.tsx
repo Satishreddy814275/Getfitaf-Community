@@ -15,6 +15,7 @@ import {
   Check,
   X,
 } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import WaitlistForm from '@/components/WaitlistForm'
 import { DayReadOnlyView } from '@/components/AdminProgramsList'
 import BetaProgressPreview from '@/components/BetaProgressPreview'
@@ -26,6 +27,8 @@ import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
 import { getWaitlistCount } from '@/lib/betaLaunchSignals'
 import { LAUNCH_AT, isBetaLive } from '@/lib/betaLaunch'
+import { createClient } from '@/lib/supabase/server'
+import { hasExistingAccess } from '@/lib/existingAccess'
 
 // Single URL, two modes - see project_beta_launch_plan memory. Only
 // the CTA changes between "Join the waitlist" (before launch) and
@@ -48,6 +51,22 @@ export const dynamic = 'force-dynamic'
 
 export default async function BetaLandingPage() {
   const isLive = isBetaLive()
+
+  // This is the page every waitlist email and social post links to, so
+  // an existing member (premium or already-paying low-ticket) clicking
+  // an old link back here is a real scenario, not a hypothetical one -
+  // without this they'd see the exact same "join the waitlist" /
+  // "reserve your spot" marketing page a total stranger would, which
+  // reads as if they don't already have access. Checked and redirected
+  // before fetching any page content, so an existing member doesn't pay
+  // for content queries they'll never see rendered.
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (user && (await hasExistingAccess(supabase, user.id))) {
+    redirect('/feed')
+  }
 
   const [content, tierPreviews, waitlistCount] = await Promise.all([
     getBetaPageContent(),

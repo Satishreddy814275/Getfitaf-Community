@@ -45,16 +45,25 @@ function SubmitButton({ mode }: { mode: 'signin' | 'signup' }) {
 }
 
 function LoginForm() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const params = useSearchParams()
+  const error = params.get('error')
+  const next = params.get('next')
+  // Someone landing here with next=/beta/pay almost always clicked
+  // "Reserve your spot" without ever having a GetFit AF account - the
+  // default sign-in mode's "Welcome back" heading is actively wrong for
+  // that person (see project notes on the /beta launch UX pass). Existing
+  // members hitting a locked nav item elsewhere still land here too, but
+  // they already have a password to sign in with, so defaulting to
+  // signup only for the checkout path doesn't cost them anything - the
+  // toggle below still lets anyone switch either direction.
+  const isCheckoutIntent = next === '/beta/pay'
+  const [mode, setMode] = useState<'signin' | 'signup'>(isCheckoutIntent ? 'signup' : 'signin')
   const [email, setEmail] = useState('')
   const [magicLinkStatus, setMagicLinkStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>(
     'idle'
   )
   const [magicLinkError, setMagicLinkError] = useState('')
   const [googleLoading, setGoogleLoading] = useState(false)
-  const params = useSearchParams()
-  const error = params.get('error')
-  const next = params.get('next')
 
   // Despite the "forgot password" framing, this is a magic-link sign
   // in (signInWithOtp) rather than an actual password reset — it lets
@@ -117,7 +126,11 @@ function LoginForm() {
 
       <div className="glass rounded-2xl p-8">
         <h2 className="text-white text-xl font-bold mb-6">
-          {mode === 'signin' ? 'Welcome back' : 'Create your account'}
+          {mode === 'signin'
+            ? 'Welcome back'
+            : isCheckoutIntent
+              ? 'Create your account to reserve your spot'
+              : 'Create your account'}
         </h2>
 
         {error && (

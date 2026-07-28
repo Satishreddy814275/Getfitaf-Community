@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { hasExistingAccess } from '@/lib/existingAccess'
 import {
   getBetaSpotsRemaining,
   getRazorpayAuth,
@@ -50,6 +51,16 @@ export async function createRazorpaySubscription(method: RazorpayMethod | null) 
   } = await supabase.auth.getUser()
   if (!user || !user.email) {
     throw new Error('Not authenticated')
+  }
+
+  // Hard stop against a real duplicate charge - beta/pay/page.tsx
+  // already redirects an existing member away before they see a
+  // checkout button, but this is the actual money-moving call, so it
+  // gets its own independent check rather than trusting that the page
+  // upstream was never bypassed (stale render, future code path
+  // calling this action some other way, etc.).
+  if (await hasExistingAccess(supabase, user.id)) {
+    throw new Error('You already have access - no need to subscribe again.')
   }
 
   const planId = process.env.RAZORPAY_LOW_TICKET_PLAN_ID
