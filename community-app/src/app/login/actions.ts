@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 
 // Only ever redirect to a relative in-app path ("/admin", not
 // "https://evil.example.com") - formData is client-controlled, so this
@@ -76,10 +76,20 @@ export async function signUp(formData: FormData) {
   const fullName = formData.get('full_name') as string
   const next = safeNextPath(formData)
 
+  // Same /auth/callback?next=... pattern the magic-link and Google
+  // paths already build client-side (see login/page.tsx) - without
+  // this, Supabase's confirmation email link falls back to whatever
+  // default redirect is configured on the project, silently dropping
+  // wherever the person was actually trying to go (e.g. /beta/pay).
+  // Built from the request's own host rather than an env var, since
+  // this runs server-side with no window.location available.
+  const host = (await headers()).get('host')
+  const emailRedirectTo = `https://${host}/auth/callback?next=${encodeURIComponent(next)}`
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName } },
+    options: { data: { full_name: fullName }, emailRedirectTo },
   })
 
   if (error) {
