@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
-import { FEED_PAGE_SIZE, FEED_POST_SELECT } from '@/lib/feedPosts'
+import { FEED_PAGE_SIZE, FEED_POST_SELECT, SEARCH_RESULT_LIMIT } from '@/lib/feedPosts'
 import type { Post } from '@/types'
 
 // Infinite-scroll continuation of the first page feed/page.tsx already
@@ -28,6 +28,72 @@ export async function loadMorePosts(offset: number): Promise<{ posts: Post[]; ha
 
   const posts = (data as unknown as Post[] | null) || []
   return { posts, hasMore: posts.length === FEED_PAGE_SIZE }
+}
+
+// Reaches across a member's ENTIRE post history, unlike the paginated
+// feed load above - that's the whole point of a search box (finding
+// something you're not currently looking at), so it deliberately
+// doesn't share loadMorePosts' "just the next page" scope. Content and
+// poster-name matches are two separate, safely-built queries merged
+// and deduped here, rather than one query trying to OR a base-table
+// column against an embedded table's column - PostgREST doesn't
+// support that cleanly, and building a raw OR filter string out of
+// whatever someone typed (which could contain commas, parens, etc.)
+// risks corrupting the filter syntax itself.
+export async function searchPosts(query: string): Promise<Post[]> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const pattern = `%${trimmed}%`
+
+  const { data: matchingAuthors } = await supabase.from('profiles').select('id').ilike('full_name', pattern)
+  const authorIds = (matchingAuthors || []).map((a) => a.id)
+
+  const [contentRes, authorRes] = await Promise.all([
+    supabase
+      .from('posts')
+      .select(FEED_POST_SELECT)
+      .ilike('content', pattern)
+      .order('pinned', { ascending: false })
+      .order('is_announcement', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(SEARCH_RESULT_LIMIT),
+    authorIds.length > 0
+      ? supabase
+          .from('posts')
+          .select(FEED_POST_SELECT)
+          .in('author_id', authorIds)
+          .order('pinned', { ascending: false })
+          .order('is_announcement', { ascending: false })
+          .order('created_at', { ascending: false })
+          .limit(SEARCH_RESULT_LIMIT)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ])
+
+  const seen = new Set<string>()
+  const merged: Post[] = []
+  for (const row of [...(contentRes.data || []), ...(authorRes.data || [])] as unknown as Post[]) {
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    merged.push(row)
+  }
+
+  // Interleaving two separately-ordered result sets doesn't preserve a
+  // single consistent order, so re-sort the merged set with the same
+  // three-key rule used everywhere else in the feed.
+  merged.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+    if (a.is_announcement !== b.is_announcement) return a.is_announcement ? -1 : 1
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  })
+
+  return merged.slice(0, SEARCH_RESULT_LIMIT)
 }
 
 export async function createPost(formData: FormData) {

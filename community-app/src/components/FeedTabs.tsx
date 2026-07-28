@@ -6,7 +6,7 @@ import Image from 'next/image'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
-import { loadMorePosts } from '@/app/feed/actions'
+import { loadMorePosts, searchPosts } from '@/app/feed/actions'
 import type { Post, LeaderboardRow, Space } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
@@ -220,7 +220,11 @@ export default function FeedTabs({
   // the values loadMore's own guard reads change, so the closure it
   // fires never sees a stale hasMore/loadingMore/offset.
   useEffect(() => {
-    if (tab !== 'posts' || !hasMore) return
+    // Also off while a search query is active - search results (see
+    // below) replace this list entirely and aren't paginated the same
+    // way, so scrolling to the bottom of a short result set shouldn't
+    // try to load more of the normal feed underneath it.
+    if (tab !== 'posts' || !hasMore || search.trim()) return
     const el = sentinelRef.current
     if (!el) return
     const observer = new IntersectionObserver(
@@ -232,16 +236,40 @@ export default function FeedTabs({
     observer.observe(el)
     return () => observer.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, hasMore, loadingMore, offset])
+  }, [tab, hasMore, loadingMore, offset, search])
 
   // Single combined search — matches either the poster's name or the
   // post text, so one box covers "find a member" and "find a keyword"
-  // without a second input crowding the tab row. Only searches posts
-  // already loaded (this page plus anything scrolled in), not the
-  // member's full history - matches the same scope tradeoff pagination
-  // itself makes, and keeps the search box from needing its own
-  // separate server round-trip.
+  // without a second input crowding the tab row. Reaches across a
+  // member's ENTIRE post history via searchPosts (see feed/actions.ts),
+  // not just whatever's currently loaded in the scroll - a search that
+  // only found things already on screen couldn't do the one thing
+  // search exists for, finding something you're NOT currently looking
+  // at.
   const query = search.trim().toLowerCase()
+  const [searchResults, setSearchResults] = useState<Post[]>([])
+  const [searching, setSearching] = useState(false)
+
+  // Debounced - fires 350ms after typing settles, not on every
+  // keystroke. Cleanup cancels a pending fetch if the text changes
+  // again before it would have fired, so a fast typist never triggers
+  // more than one real request per pause.
+  useEffect(() => {
+    const trimmed = search.trim()
+    if (!trimmed) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSearchResults([])
+      setSearching(false)
+      return
+    }
+    setSearching(true)
+    const handle = setTimeout(async () => {
+      const results = await searchPosts(trimmed)
+      setSearchResults(results)
+      setSearching(false)
+    }, 350)
+    return () => clearTimeout(handle)
+  }, [search])
 
   // Memoized so typing in an unrelated input, or any other re-render
   // that doesn't actually change posts/spaceFilter/query, doesn't
@@ -252,16 +280,16 @@ export default function FeedTabs({
     () => (spaceFilter === 'all' ? combinedPosts : combinedPosts.filter((p) => p.space === spaceFilter)),
     [combinedPosts, spaceFilter]
   )
+  const spaceScopedSearchResults = useMemo(
+    () => (spaceFilter === 'all' ? searchResults : searchResults.filter((p) => p.space === spaceFilter)),
+    [searchResults, spaceFilter]
+  )
+  // Search results replace the normal paginated/scrolled list entirely
+  // while a query is active, rather than filtering on top of it - the
+  // whole point is reaching posts that scrolling hasn't loaded yet.
   const filteredPosts = useMemo(
-    () =>
-      query
-        ? spaceScopedPosts.filter(
-            (p) =>
-              p.content?.toLowerCase().includes(query) ||
-              p.profiles?.full_name?.toLowerCase().includes(query)
-          )
-        : spaceScopedPosts,
-    [spaceScopedPosts, query]
+    () => (query ? spaceScopedSearchResults : spaceScopedPosts),
+    [query, spaceScopedSearchResults, spaceScopedPosts]
   )
   const announcements = useMemo(
     () => filteredPosts.filter((p) => p.is_announcement),
@@ -377,20 +405,21 @@ export default function FeedTabs({
           {filteredPosts.map((post) => (
             <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} />
           ))}
-          {filteredPosts.length === 0 && (
+          {query && searching && filteredPosts.length === 0 && (
+            <p className="text-center text-sm text-zinc-500 py-12">Searching...</p>
+          )}
+          {filteredPosts.length === 0 && !(query && searching) && (
             <p className="text-center text-sm text-zinc-500 py-12">
               {query
                 ? `No posts or members match "${search.trim()}".`
                 : 'No posts yet - be the first to share something with the group.'}
             </p>
           )}
-          {/* Load-more trigger - only meaningful once there's at least
-              one post and more to fetch. A search/space filter doesn't
-              hide this: it's about whether more RAW posts exist on the
-              server, independent of how many currently match the
-              filter, so scrolling can still surface further matches
-              from posts not yet loaded. */}
-          {filteredPosts.length > 0 && hasMore && (
+          {/* Load-more trigger - hidden entirely while a search query
+              is active, since results (see spaceScopedSearchResults
+              above) come from their own capped, non-paginated fetch,
+              not from this scroll. */}
+          {!query && filteredPosts.length > 0 && hasMore && (
             <div ref={sentinelRef} className="py-6 text-center text-xs text-zinc-500">
               {loadingMore ? 'Loading more...' : ''}
             </div>

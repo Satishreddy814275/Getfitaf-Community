@@ -6,6 +6,11 @@
 // one select and not the other).
 export const FEED_PAGE_SIZE = 15
 
+// Cap on searchPosts results (feed/actions.ts) - a search box result
+// list, not a scrollable feed, so this stays a hard limit rather than
+// something paginated further.
+export const SEARCH_RESULT_LIMIT = 30
+
 export const FEED_POST_SELECT = `
   id, content, media_url, media_type, is_announcement, pinned, space, created_at, edited_at,
   profiles ( id, full_name, avatar_url ),
