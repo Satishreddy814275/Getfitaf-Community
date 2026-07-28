@@ -79,10 +79,14 @@ export async function createRazorpaySubscription(method: RazorpayMethod | null) 
     total_count: RAZORPAY_SUBSCRIPTION_TOTAL_COUNT,
     quantity: 1,
     customer_notify: 1,
-    // Not used for granting access (the webhook matches by
-    // notes.profile_id) - just useful context if this ever needs
-    // manual investigation in the Razorpay dashboard.
-    notes: { profile_id: user.id, email: user.email },
+    // profile_id is how the webhook matches this subscription back to
+    // a GetFit AF account (see findProfileFromNotes in
+    // api/razorpay-webhook). method is read back there too - only used
+    // to label the redemption row IF this subscription actually
+    // activates with the discount attached (see BETA_DISCOUNT_CAP
+    // comment in lib/razorpay.ts for why that's counted on confirmed
+    // payment, not here at creation time).
+    notes: { profile_id: user.id, email: user.email, method: method ?? 'none' },
   }
   if (offerId) body.offer_id = offerId
 
@@ -99,16 +103,6 @@ export async function createRazorpaySubscription(method: RazorpayMethod | null) 
   if (!res.ok) {
     console.error('Razorpay subscription creation failed:', data)
     throw new Error(data?.error?.description || 'Could not start checkout. Please try again.')
-  }
-
-  // Log the redemption AFTER a successful create - a failed attempt
-  // shouldn't consume a slot from the cap.
-  if (applyDiscount && method) {
-    await admin.from('beta_discount_redemptions').insert({
-      profile_id: user.id,
-      razorpay_subscription_id: data.id,
-      method,
-    })
   }
 
   return { subscriptionId: data.id as string, email: user.email as string, discounted: applyDiscount }

@@ -16,7 +16,8 @@ interface RazorpaySubscriptionEntity {
   customer_id?: string | null
   status: string
   current_end?: number | null
-  notes?: { profile_id?: string; email?: string } | null
+  offer_id?: string | null
+  notes?: { profile_id?: string; email?: string; method?: string } | null
 }
 
 interface RazorpayWebhookPayload {
@@ -120,6 +121,22 @@ async function handleActivated(
     },
     { onConflict: 'profile_id,space' }
   )
+
+  // Counts toward the public beta-discount cap (see BETA_DISCOUNT_CAP /
+  // BETA_ANNOUNCED_CAP in lib/razorpay.ts) only HERE, once payment is
+  // actually confirmed - not at the moment someone merely clicked Pay
+  // (see createRazorpaySubscription in beta/razorpay-actions.ts). That
+  // way an abandoned checkout never burns a slot that a real paying
+  // member could have used. offer_id on the subscription entity is
+  // Razorpay's own record of whether the discount was actually
+  // attached to this specific subscription at creation time.
+  if (subscription.offer_id) {
+    await supabase.from('beta_discount_redemptions').insert({
+      profile_id: profileId,
+      razorpay_subscription_id: subscription.id,
+      method: subscription.notes?.method || 'unknown',
+    })
+  }
 
   // This is the moment someone actually becomes a member — pull them
   // out of the Mailchimp waitlist sequence, same as the Stripe flow.
