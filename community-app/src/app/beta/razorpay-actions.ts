@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
+  getBetaSpotsRemaining,
   getRazorpayAuth,
   isBetaDiscountAvailable,
   LOW_TICKET_SPACE,
@@ -11,30 +12,38 @@ import {
 
 export type RazorpayMethod = 'upi' | 'card'
 
-// Whether the beta discount is still available right now - exported so
-// the checkout page (server component) can show the correct price
-// BEFORE anyone clicks anything, rather than surprising them with a
-// different amount inside the Razorpay modal than what the page said.
-export async function checkBetaDiscountAvailable(): Promise<boolean> {
-  return isBetaDiscountAvailable(createAdminClient())
+// What the checkout page (server component) needs to decide, BEFORE
+// anyone clicks anything, whether to show the method-choice screen at
+// all and what to say about pricing - so nothing shown on the page
+// contradicts what Razorpay actually charges once clicked.
+export async function getBetaCheckoutState(): Promise<{
+  discounted: boolean
+  spotsRemaining: number | null
+}> {
+  const admin = createAdminClient()
+  const [discounted, spotsRemaining] = await Promise.all([
+    isBetaDiscountAvailable(admin),
+    getBetaSpotsRemaining(admin),
+  ])
+  return { discounted, spotsRemaining }
 }
 
-// Creates a Razorpay subscription for the signed-in member. If beta
-// discount slots remain (see isBetaDiscountAvailable /
-// BETA_DISCOUNT_CAP in lib/razorpay.ts), attaches whichever offer
-// matches the payment method they chose on the method-choice screen
-// (see RazorpayCheckout.tsx) - Razorpay offers can only be restricted
-// to a single payment-method category, not applied universally the way
-// the Stripe coupon was, so the discount has to be picked up front
-// rather than auto-applied at checkout. Once the cap is reached, this
-// simply omits offer_id and the subscription bills the plan's own
-// ₹499 base rate from month one - no separate "post-beta" plan needed.
+// Creates a Razorpay subscription for the signed-in member. method is
+// null once the discount is no longer available - the UI skips the
+// method-choice screen entirely at that point (see RazorpayCheckout.tsx)
+// since there's no offer left to protect, and this just creates a
+// plain subscription that lets Razorpay's checkout show every method
+// actually enabled on the account. While discount slots remain, method
+// is required and picks which offer gets attached - Razorpay offers
+// can only be restricted to a single payment-method category, not
+// applied universally the way the Stripe coupon was, so the discount
+// has to be picked up front rather than auto-applied at checkout.
 //
 // Requires login first, same reasoning as /api/beta-checkout: the
 // webhook grants access by matching this subscription's notes.profile_id
 // to an existing profiles row, and that match only works reliably if
 // the account already exists before Razorpay fires the webhook.
-export async function createRazorpaySubscription(method: RazorpayMethod) {
+export async function createRazorpaySubscription(method: RazorpayMethod | null) {
   const supabase = await createClient()
   const {
     data: { user },
@@ -44,19 +53,26 @@ export async function createRazorpaySubscription(method: RazorpayMethod) {
   }
 
   const planId = process.env.RAZORPAY_LOW_TICKET_PLAN_ID
-  const offerId =
-    method === 'upi'
-      ? process.env.RAZORPAY_UPI_OFFER_ID
-      : process.env.RAZORPAY_CARD_OFFER_ID
-
-  if (!planId || !offerId) {
-    throw new Error(
-      `Missing RAZORPAY_LOW_TICKET_PLAN_ID or RAZORPAY_${method.toUpperCase()}_OFFER_ID env var`
-    )
+  if (!planId) {
+    throw new Error('Missing RAZORPAY_LOW_TICKET_PLAN_ID env var')
   }
 
   const admin = createAdminClient()
-  const applyDiscount = await isBetaDiscountAvailable(admin)
+  // method === null means the UI already decided at page load that no
+  // discount is available and skipped the method-choice screen - trust
+  // that rather than re-checking, since beta_discount_redemptions only
+  // ever grows, so "not discounted" can never flip back to "discounted"
+  // between page load and click.
+  const applyDiscount = method !== null && (await isBetaDiscountAvailable(admin))
+
+  let offerId: string | undefined
+  if (applyDiscount && method) {
+    offerId =
+      method === 'upi' ? process.env.RAZORPAY_UPI_OFFER_ID : process.env.RAZORPAY_CARD_OFFER_ID
+    if (!offerId) {
+      throw new Error(`Missing RAZORPAY_${method.toUpperCase()}_OFFER_ID env var`)
+    }
+  }
 
   const body: Record<string, unknown> = {
     plan_id: planId,
@@ -68,7 +84,7 @@ export async function createRazorpaySubscription(method: RazorpayMethod) {
     // manual investigation in the Razorpay dashboard.
     notes: { profile_id: user.id, email: user.email },
   }
-  if (applyDiscount) body.offer_id = offerId
+  if (offerId) body.offer_id = offerId
 
   const res = await fetch('https://api.razorpay.com/v1/subscriptions', {
     method: 'POST',
@@ -87,7 +103,7 @@ export async function createRazorpaySubscription(method: RazorpayMethod) {
 
   // Log the redemption AFTER a successful create - a failed attempt
   // shouldn't consume a slot from the cap.
-  if (applyDiscount) {
+  if (applyDiscount && method) {
     await admin.from('beta_discount_redemptions').insert({
       profile_id: user.id,
       razorpay_subscription_id: data.id,

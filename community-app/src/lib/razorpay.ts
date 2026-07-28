@@ -47,8 +47,31 @@ export const BETA_DISCOUNT_CAP = 55
 export async function isBetaDiscountAvailable(
   admin: SupabaseClient
 ): Promise<boolean> {
+  const count = await getBetaRedemptionCount(admin)
+  return count < BETA_DISCOUNT_CAP
+}
+
+// The number actually announced publicly (landing page, social posts,
+// waitlist emails) - deliberately smaller than BETA_DISCOUNT_CAP. The
+// spots-left counter on /beta/pay counts down from THIS number, not
+// the internal 55, so it can never show anything that contradicts what
+// was promised. Once it hits 0, the counter just disappears - the
+// discount may still be available for a few more signups under the
+// buffer, but that's invisible to anyone looking at the page.
+export const BETA_ANNOUNCED_CAP = 50
+
+// Spots left to display, or null once there's nothing left to show
+// (count has reached the announced 50 - regardless of whether the
+// internal 55-cap buffer still has room).
+export async function getBetaSpotsRemaining(admin: SupabaseClient): Promise<number | null> {
+  const count = await getBetaRedemptionCount(admin)
+  const remaining = BETA_ANNOUNCED_CAP - count
+  return remaining > 0 ? remaining : null
+}
+
+async function getBetaRedemptionCount(admin: SupabaseClient): Promise<number> {
   const { count } = await admin
     .from('beta_discount_redemptions')
     .select('*', { count: 'exact', head: true })
-  return (count ?? 0) < BETA_DISCOUNT_CAP
+  return count ?? 0
 }
