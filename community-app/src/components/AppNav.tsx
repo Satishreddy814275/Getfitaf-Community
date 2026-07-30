@@ -374,6 +374,15 @@ export default function AppNav({
             >
               Help
             </Link>
+            {isAdmin && (
+              <Link
+                href="/coaching"
+                onClick={() => setMoreOpen(false)}
+                className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+              >
+                One-on-one Coaching
+              </Link>
+            )}
             <Link
               href="/guidelines"
               onClick={() => setMoreOpen(false)}

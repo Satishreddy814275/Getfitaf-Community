@@ -69,6 +69,15 @@ export default function ProfileMenu({
             >
               Help
             </Link>
+            {isAdmin && (
+              <Link
+                href="/coaching"
+                onClick={() => setOpen(false)}
+                className="block px-4 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800/60 transition"
+              >
+                One-on-one Coaching
+              </Link>
+            )}
             <Link
               href="/guidelines"
               onClick={() => setOpen(false)}
