@@ -63,9 +63,15 @@ export default async function RootLayout({
   let isApproved = false;
   let hasLowTicket = false;
   let notifications: Notification[] = [];
+  let fullName: string | null = null;
+  let avatarUrl: string | null = null;
   if (user) {
     const [profileRes, membershipRes, notificationsRes] = await Promise.all([
-      supabase.from("profiles").select("is_admin, approved").eq("id", user.id).single(),
+      supabase
+        .from("profiles")
+        .select("is_admin, approved, full_name, avatar_url")
+        .eq("id", user.id)
+        .single(),
       supabase
         .from("space_memberships")
         .select("space")
@@ -85,6 +91,8 @@ export default async function RootLayout({
     isApproved = !!profileRes.data?.approved;
     hasLowTicket = !!membershipRes.data;
     notifications = (notificationsRes.data as unknown as Notification[] | null) || [];
+    fullName = profileRes.data?.full_name ?? null;
+    avatarUrl = profileRes.data?.avatar_url ?? null;
   }
 
   // Program picker is an internal route now (see /programs and
@@ -105,6 +113,8 @@ export default async function RootLayout({
               hasLowTicket={hasLowTicket}
               showPrograms={showPrograms}
               notifications={notifications}
+              fullName={fullName}
+              avatarUrl={avatarUrl}
             />
           )}
           <PageBody hasUser={!!user}>{children}</PageBody>

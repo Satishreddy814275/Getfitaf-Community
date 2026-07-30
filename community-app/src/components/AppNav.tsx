@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import NotificationBell from './NotificationBell'
+import ProfileMenu from './ProfileMenu'
 import ExternalNavLink from './ExternalNavLink'
 import { signOut } from '@/app/login/actions'
 import { useSessionActive } from './SessionActiveProvider'
@@ -26,8 +27,10 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href}
-      className={`text-sm font-medium transition ${
-        active ? 'text-white' : 'text-zinc-400 hover:text-white'
+      className={`text-sm font-medium transition pb-3 -mb-3 border-b-2 ${
+        active
+          ? 'text-white border-orange-500'
+          : 'text-zinc-400 hover:text-white border-transparent'
       }`}
     >
       {children}
@@ -161,12 +164,16 @@ export default function AppNav({
   hasLowTicket,
   showPrograms,
   notifications,
+  fullName,
+  avatarUrl,
 }: {
   isAdmin: boolean
   isApproved: boolean
   hasLowTicket: boolean
   showPrograms: boolean
   notifications: Notification[]
+  fullName: string | null
+  avatarUrl: string | null
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const { sessionActive } = useSessionActive()
@@ -186,10 +193,16 @@ export default function AppNav({
 
   return (
     <>
-      {/* Desktop - unchanged content from before, just with active-state
-          highlighting added via NavLink. Hidden below the sm breakpoint,
-          replaced by the simplified mobile bar + bottom tabs. */}
-      <header className="hidden sm:block border-b border-zinc-800 bg-[#0a0a0a]">
+      {/* Desktop - decluttered from a flat row of 8 equal-weight links
+          down to: primary nav (things members reach for often) plus an
+          avatar menu for everything else (Programs, Guidelines, Edit
+          Profile, Admin, Sign out) - the exact same primary/secondary
+          split the mobile bottom-tab bar + "More" sheet already use, just
+          expressed as a dropdown instead of a bottom sheet. Sticky +
+          backdrop-blur reuses the app's existing .glass language so the
+          header reads as one continuous piece of that system rather than
+          a flat opaque bar sitting on top of the page. */}
+      <header className="hidden sm:block sticky top-0 z-30 border-b border-zinc-800/80 bg-[#0a0a0a]/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <Link
             href="/feed"
@@ -198,54 +211,56 @@ export default function AppNav({
             GET<span className="text-orange-500">FIT</span> AF
             <span className="ml-1.5 font-medium text-zinc-400">Community</span>
           </Link>
-          <div className="flex items-center gap-4">
-            <NotificationBell initialNotifications={notifications} />
-            <NavLink href="/leaderboard">Leaderboard</NavLink>
-            <NavLink href="/guidelines">Guidelines</NavLink>
-            <NavLink href="/profile">Edit Profile</NavLink>
-            {isAdmin && <NavLink href="/admin">Admin</NavLink>}
-            {showLessons ? (
-              <ExternalNavLink
-                href="https://learn.getfitaf.fitness/dashboard.html"
-                className="text-sm font-medium text-zinc-400 hover:text-white transition"
-                loadingLabel="Taking you to your lessons..."
-              >
-                Go to your lessons
-              </ExternalNavLink>
-            ) : isLive ? (
-              <Link
-                href="/beta/pay"
-                className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5"
-              >
-                <LockIcon className="text-orange-500" />
-                Join to unlock your lessons
-              </Link>
-            ) : (
-              <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
-                Daily lessons - opens August 1
-              </span>
-            )}
-            {showPrograms && <NavLink href="/programs">Choose Your Program</NavLink>}
-            {showWorkouts ? (
-              <NavLink href="/workouts">Workouts</NavLink>
-            ) : isLive ? (
-              <Link
-                href="/beta/pay"
-                className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5"
-              >
-                <LockIcon className="text-orange-500" />
-                Join to unlock your workouts
-              </Link>
-            ) : (
-              <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
-                Workouts - opens August 1
-              </span>
-            )}
-            <form action={signOut}>
-              <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
-                Sign out
-              </button>
-            </form>
+          <div className="flex items-center gap-6">
+            <nav className="flex items-center gap-5">
+              <NavLink href="/leaderboard">Leaderboard</NavLink>
+              {showLessons ? (
+                <ExternalNavLink
+                  href="https://learn.getfitaf.fitness/dashboard.html"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
+                  loadingLabel="Taking you to your lessons..."
+                >
+                  Go to your lessons
+                </ExternalNavLink>
+              ) : isLive ? (
+                <Link
+                  href="/beta/pay"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                >
+                  <LockIcon className="text-orange-500" />
+                  Join to unlock your lessons
+                </Link>
+              ) : (
+                <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
+                  Daily lessons - opens August 1
+                </span>
+              )}
+              {showWorkouts ? (
+                <NavLink href="/workouts">Workouts</NavLink>
+              ) : isLive ? (
+                <Link
+                  href="/beta/pay"
+                  className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                >
+                  <LockIcon className="text-orange-500" />
+                  Join to unlock your workouts
+                </Link>
+              ) : (
+                <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
+                  Workouts - opens August 1
+                </span>
+              )}
+            </nav>
+            <div className="w-px h-5 bg-zinc-800" aria-hidden="true" />
+            <div className="flex items-center gap-4">
+              <NotificationBell initialNotifications={notifications} />
+              <ProfileMenu
+                fullName={fullName}
+                avatarUrl={avatarUrl}
+                isAdmin={isAdmin}
+                showPrograms={showPrograms}
+              />
+            </div>
           </div>
         </div>
       </header>
