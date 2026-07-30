@@ -10,42 +10,87 @@ import type { ReactNode } from 'react'
 // no state or hooks, so this stays importable straight into the
 // Server Component /help page.
 
-function CommunityNavFull({ current }: { current: string }) {
-  const links = [
-    'Leaderboard',
-    'Guidelines',
-    'Edit Profile',
-    'Go to your lessons',
-    'Choose Your Program',
-    'Workouts',
-  ]
+// Real bell icon, matching NotificationBell.tsx's own SVG exactly, so
+// this reads as the actual nav rather than a stand-in.
+function BellIcon({ className }: { className?: string }) {
   return (
-    <div className="bg-[#0a0a0a] border-b border-white/[0.08] px-5 py-3 flex items-center gap-4 text-xs flex-wrap">
-      <span className="text-white font-extrabold text-[13px] mr-2">
-        GET<span className="text-orange-500">FIT</span> AF Community
+    <svg viewBox="0 0 24 24" width={16} height={16} fill="currentColor" className={className}>
+      <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
+    </svg>
+  )
+}
+
+// Stand-in for the real Avatar component (an initials circle, same as
+// what a member with no photo sees) - the exact avatar image isn't the
+// point here, just its position as the thing you click.
+function AvatarDot() {
+  return (
+    <span className="w-7 h-7 rounded-full bg-orange-500/20 border border-orange-500/50 flex items-center justify-center text-orange-400 text-[11px] font-bold shrink-0">
+      S
+    </span>
+  )
+}
+
+// The real desktop nav as of the primary/secondary split: only
+// Leaderboard, Go to your lessons and Workouts remain flat top-level
+// links - Choose Your Program, Guidelines, Edit Profile and Admin all
+// moved into the avatar menu (see AppNav.tsx/ProfileMenu.tsx). Kept as
+// one shared component so all three frames that show this bar can't
+// drift out of sync with each other or with the real nav again.
+function TopNav({
+  active,
+  highlightWorkouts,
+}: {
+  active?: 'Workouts'
+  highlightWorkouts?: boolean
+}) {
+  return (
+    <div className="bg-[#0a0a0a] border-b border-white/[0.08] px-5 py-3 flex items-center justify-between">
+      <span className="text-white font-extrabold text-[13px]">
+        GET<span className="text-orange-500">FIT</span> AF <span className="font-medium text-zinc-500">Community</span>
       </span>
-      {links.map((label) => {
-        if (label === current) {
-          return (
-            <span key={label} className="text-white">
-              {label}
-            </span>
-          )
-        }
-        if (label === 'Go to your lessons') {
-          return (
-            <span key={label} className="relative pl-2.5 text-zinc-500">
-              <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-orange-400" />
-              {label}
-            </span>
-          )
-        }
-        return (
-          <span key={label} className="text-zinc-500">
-            {label}
+      <div className="flex items-center gap-5 text-xs">
+        <span className="text-zinc-400">Leaderboard</span>
+        <span className="relative pl-2.5 text-zinc-400">
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-orange-400" />
+          Go to your lessons
+        </span>
+        <span className="relative inline-block">
+          <span
+            className={
+              active === 'Workouts'
+                ? 'text-white pb-3 -mb-3 border-b-2 border-orange-500'
+                : 'text-zinc-400 pb-3 -mb-3 border-b-2 border-transparent'
+            }
+          >
+            Workouts
           </span>
-        )
-      })}
+          {highlightWorkouts && (
+            <>
+              <span className="absolute -inset-1.5 border-2 border-orange-500 rounded-[10px] pointer-events-none" />
+              <svg
+                width="60"
+                height="34"
+                viewBox="0 0 60 34"
+                className="absolute top-6 left-1/2 -translate-x-1/2 overflow-visible pointer-events-none"
+              >
+                <path d="M30,0 Q30,18 30,26" stroke="#F97316" strokeWidth={2.5} fill="none" markerEnd="url(#arrow3)" />
+                <defs>
+                  <marker id="arrow3" markerWidth={8} markerHeight={8} refX={4} refY={6} orient="auto">
+                    <path d="M0,0 L8,3 L0,6 Z" fill="#F97316" />
+                  </marker>
+                </defs>
+              </svg>
+              <span className="absolute top-11 left-1/2 -translate-x-1/2 bg-orange-500 text-[#1a1a1a] text-[11px] font-extrabold px-2.5 py-1 rounded-md whitespace-nowrap">
+                Click here
+              </span>
+            </>
+          )}
+        </span>
+        <span className="w-px h-4 bg-white/10" />
+        <BellIcon className="text-zinc-400" />
+        <AvatarDot />
+      </div>
     </div>
   )
 }
@@ -87,12 +132,34 @@ function Caption({ children }: { children: ReactNode }) {
 }
 
 // --- Step 1: Pick your program ---
+// Choose Your Program lives inside the avatar menu now, not a flat nav
+// link - shown here as the real open dropdown (matching ProfileMenu's
+// current solid glass-menu styling) sitting right under the avatar,
+// with the destination page continuing directly below it. One frame,
+// read top to bottom: open the menu, then land on the page.
 export function Step1Visual() {
   return (
     <>
       <FrameShell>
-        <CommunityNavFull current="Choose Your Program" />
-        <div className="p-5">
+        <TopNav />
+        <div className="flex justify-end px-5 pt-2">
+          <div className="w-52 bg-[rgba(24,24,27,0.98)] border border-white/10 rounded-xl shadow-xl overflow-hidden">
+            <div className="px-3.5 py-2.5 border-b border-white/10">
+              <p className="text-white text-[11.5px] font-semibold">Satish Reddy</p>
+            </div>
+            <div className="py-1">
+              <div className="mx-1 my-0.5 relative outline outline-2 outline-orange-500 outline-offset-[-2px] rounded-lg">
+                <p className="px-2.5 py-1.5 text-[12.5px] font-medium text-white">Choose Your Program</p>
+              </div>
+              <p className="px-3.5 py-1.5 text-[12.5px] font-medium text-zinc-500">Guidelines</p>
+              <p className="px-3.5 py-1.5 text-[12.5px] font-medium text-zinc-500">Edit Profile</p>
+            </div>
+          </div>
+        </div>
+        <div className="px-5 pt-3 pb-2">
+          <p className="text-zinc-500 text-[11px] tracking-wide">THEN &rarr; CHOOSE YOUR PROGRAM</p>
+        </div>
+        <div className="border-t border-white/[0.08] p-5 pt-4">
           <p className="text-zinc-500 text-xs mb-3.5">&larr; Back to Community</p>
           <h3 className="text-white text-[18px] font-bold mb-1.5">Choose Your Program</h3>
           <p className="text-zinc-500 text-xs mb-4">
@@ -111,10 +178,10 @@ export function Step1Visual() {
         </div>
       </FrameShell>
       <Caption>
-        <b className="text-white">What to look for:</b> click &quot;Choose Your Program&quot; in the nav to get here.
-        If you&apos;re new to training or easing back in, Foundations is built for exactly that &mdash; two weeks,
-        minimal equipment, nothing to figure out. Once you&apos;re comfortable, &quot;Browse other programs&quot;
-        switches you to one that fits your goals and equipment better.
+        <b className="text-white">What to look for:</b> click your avatar (top right) to open the menu, then
+        Choose Your Program. If you&apos;re new to training or easing back in, Foundations is built for exactly
+        that &mdash; two weeks, minimal equipment, nothing to figure out. Once you&apos;re comfortable, &quot;Browse
+        other programs&quot; switches you to one that fits your goals and equipment better.
       </Caption>
     </>
   )
@@ -186,39 +253,7 @@ export function Step3Visual() {
   return (
     <>
       <FrameShell>
-        <div className="bg-[#0a0a0a] border-b border-white/[0.08] px-5 py-3 flex items-center gap-4 text-xs flex-wrap">
-          <span className="text-white font-extrabold text-[13px] mr-2">
-            GET<span className="text-orange-500">FIT</span> AF Community
-          </span>
-          <span className="text-zinc-500">Leaderboard</span>
-          <span className="text-zinc-500">Guidelines</span>
-          <span className="text-zinc-500">Edit Profile</span>
-          <span className="relative pl-2.5 text-zinc-500">
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-orange-400" />
-            Go to your lessons
-          </span>
-          <span className="text-zinc-500">Choose Your Program</span>
-          <span className="relative inline-block">
-            <span className="text-white">Workouts</span>
-            <span className="absolute -inset-1.5 border-2 border-orange-500 rounded-[10px] pointer-events-none" />
-            <svg
-              width="60"
-              height="34"
-              viewBox="0 0 60 34"
-              className="absolute top-6 left-1/2 -translate-x-1/2 overflow-visible pointer-events-none"
-            >
-              <path d="M30,0 Q30,18 30,26" stroke="#F97316" strokeWidth={2.5} fill="none" markerEnd="url(#arrow3)" />
-              <defs>
-                <marker id="arrow3" markerWidth={8} markerHeight={8} refX={4} refY={6} orient="auto">
-                  <path d="M0,0 L8,3 L0,6 Z" fill="#F97316" />
-                </marker>
-              </defs>
-            </svg>
-            <span className="absolute top-11 left-1/2 -translate-x-1/2 bg-orange-500 text-[#1a1a1a] text-[11px] font-extrabold px-2.5 py-1 rounded-md whitespace-nowrap">
-              Click here
-            </span>
-          </span>
-        </div>
+        <TopNav active="Workouts" highlightWorkouts />
         <div className="p-5">
           <h3 className="text-white text-[18px] font-bold mb-1">Your Workouts</h3>
           <p className="text-zinc-500 text-xs mb-3.5">
@@ -256,7 +291,7 @@ export function Step4Visual() {
   return (
     <>
       <FrameShell>
-        <CommunityNavFull current="" />
+        <TopNav />
         <div className="p-5">
           <div className="flex gap-2 mb-3.5">
             <span className="bg-orange-500 text-[#1a1a1a] text-xs font-bold px-3.5 py-1.5 rounded-md">
