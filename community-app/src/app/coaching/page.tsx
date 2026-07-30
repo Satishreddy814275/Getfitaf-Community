@@ -41,7 +41,13 @@ export default async function CoachingPage() {
   if (!profile?.is_admin) redirect('/feed')
 
   return (
-    <div className="max-w-2xl mx-auto w-full py-8 px-4 sm:px-6">
+    // Wider than the app's usual max-w-2xl (used on /help, /guidelines) -
+    // Calendly's inline embed switches to a cramped "small window" layout
+    // under 650px of container width, which is exactly what max-w-2xl's
+    // ~632px-after-padding was landing in and reserving unstyled blank
+    // space for. max-w-3xl clears that threshold with real margin
+    // (confirmed against Calendly's own documented layout breakpoints).
+    <div className="max-w-3xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
         href="/feed"
         className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
