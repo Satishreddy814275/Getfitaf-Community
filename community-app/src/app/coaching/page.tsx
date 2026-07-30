@@ -56,11 +56,11 @@ export default async function CoachingPage() {
         <p className="text-zinc-400 text-sm leading-relaxed">
           This is separate from your community membership, a dedicated 1-on-1 coaching
           relationship built around your goals, schedule, and budget. The call below is a free
-          30-minute consultation to see if it&apos;s the right fit, no obligation either way.
+          30-minute consultation to see if it&apos;s the right fit.
         </p>
       </div>
 
-      <div className="glass rounded-2xl p-5">
+      <div className="glass rounded-2xl p-5 pb-2">
         <p className="text-white text-sm font-semibold mb-4">Book your free consultation</p>
         <CalendlyInlineEmbed url={CALENDLY_URL} />
       </div>
