@@ -46,7 +46,7 @@ export default function ProfileMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-56 glass rounded-xl shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-56 glass-menu rounded-xl shadow-xl z-50 overflow-hidden">
           {fullName && (
             <div className="px-4 py-3 border-b border-zinc-800">
               <p className="text-sm font-semibold text-white truncate">{fullName}</p>

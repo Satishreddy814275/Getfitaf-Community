@@ -27,6 +27,21 @@ body {
   backdrop-filter: blur(12px);
 }
 
+/* For floating dropdown menus (ProfileMenu, NotificationBell) - not
+   cards sitting in the page's own flow. .glass's 4% tint was designed
+   to sit over the app's own uniform dark background, which works fine
+   for a card, but a dropdown can open over anything (nav links, post
+   text, other cards), and that low an opacity plus blur alone doesn't
+   fully hide what's behind it - busier backgrounds show through and
+   visually collide with the menu's own text. This is near-opaque
+   instead, so a dropdown reads as a solid menu regardless of what's
+   behind it. */
+.glass-menu {
+  background: rgba(24, 24, 27, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+}
+
 /* Heart "pop" on liking — only played going from unliked to liked
    (see LikeButton.tsx), not on unlike, since a burst on adding
    affection reads right and a burst on removing it doesn't. */
