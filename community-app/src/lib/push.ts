@@ -1,14 +1,28 @@
 import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-// Configured once at module load, not per-call - setVapidDetails just
-// stores these on the module-level webpush instance, no reason to
-// repeat it on every send.
-webpush.setVapidDetails(
-  'mailto:support@getfitaf.fitness',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
+// Deliberately NOT called at module load. web-push validates the key
+// synchronously and throws if it's missing - doing that at the top of
+// this file meant Next's build-time page-data collection (which
+// evaluates route modules, not just type-checks them) crashed the
+// entire production build the moment this file was imported, before
+// the VAPID env vars existed in Vercel. Configuring lazily, only when
+// a send is actually attempted, means a missing key degrades to "this
+// one cron run logs an error and sends nothing" instead of "nothing
+// on the whole site deploys."
+let vapidConfigured = false
+function ensureVapidConfigured(): boolean {
+  if (vapidConfigured) return true
+  const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  const privateKey = process.env.VAPID_PRIVATE_KEY
+  if (!publicKey || !privateKey) {
+    console.error('push: NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY not set - skipping send')
+    return false
+  }
+  webpush.setVapidDetails('mailto:support@getfitaf.fitness', publicKey, privateKey)
+  vapidConfigured = true
+  return true
+}
 
 export type PushPayload = {
   title: string
@@ -27,6 +41,8 @@ export type PushPayload = {
 // permission revoked, etc.), not a transient failure, so retrying it
 // later would just fail the same way forever if left in the table.
 export async function sendPushToProfile(profileId: string, payload: PushPayload): Promise<void> {
+  if (!ensureVapidConfigured()) return
+
   const supabase = createAdminClient()
   const { data: subs } = await supabase
     .from('push_subscriptions')
