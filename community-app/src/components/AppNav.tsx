@@ -107,6 +107,30 @@ function TabIcon({
   )
 }
 
+// Small lock glyph for "you don't have access yet" links - orange (this
+// genuinely is an upsell nudge, worth some visual weight) but paired with
+// neutral link text rather than full solid orange, so it stays visually
+// distinct from a real primary-action button like Post or Start.
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  )
+}
+
 function BottomTab({
   href,
   label,
@@ -183,7 +207,7 @@ export default function AppNav({
             {showLessons ? (
               <ExternalNavLink
                 href="https://learn.getfitaf.fitness/dashboard.html"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                className="text-sm font-medium text-zinc-400 hover:text-white transition"
                 loadingLabel="Taking you to your lessons..."
               >
                 Go to your lessons
@@ -191,8 +215,9 @@ export default function AppNav({
             ) : isLive ? (
               <Link
                 href="/beta/pay"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5"
               >
+                <LockIcon className="text-orange-500" />
                 Join to unlock your lessons
               </Link>
             ) : (
@@ -206,8 +231,9 @@ export default function AppNav({
             ) : isLive ? (
               <Link
                 href="/beta/pay"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+                className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5"
               >
+                <LockIcon className="text-orange-500" />
                 Join to unlock your workouts
               </Link>
             ) : (
@@ -318,8 +344,9 @@ export default function AppNav({
                 <Link
                   href="/beta/pay"
                   onClick={() => setMoreOpen(false)}
-                  className="block w-full text-left text-sm font-medium text-orange-500 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+                  className="flex items-center gap-2 w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
                 >
+                  <LockIcon className="text-orange-500" />
                   Join to unlock your lessons
                 </Link>
               ) : (
