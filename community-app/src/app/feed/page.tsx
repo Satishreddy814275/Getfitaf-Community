@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import InstallAppBanner from '@/components/InstallAppBanner'
+import PushNotificationsBanner from '@/components/PushNotificationsBanner'
+import HelpBanner from '@/components/HelpBanner'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
@@ -162,6 +164,10 @@ export default async function FeedPage({
           snoozed for the day, see InstallAppBanner's own logic. */}
       <InstallAppBanner storageKey={`install-prompt-dismissed-${user.id}`} />
 
+      {/* Same daily-snooze pattern as InstallAppBanner just above -
+          self-hides once subscribed, blocked, or unsupported. */}
+      <PushNotificationsBanner storageKey={`push-prompt-dismissed-${user.id}`} />
+
       {/* Two-tier reminder for low-ticket members who haven't picked a
           program yet, both gated on the same condition. The card is
           unconditional page content - no dismiss state, just quietly
@@ -179,6 +185,9 @@ export default async function FeedPage({
           itself still only renders for low-ticket members without a
           program picked, same condition as before. */}
       <RulesGate userId={user.id} intro={guidelines.intro} rules={guidelines.rules}>
+        {/* Once ever (not daily) - the first thing anyone sees right
+            after acknowledging the guidelines, pointing at /help. */}
+        <HelpBanner storageKey={`help-banner-seen-${user.id}`} />
         {hasLowTicket && !hasSelectedProgram && (
           <WorkoutBuilderPromptModal
             href="/programs"

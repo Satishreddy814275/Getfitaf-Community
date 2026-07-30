@@ -368,6 +368,13 @@ export default function AppNav({
                 <p className="text-xs text-zinc-600 px-3 py-2">Daily lessons - opens August 1.</p>
               ))}
             <Link
+              href="/help"
+              onClick={() => setMoreOpen(false)}
+              className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+            >
+              Help
+            </Link>
+            <Link
               href="/guidelines"
               onClick={() => setMoreOpen(false)}
               className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
