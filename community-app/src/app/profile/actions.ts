@@ -82,3 +82,45 @@ export async function logBodyWeight(formData: FormData) {
   revalidatePath('/profile')
   revalidatePath('/admin')
 }
+
+// Push notification subscriptions - a member can have more than one
+// (phone + laptop, say), so this is an upsert keyed on the endpoint
+// itself (unique per subscription, not per profile) rather than one
+// row per profile.
+export async function savePushSubscription(subscription: {
+  endpoint: string
+  keys: { p256dh: string; auth: string }
+}) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase.from('push_subscriptions').upsert(
+    {
+      profile_id: user.id,
+      endpoint: subscription.endpoint,
+      p256dh: subscription.keys.p256dh,
+      auth: subscription.keys.auth,
+    },
+    { onConflict: 'endpoint' }
+  )
+
+  revalidatePath('/profile')
+}
+
+export async function removePushSubscription(endpoint: string) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  // Scoped to this member's own rows even though endpoint is already
+  // unique - belt and suspenders against ever deleting someone else's
+  // subscription via a tampered request.
+  await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint).eq('profile_id', user.id)
+
+  revalidatePath('/profile')
+}

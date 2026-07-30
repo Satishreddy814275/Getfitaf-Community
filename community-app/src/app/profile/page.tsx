@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import ProfileForm from '@/components/ProfileForm'
 import InstallAppRow from '@/components/InstallAppRow'
+import PushNotificationsRow from '@/components/PushNotificationsRow'
 import BodyWeightCard from '@/components/BodyWeightCard'
 import RazorpayMembershipCard from '@/components/RazorpayMembershipCard'
 import type { BodyWeightEntry } from '@/types'
@@ -75,6 +76,7 @@ export default async function ProfilePage() {
       )}
 
       <InstallAppRow />
+      <PushNotificationsRow />
     </div>
   )
 }

@@ -78,3 +78,44 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// Push notifications - server side (src/lib/push.ts) sends a JSON payload
+// of { title, body, url }; this just has to display it and, on tap, focus
+// an already-open tab if there is one rather than always opening a new one.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = {};
+  }
+  const title = data.title || "GetFit AF";
+  const options = {
+    body: data.body || "",
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    data: { url: data.url || "/feed" },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data && event.notification.data.url ? event.notification.data.url : "/feed";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      // Same-origin taps (e.g. /workouts) can reuse an already-open tab;
+      // cross-origin ones (the lesson-ready push deep-links to
+      // learn.getfitaf.fitness) can't be focused this way, so those
+      // always open fresh - a subscription registered here can still
+      // link out to the other domain, it just can't reuse its tab.
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && targetUrl.startsWith("/") && "focus" in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});
