@@ -99,6 +99,12 @@ export default async function RootLayout({
   // migration-program-templates.sql) - no signed handoff token needed,
   // just the same access gate the external builder link used to have.
   const showPrograms = hasLowTicket || isAdmin;
+  // One-on-one coaching is scoped to the low-ticket program only -
+  // premium/high-ticket (profiles.approved) members already get 1-on-1
+  // attention as part of what they're paying for, so this shouldn't
+  // read as an upsell to them. isAdmin stays included so it's always
+  // reachable for a quick look regardless of which space is active.
+  const showCoaching = hasLowTicket || isAdmin;
 
   return (
     <html lang="en" className={`h-full antialiased ${manrope.variable}`}>
@@ -112,6 +118,7 @@ export default async function RootLayout({
               isApproved={isApproved}
               hasLowTicket={hasLowTicket}
               showPrograms={showPrograms}
+              showCoaching={showCoaching}
               notifications={notifications}
               fullName={fullName}
               avatarUrl={avatarUrl}

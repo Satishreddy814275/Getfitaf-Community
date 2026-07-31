@@ -15,11 +15,13 @@ export default function ProfileMenu({
   avatarUrl,
   isAdmin,
   showPrograms,
+  showCoaching,
 }: {
   fullName: string | null
   avatarUrl: string | null
   isAdmin: boolean
   showPrograms: boolean
+  showCoaching: boolean
 }) {
   const [open, setOpen] = useState(false)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -69,7 +71,7 @@ export default function ProfileMenu({
             >
               Help
             </Link>
-            {isAdmin && (
+            {showCoaching && (
               <Link
                 href="/coaching"
                 onClick={() => setOpen(false)}

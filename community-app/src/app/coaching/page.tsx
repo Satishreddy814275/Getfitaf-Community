@@ -11,11 +11,12 @@ import CalendlyInlineEmbed from '@/components/CalendlyInlineEmbed'
 // Calendly's supported embed params - font/layout stay Calendly's,
 // that's the real limit of what their embed customization allows.
 //
-// ADMIN-ONLY PREVIEW: gated the same way /admin is (live is_admin
-// check, not just a hidden nav link) so nobody can land on this via a
-// direct URL before it's ready to announce. Remove the is_admin
-// redirect below (and the matching isAdmin check in ProfileMenu.tsx /
-// AppNav.tsx's nav links) to launch it for everyone.
+// Scoped to the low-ticket program only - premium/high-ticket
+// (profiles.approved) members already get 1-on-1 attention as part of
+// what they're paying for, so this shouldn't read as an upsell to
+// them. Server-side check (not just a hidden nav link), same pattern
+// as /admin - direct URL access is blocked the same as the nav links
+// (ProfileMenu.tsx / AppNav.tsx's showCoaching prop) already are.
 export const dynamic = 'force-dynamic'
 
 // hide_event_type_details=1 hides the photo/name/duration/location/
@@ -33,13 +34,17 @@ export default async function CoachingPage() {
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single()
+  const [{ data: profile }, { data: membership }] = await Promise.all([
+    supabase.from('profiles').select('is_admin').eq('id', user.id).single(),
+    supabase
+      .from('space_memberships')
+      .select('space')
+      .eq('profile_id', user.id)
+      .eq('space', 'low_ticket')
+      .maybeSingle(),
+  ])
 
-  if (!profile?.is_admin) redirect('/feed')
+  if (!profile?.is_admin && !membership) redirect('/feed')
 
   return (
     // Back to max-w-2xl (same as /help, /guidelines) - widening to

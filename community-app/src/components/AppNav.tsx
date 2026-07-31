@@ -163,6 +163,7 @@ export default function AppNav({
   isApproved,
   hasLowTicket,
   showPrograms,
+  showCoaching,
   notifications,
   fullName,
   avatarUrl,
@@ -171,6 +172,7 @@ export default function AppNav({
   isApproved: boolean
   hasLowTicket: boolean
   showPrograms: boolean
+  showCoaching: boolean
   notifications: Notification[]
   fullName: string | null
   avatarUrl: string | null
@@ -259,6 +261,7 @@ export default function AppNav({
                 avatarUrl={avatarUrl}
                 isAdmin={isAdmin}
                 showPrograms={showPrograms}
+                showCoaching={showCoaching}
               />
             </div>
           </div>
@@ -374,7 +377,7 @@ export default function AppNav({
             >
               Help
             </Link>
-            {isAdmin && (
+            {showCoaching && (
               <Link
                 href="/coaching"
                 onClick={() => setMoreOpen(false)}
