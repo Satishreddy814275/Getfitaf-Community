@@ -18,12 +18,15 @@ import CalendlyInlineEmbed from '@/components/CalendlyInlineEmbed'
 // AppNav.tsx's nav links) to launch it for everyone.
 export const dynamic = 'force-dynamic'
 
-// hide_event_type_details=1 is Calendly's own documented flag for
-// exactly this - it drops the photo, name, duration, location and
-// description panel that otherwise repeats info our own page copy
-// above already covers. Available on all plans, not a workaround.
+// hide_event_type_details=1 (photo/name/duration/location/description)
+// was tried and reverted: it left Calendly's own outer page wrapper
+// exposed as an unstyled white frame around the actual (correctly
+// dark-themed) calendar card - background_color only reaches the inner
+// card, not that wrapper. Keeping the details panel visible is what
+// makes the whole thing render fully dark end to end, and showing your
+// name/photo there isn't something worth losing that over.
 const CALENDLY_URL =
-  'https://calendly.com/getfit_af/30-minute-free-consultation-clone?hide_gdpr_banner=1&hide_event_type_details=1&background_color=0a0a0a&text_color=f4f4f5&primary_color=f97316'
+  'https://calendly.com/getfit_af/30-minute-free-consultation-clone?hide_gdpr_banner=1&background_color=0a0a0a&text_color=f4f4f5&primary_color=f97316'
 
 export default async function CoachingPage() {
   const supabase = await createClient()
