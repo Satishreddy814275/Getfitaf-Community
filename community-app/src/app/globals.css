@@ -85,3 +85,86 @@ body {
 .comment-highlight {
   animation: comment-highlight-fade 2s ease-out;
 }
+
+/* Lesson reading surface (src/app/lessons/[slug]/page.tsx) - migrated
+   from learn.getfitaf.fitness's static lesson pages (gfa-portal repo),
+   which were deliberately light-mode (white card on light gray) rather
+   than matching the rest of that site's own dark theme, presumably for
+   long-form reading comfort. Kept exactly as-is rather than
+   re-themed dark to match the rest of this app - easy to flip later
+   if it reads as inconsistent once live, but not something to guess at
+   silently.
+   .lesson-content wraps only the per-lesson `content` column's raw
+   HTML (dangerouslySetInnerHTML) - everything else on the page (title,
+   forms, complete button, signoff) is real JSX/Tailwind, not part of
+   this stylesheet. Classes below are the ones actually used across
+   ported lessons so far (see individual dayN-lesson.html files this
+   was pulled from) - porting a future lesson that introduces a new
+   one-off class means adding it here too. */
+.lesson-content {
+  font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  color: #333;
+}
+.lesson-content p { font-size: 16px; line-height: 1.75; color: #333; margin-bottom: 18px; }
+.lesson-content p:last-child { margin-bottom: 0; }
+.lesson-content h3 { font-size: 18px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; margin-top: 28px; }
+.lesson-content h3:first-child { margin-top: 0; }
+.lesson-content h4 { font-size: 16px; font-weight: 700; color: #1a1a1a; margin-bottom: 10px; margin-top: 24px; }
+.lesson-content h4:first-child { margin-top: 0; }
+.lesson-content strong { color: #1a1a1a; }
+
+.lesson-content .big-statement { font-size: 22px; font-weight: 700; color: #1a1a1a; margin: 4px 0 22px; line-height: 1.3; }
+.lesson-content .bold-statement { font-size: 19px; font-weight: 700; color: #1a1a1a; margin: 4px 0 18px; line-height: 1.4; }
+
+.lesson-content .quote {
+  border-left: 3px solid #cccccc; background: #f7f7f7;
+  padding: 16px 20px; border-radius: 0 6px 6px 0; margin: 4px 0 20px;
+}
+.lesson-content .quote.positive { border-left-color: #e8552e; }
+.lesson-content .quote p { font-family: Georgia, serif; font-size: 15px; color: #555; font-style: italic; margin: 0; }
+
+.lesson-content .progress-table { width: 100%; border-radius: 8px; overflow: hidden; margin: 4px 0 20px; border-collapse: collapse; }
+.lesson-content .progress-table tr td {
+  background: #fff3ef; padding: 14px 18px;
+  font-size: 15px; color: #333; border-bottom: 1px solid #ffe0d6;
+}
+.lesson-content .progress-table tr:last-child td { border-bottom: none; }
+
+.lesson-content .takeaway {
+  background: #f5f0eb; border-left: 4px solid #e8552e;
+  padding: 18px 22px; border-radius: 0 6px 6px 0; margin: 28px 0 0;
+}
+.lesson-content .takeaway p { font-size: 15px; color: #444; margin: 0; }
+
+.lesson-content .list-box { background: #f7f7f7; border-left: 3px solid #ccc; padding: 16px 20px; border-radius: 0 6px 6px 0; margin: 8px 0 20px; }
+.lesson-content .list-box p { font-size: 15px; color: #555; margin-bottom: 10px; line-height: 1.75; }
+.lesson-content .list-box p:last-child { margin-bottom: 0; }
+.lesson-content .list-box ul { list-style: none; padding: 0; margin: 0; }
+.lesson-content .list-box ul li { font-size: 15px; color: #555; line-height: 1.75; padding: 5px 0 5px 16px; position: relative; }
+.lesson-content .list-box ul li::before { content: "-"; position: absolute; left: 0; color: #bbb; }
+
+.lesson-content .callout { background: #f5f0eb; border-left: 4px solid #e8552e; padding: 18px 22px; border-radius: 0 6px 6px 0; margin: 20px 0; }
+.lesson-content .callout p { font-size: 15px; color: #444; margin: 0 0 10px; line-height: 1.7; }
+.lesson-content .callout p:last-child { margin: 0; }
+
+.lesson-content .divider { border: none; border-top: 2px solid #f0f0f0; margin: 28px 0; }
+.lesson-content .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #e8552e; margin-bottom: 20px; margin-top: 32px; display: block; }
+.lesson-content .section-label:first-child { margin-top: 0; }
+
+.lesson-content .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
+.lesson-content .data-table th { background: #f5f0eb; color: #444; font-weight: 700; padding: 9px 12px; text-align: left; border-bottom: 2px solid #e8552e; }
+.lesson-content .data-table td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; color: #555; vertical-align: top; }
+.lesson-content .data-table tr:last-child td { border-bottom: none; }
+.lesson-content .data-table tr:nth-child(even) td { background: #fafafa; }
+.lesson-content .data-table .highlight { font-weight: 700; color: #e8552e; }
+
+.lesson-content .spectrum { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 12px 0 20px; }
+.lesson-content .spectrum-item { font-size: 13px; color: #444; background: #f7f7f7; border-radius: 4px; padding: 5px 10px; }
+.lesson-content .spectrum-arrow { color: #ccc; font-size: 14px; }
+.lesson-content .spectrum-item.best { background: #eafaf1; color: #1e8449; font-weight: 700; }
+.lesson-content .spectrum-item.worst { background: #fdecea; color: #c0392b; }
+
+@media (max-width: 520px) {
+  .lesson-content .data-table { font-size: 12px; }
+  .lesson-content .data-table th, .lesson-content .data-table td { padding: 6px 8px; }
+}

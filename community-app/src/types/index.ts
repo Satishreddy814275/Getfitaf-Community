@@ -308,3 +308,28 @@ export interface ExerciseCatalogEntry {
   typeTags: string[]
   otherTags: string[]
 }
+
+// Migrated in from learn.getfitaf.fitness (see gfa-portal repo) - same
+// `lessons` table, now also read by community-app's own /lessons
+// routes rather than only the standalone static-HTML portal. `url`
+// keeps its old shape (/lessons/dayN-lesson.html) purely as the
+// existing per-lesson identifier both sites key off of; the new
+// /lessons/[slug] route strips ".html" off the end of it to build its
+// slug rather than introducing a second, redundant identifier column.
+// `content` is the new column - only the lesson's core prose/card
+// body, not the surrounding chrome (forms, complete button, signoff),
+// which the new page renders itself from shared components instead.
+export interface Lesson {
+  id: string
+  title: string
+  description: string | null
+  thumbnail_url: string | null
+  video_url: string | null
+  duration_mins: number | null
+  order: number
+  is_published: boolean
+  url: string | null
+  tag: string | null
+  audio_url: string | null
+  content: string | null
+}
