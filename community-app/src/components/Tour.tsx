@@ -163,18 +163,33 @@ export default function Tour({
 
   return (
     <div className="fixed inset-0 z-[60]">
-      {rect && (
-        <div
-          className="fixed rounded-2xl border-2 border-orange-500 pointer-events-none transition-all duration-300 ease-out"
-          style={{
-            top: rect.top - pad,
-            left: rect.left - pad,
-            width: rect.width + pad * 2,
-            height: rect.height + pad * 2,
-            boxShadow: '0 0 0 9999px rgba(0,0,0,0.75)',
-          }}
-        />
-      )}
+      {rect && (() => {
+        // Clamped to the actual viewport on every side, not just sized
+        // off the target - the mobile bottom tab bar is what exposed
+        // this: those targets sit flush against the screen's bottom
+        // edge, so rect.bottom + pad landed past window.innerHeight,
+        // and that whole edge of the ring (plus its rounded corners)
+        // rendered off-screen instead of as a clean closed box. A 4px
+        // viewport margin keeps every ring fully visible and evenly
+        // bordered regardless of where on screen its target sits.
+        const edge = 4
+        const boxTop = Math.max(edge, rect.top - pad)
+        const boxLeft = Math.max(edge, rect.left - pad)
+        const boxBottom = Math.min(window.innerHeight - edge, rect.bottom + pad)
+        const boxRight = Math.min(window.innerWidth - edge, rect.right + pad)
+        return (
+          <div
+            className="fixed rounded-2xl border-2 border-orange-500 pointer-events-none transition-all duration-300 ease-out"
+            style={{
+              top: boxTop,
+              left: boxLeft,
+              width: boxRight - boxLeft,
+              height: boxBottom - boxTop,
+              boxShadow: '0 0 0 9999px rgba(0,0,0,0.75)',
+            }}
+          />
+        )
+      })()}
 
       <div
         ref={tooltipRef}
