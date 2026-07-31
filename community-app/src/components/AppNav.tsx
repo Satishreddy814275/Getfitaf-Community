@@ -27,7 +27,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href}
-      className={`text-sm font-medium transition pb-3 -mb-3 border-b-2 ${
+      className={`block text-sm font-medium transition pb-3 -mb-3 border-b-2 ${
         active
           ? 'text-white border-orange-500'
           : 'text-zinc-400 hover:text-white border-transparent'
@@ -222,14 +222,22 @@ export default function AppNav({
               {/* Wrapping (rather than passing data-tour through as a
                   prop) keeps this working regardless of which of the
                   three branches renders, without touching NavLink/
-                  ExternalNavLink's own prop surface - a plain span as a
-                  direct flex child gets auto-blockified by the flex
-                  container, so it doesn't disturb the row's spacing. */}
+                  ExternalNavLink's own prop surface. Note: only the span
+                  itself gets auto-blockified by the flex container - the
+                  link nested inside it does NOT, so it stays at its
+                  default `display: inline` unless given an explicit
+                  `block` class below. That mismatch (this link inline,
+                  Leaderboard's own link auto-blockified to block as a
+                  direct flex child) was causing a real 2px vertical
+                  offset between Leaderboard and these two links -
+                  confirmed via getBoundingClientRect. `block`/`flex`
+                  here makes every state render as its own block box
+                  regardless of nesting, so it can't recur. */}
               <span data-tour="lessons">
                 {showLessons ? (
                   <ExternalNavLink
                     href="https://learn.getfitaf.fitness/dashboard.html"
-                    className="text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
+                    className="block text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
                     loadingLabel="Taking you to your lessons..."
                   >
                     Go to your lessons
@@ -237,13 +245,13 @@ export default function AppNav({
                 ) : isLive ? (
                   <Link
                     href="/beta/pay"
-                    className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
                   >
                     <LockIcon className="text-orange-500" />
                     Join to unlock your lessons
                   </Link>
                 ) : (
-                  <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
+                  <span className="block text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
                     Daily lessons - opens August 1
                   </span>
                 )}
@@ -254,13 +262,13 @@ export default function AppNav({
                 ) : isLive ? (
                   <Link
                     href="/beta/pay"
-                    className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
                   >
                     <LockIcon className="text-orange-500" />
                     Join to unlock your workouts
                   </Link>
                 ) : (
-                  <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
+                  <span className="block text-sm font-medium text-zinc-600" title="Workouts open August 1">
                     Workouts - opens August 1
                   </span>
                 )}

@@ -3,6 +3,7 @@ import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import ReadingProgressBar from '@/components/ReadingProgressBar'
 import CompleteLessonCard from '@/components/CompleteLessonCard'
+import LessonSidebar from '@/components/LessonSidebar'
 import type { Lesson } from '@/types'
 
 // Same personalised-follow-up forms the dashboard's own WEEK_FORMS
@@ -81,24 +82,36 @@ export default async function LessonPage({
   // same calendar-day math as the dashboard's own unlockedDay, kept in
   // sync deliberately: this page has to enforce the same lock the grid
   // already visually shows, not just trust that nobody navigates here
-  // directly with an old link.
+  // directly with an old link. Hoisted out of the redirect check (unlike
+  // before) so LessonSidebar can also grey out/lock not-yet-unlocked
+  // rows in the jump-to list - null for admin/approved members, who
+  // have no drip lock at all.
   const isLowTicketOnly = !!membership && !isApproved && !isAdmin
+  let unlockedDay: number | null = null
   if (isLowTicketOnly && membership) {
     const joined = new Date(membership.created_at)
     const joinedMidnight = new Date(joined.getFullYear(), joined.getMonth(), joined.getDate())
     const now = new Date()
     const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const daysSince = Math.floor((nowMidnight.getTime() - joinedMidnight.getTime()) / 86400000)
-    const unlockedDay = Math.max(1, daysSince + 1)
+    unlockedDay = Math.max(1, daysSince + 1)
     if (lesson.order > unlockedDay) redirect('/lessons')
   }
 
-  const { data: progress } = await supabase
-    .from('user_progress')
-    .select('completed')
-    .eq('user_id', targetId)
-    .eq('lesson_id', lesson.id)
-    .maybeSingle()
+  const [{ data: progress }, { data: allProgress }] = await Promise.all([
+    supabase
+      .from('user_progress')
+      .select('completed')
+      .eq('user_id', targetId)
+      .eq('lesson_id', lesson.id)
+      .maybeSingle(),
+    // Full completed-lesson list for the sidebar's checkmarks/progress
+    // bar - separate from the single-lesson `progress` query above,
+    // which only needs this lesson's own completed state for the
+    // Complete-lesson card.
+    supabase.from('user_progress').select('lesson_id').eq('user_id', targetId).eq('completed', true),
+  ])
+  const completedIds = (allProgress || []).map((p) => p.lesson_id)
 
   const idx = lessons.findIndex((l) => l.id === lesson.id)
   const prev = idx > 0 ? lessons[idx - 1] : null
@@ -112,7 +125,16 @@ export default async function LessonPage({
     <div style={{ background: '#f2f2f2', minHeight: '100vh' }}>
       <ReadingProgressBar />
 
-      <div className="max-w-[780px] mx-auto py-10 px-5 pb-16">
+      <div className="max-w-[1080px] mx-auto py-10 px-5 pb-16 flex flex-col lg:flex-row lg:items-start gap-6">
+        <LessonSidebar
+          lessons={lessons}
+          completedIds={completedIds}
+          currentLessonId={lesson.id}
+          unlockedDay={unlockedDay}
+          viewAsId={viewingAs ? viewAsId : undefined}
+        />
+
+        <div className="max-w-[780px] w-full mx-auto lg:mx-0 min-w-0">
         {viewingAs && (
           <div className="mb-4 rounded-lg bg-orange-500/10 border border-orange-500/25 px-4 py-2 flex items-center justify-between flex-wrap gap-2">
             <p className="text-[#e8552e] text-sm font-medium">
@@ -278,7 +300,7 @@ export default async function LessonPage({
             <img
               src="/satish-photo.jpg"
               alt="Satish"
-              className="w-12 h-12 rounded-full object-cover shrink-0"
+              className="w-12 h-12 rounded-full object-cover object-top shrink-0"
             />
             <div>
               <p className="text-sm text-[#555] leading-relaxed">I&apos;ll be back tomorrow with your next lesson.</p>
@@ -291,6 +313,7 @@ export default async function LessonPage({
               </p>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </div>
