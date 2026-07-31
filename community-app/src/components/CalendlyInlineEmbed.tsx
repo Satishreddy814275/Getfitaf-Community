@@ -28,15 +28,29 @@ import Script from 'next/script'
 // forced the box to 700, leaving a 98px white gap). 300px comfortably
 // clears the "0-height flash before JS loads" case without ever being
 // taller than real content.
+//
+// The outer wrapper + negative margin-bottom on the widget div is a
+// deliberate crop: there's a thin fixed-color line Calendly renders at
+// the very bottom of its own page (below the time zone selector, past
+// where anything else useful lives) that isn't something the embed
+// params can turn off. Can't reach in and restyle it directly - it's
+// inside Calendly's own cross-origin iframe - so instead the wrapper
+// clips the last few px of the *rendered* widget via overflow:hidden,
+// while the widget div's own margin-bottom shrinks how much height it
+// contributes to the wrapper's auto-height by that same amount. Kept
+// small on purpose so the crop lands just past the time zone row with
+// a bit of breathing room, not into it.
 export default function CalendlyInlineEmbed({ url }: { url: string }) {
   return (
     <>
-      <div
-        className="calendly-inline-widget rounded-xl overflow-hidden"
-        data-url={url}
-        data-resize="true"
-        style={{ width: '100%', minWidth: '280px', minHeight: '300px' }}
-      />
+      <div className="rounded-xl overflow-hidden">
+        <div
+          className="calendly-inline-widget"
+          data-url={url}
+          data-resize="true"
+          style={{ width: '100%', minWidth: '280px', minHeight: '300px', marginBottom: '-10px' }}
+        />
+      </div>
       <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
     </>
   )
