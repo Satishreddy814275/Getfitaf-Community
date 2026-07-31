@@ -53,6 +53,7 @@ export default function LessonsTabs({
   leaderboardRows,
   currentUserId,
   submissions,
+  viewAsId,
 }: {
   lessons: Lesson[]
   completedIds: string[]
@@ -61,7 +62,12 @@ export default function LessonsTabs({
   leaderboardRows: LeaderboardRow[]
   currentUserId: string
   submissions: { form_title: string; submitted_at: string }[]
+  // Admin "view as" preview (see /lessons/page.tsx) - appended to every
+  // lesson link so clicking through from the previewed grid lands on
+  // that same client's view of the lesson page, not the admin's own.
+  viewAsId?: string
 }) {
+  const lessonHref = (l: Lesson) => (viewAsId ? `/lessons/${slugOf(l)}?view_as=${viewAsId}` : `/lessons/${slugOf(l)}`)
   const weeks = useMemo(
     () => [...new Set(lessons.map((l) => Math.ceil(l.order / 7)))].sort((a, b) => a - b),
     [lessons]
@@ -211,7 +217,7 @@ export default function LessonsTabs({
             audioLessons.map((l) => (
               <div key={l.id} className="glass rounded-2xl p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <Link href={`/lessons/${slugOf(l)}`} className="text-white text-sm font-semibold hover:text-orange-400 transition">
+                  <Link href={lessonHref(l)} className="text-white text-sm font-semibold hover:text-orange-400 transition">
                     Day {l.order} · {l.title}
                   </Link>
                   {doneSet.has(l.id) && <span className="text-green-500 text-xs">✓ Done</span>}
@@ -297,7 +303,7 @@ export default function LessonsTabs({
               return locked ? (
                 <div key={l.id}>{content}</div>
               ) : (
-                <Link key={l.id} href={`/lessons/${slugOf(l)}`}>
+                <Link key={l.id} href={lessonHref(l)}>
                   {content}
                 </Link>
               )

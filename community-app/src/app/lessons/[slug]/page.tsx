@@ -19,7 +19,13 @@ const LESSON_FORMS: Record<number, { name: string; url: string }> = {
   12: { name: "today's form", url: 'https://forms.getfitaf.fitness/supplement-questionnaire' },
 }
 
-export default async function LessonPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function LessonPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ view_as?: string }>
+}) {
   const { slug } = await params
   const supabase = await createClient()
   const {
@@ -27,12 +33,33 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
+  const { data: ownProfile } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single()
+
+  // Same admin "view as" preview as /lessons (see that page's own
+  // comment) - carried through from the grid via the lesson links'
+  // own ?view_as passthrough, so an admin can click straight from
+  // "viewing as X" into one of X's actual lesson pages and see the
+  // same forms/drip-lock behaviour they'd see. The complete button
+  // below is disabled in this mode - actually marking a lesson done
+  // still only ever writes against whoever is really signed in
+  // (markLessonComplete reads auth.getUser() itself, not this
+  // targetId), so it can't be allowed to look like it completed the
+  // lesson for the person being previewed.
+  const { view_as: viewAsId } = await searchParams
+  if (viewAsId && !ownProfile?.is_admin) redirect('/lessons')
+  const targetId = viewAsId && ownProfile?.is_admin ? viewAsId : user.id
+  const viewingAs = !!viewAsId && !!ownProfile?.is_admin
+
   const [{ data: profile }, { data: membership }, { data: allLessons }] = await Promise.all([
-    supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
+    supabase.from('profiles').select('is_admin, approved, full_name').eq('id', targetId).single(),
     supabase
       .from('space_memberships')
       .select('created_at')
-      .eq('profile_id', user.id)
+      .eq('profile_id', targetId)
       .eq('space', 'low_ticket')
       .maybeSingle(),
     supabase
@@ -69,7 +96,7 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
   const { data: progress } = await supabase
     .from('user_progress')
     .select('completed')
-    .eq('user_id', user.id)
+    .eq('user_id', targetId)
     .eq('lesson_id', lesson.id)
     .maybeSingle()
 
@@ -77,6 +104,7 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
   const prev = idx > 0 ? lessons[idx - 1] : null
   const next = idx < lessons.length - 1 ? lessons[idx + 1] : null
   const slugOf = (l: Lesson) => (l.url || '').replace('/lessons/', '').replace('.html', '')
+  const withViewAs = (href: string) => (viewingAs ? `${href}?view_as=${viewAsId}` : href)
 
   const form = !isLowTicketOnly ? LESSON_FORMS[lesson.order] : null
 
@@ -85,8 +113,19 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
       <ReadingProgressBar />
 
       <div className="max-w-[780px] mx-auto py-10 px-5 pb-16">
+        {viewingAs && (
+          <div className="mb-4 rounded-lg bg-orange-500/10 border border-orange-500/25 px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+            <p className="text-[#e8552e] text-sm font-medium">
+              👀 Viewing as {profile?.full_name || 'client'}
+            </p>
+            <Link href="/lessons" className="text-[#e8552e] text-xs underline hover:no-underline">
+              ← Back to your own view
+            </Link>
+          </div>
+        )}
+
         <Link
-          href="/lessons"
+          href={withViewAs('/lessons')}
           className="inline-flex items-center gap-1 text-sm font-medium text-[#e8552e] hover:opacity-80 transition mb-6"
         >
           ← Back to your lessons
@@ -180,17 +219,31 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
           </Link>
         </div>
 
-        <CompleteLessonCard
-          lessonId={lesson.id}
-          lessonTitle={lesson.title}
-          initialCompleted={!!progress?.completed}
-        />
+        {viewingAs ? (
+          <div className="bg-white rounded-lg p-6 flex items-center justify-between gap-4 flex-wrap mb-6">
+            <div>
+              <p className="text-[15px] font-bold text-[#1a1a1a] mb-1">
+                {progress?.completed ? '✓ Already completed' : 'Not completed yet'}
+              </p>
+              <p className="text-[13px] text-[#888]">
+                Previewing {profile?.full_name || 'this client'}&apos;s view - marking complete is
+                disabled here so it can&apos;t be done on their behalf.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <CompleteLessonCard
+            lessonId={lesson.id}
+            lessonTitle={lesson.title}
+            initialCompleted={!!progress?.completed}
+          />
+        )}
 
         {(prev || next) && (
           <div className="flex items-center justify-between gap-4 mb-6">
             {prev ? (
               <Link
-                href={`/lessons/${slugOf(prev)}`}
+                href={withViewAs(`/lessons/${slugOf(prev)}`)}
                 className="flex-1 bg-white rounded-lg px-4 py-3 shadow-sm hover:shadow transition"
               >
                 <span className="block text-xs text-[#888] mb-0.5">← Previous</span>
@@ -201,7 +254,7 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
             )}
             {next ? (
               <Link
-                href={`/lessons/${slugOf(next)}`}
+                href={withViewAs(`/lessons/${slugOf(next)}`)}
                 className="flex-1 bg-white rounded-lg px-4 py-3 shadow-sm hover:shadow transition text-right"
               >
                 <span className="block text-xs text-[#888] mb-0.5">Next →</span>
