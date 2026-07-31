@@ -4,10 +4,9 @@ import Link from 'next/link'
 import FeedTabs from '@/components/FeedTabs'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import PushNotificationsBanner from '@/components/PushNotificationsBanner'
-import HelpBanner from '@/components/HelpBanner'
 import LeaderboardList from '@/components/LeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
-import WorkoutBuilderPromptModal from '@/components/WorkoutBuilderPromptModal'
+import Tour from '@/components/Tour'
 import RulesGate from '@/components/RulesGate'
 import { getCommunityGuidelines } from '@/lib/communityGuidelines'
 import { FEED_PAGE_SIZE, FEED_POST_SELECT } from '@/lib/feedPosts'
@@ -16,7 +15,14 @@ import type { Post, LeaderboardRow, Space } from '@/types'
 export default async function FeedPage({
   searchParams,
 }: {
-  searchParams: Promise<{ lesson?: string; title?: string; post?: string; comment?: string; prefill?: string }>
+  searchParams: Promise<{
+    lesson?: string
+    title?: string
+    post?: string
+    comment?: string
+    prefill?: string
+    tour?: string
+  }>
 }) {
   const supabase = await createClient()
   const {
@@ -45,6 +51,10 @@ export default async function FeedPage({
   // completion pair above (see PostComposer's own comment on why they
   // stay separate).
   const initialContent = params.prefill || null
+  // Set by the "Take the tour" link on /help (?tour=1) - forces the
+  // tour to re-run for anyone who dismissed it originally or just
+  // wants to look again, independent of its own "seen" flag.
+  const forceTour = params.tour === '1'
 
   // Kicked off alongside the queries below rather than awaited inline -
   // it's a separate admin-client read (see communityGuidelines.ts), not
@@ -178,22 +188,18 @@ export default async function FeedPage({
           Your Program" nav link remains. */}
       {hasLowTicket && !hasSelectedProgram && <WorkoutBuilderCard href="/programs" />}
 
-      {/* Gates the program-picker popup (and anything else added here
-          later) behind a one-time Community Guidelines acknowledgment -
-          see RulesGate. Applies to every member, not just low-ticket,
-          since the guidelines govern the whole group; the program popup
-          itself still only renders for low-ticket members without a
-          program picked, same condition as before. */}
+      {/* Gates the onboarding tour behind a one-time Community
+          Guidelines acknowledgment - see RulesGate. Applies to every
+          member, not just low-ticket, since the guidelines govern the
+          whole group. Replaces what used to be two separate things
+          landing right after the guidelines close (a "choose your
+          program" popup and a "read the help page" banner) with one
+          guided tour that ends by pointing at the program picker
+          itself - see Tour.tsx for why a single static step list
+          handles both "already has a program" and desktop-vs-mobile
+          targeting without any extra logic here. */}
       <RulesGate userId={user.id} intro={guidelines.intro} rules={guidelines.rules}>
-        {/* Once ever (not daily) - the first thing anyone sees right
-            after acknowledging the guidelines, pointing at /help. */}
-        <HelpBanner storageKey={`help-banner-seen-${user.id}`} />
-        {hasLowTicket && !hasSelectedProgram && (
-          <WorkoutBuilderPromptModal
-            href="/programs"
-            storageKey={`program-prompt-dismissed-${user.id}`}
-          />
-        )}
+        <Tour storageKey={`tour-seen-${user.id}`} forceStart={forceTour} />
       </RulesGate>
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-6 lg:items-start">

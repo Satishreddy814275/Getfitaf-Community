@@ -41,6 +41,7 @@ export default function ProfileMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        data-tour="avatar-menu"
         className="relative flex items-center rounded-full hover:opacity-80 transition"
         aria-label="Account menu"
       >

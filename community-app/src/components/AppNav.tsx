@@ -138,16 +138,19 @@ function BottomTab({
   href,
   label,
   icon,
+  dataTour,
 }: {
   href: string
   label: string
   icon: 'home' | 'barbell' | 'trophy'
+  dataTour?: string
 }) {
   const pathname = usePathname()
   const active = isPathActive(pathname, href)
   return (
     <Link
       href={href}
+      data-tour={dataTour}
       className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
     >
       <TabIcon name={icon} className={active ? 'text-orange-500' : 'text-zinc-500'} />
@@ -216,42 +219,52 @@ export default function AppNav({
           <div className="flex items-center gap-6">
             <nav className="flex items-center gap-5">
               <NavLink href="/leaderboard">Leaderboard</NavLink>
-              {showLessons ? (
-                <ExternalNavLink
-                  href="https://learn.getfitaf.fitness/dashboard.html"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
-                  loadingLabel="Taking you to your lessons..."
-                >
-                  Go to your lessons
-                </ExternalNavLink>
-              ) : isLive ? (
-                <Link
-                  href="/beta/pay"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
-                >
-                  <LockIcon className="text-orange-500" />
-                  Join to unlock your lessons
-                </Link>
-              ) : (
-                <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
-                  Daily lessons - opens August 1
-                </span>
-              )}
-              {showWorkouts ? (
-                <NavLink href="/workouts">Workouts</NavLink>
-              ) : isLive ? (
-                <Link
-                  href="/beta/pay"
-                  className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
-                >
-                  <LockIcon className="text-orange-500" />
-                  Join to unlock your workouts
-                </Link>
-              ) : (
-                <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
-                  Workouts - opens August 1
-                </span>
-              )}
+              {/* Wrapping (rather than passing data-tour through as a
+                  prop) keeps this working regardless of which of the
+                  three branches renders, without touching NavLink/
+                  ExternalNavLink's own prop surface - a plain span as a
+                  direct flex child gets auto-blockified by the flex
+                  container, so it doesn't disturb the row's spacing. */}
+              <span data-tour="lessons">
+                {showLessons ? (
+                  <ExternalNavLink
+                    href="https://learn.getfitaf.fitness/dashboard.html"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
+                    loadingLabel="Taking you to your lessons..."
+                  >
+                    Go to your lessons
+                  </ExternalNavLink>
+                ) : isLive ? (
+                  <Link
+                    href="/beta/pay"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                  >
+                    <LockIcon className="text-orange-500" />
+                    Join to unlock your lessons
+                  </Link>
+                ) : (
+                  <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
+                    Daily lessons - opens August 1
+                  </span>
+                )}
+              </span>
+              <span data-tour="workouts">
+                {showWorkouts ? (
+                  <NavLink href="/workouts">Workouts</NavLink>
+                ) : isLive ? (
+                  <Link
+                    href="/beta/pay"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition inline-flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                  >
+                    <LockIcon className="text-orange-500" />
+                    Join to unlock your workouts
+                  </Link>
+                ) : (
+                  <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
+                    Workouts - opens August 1
+                  </span>
+                )}
+              </span>
             </nav>
             <div className="w-px h-5 bg-zinc-800" aria-hidden="true" />
             <div className="flex items-center gap-4">
@@ -298,14 +311,14 @@ export default function AppNav({
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
           <BottomTab href="/feed" label="Feed" icon="home" />
           {showWorkouts ? (
-            <BottomTab href="/workouts" label="Workouts" icon="barbell" />
+            <BottomTab href="/workouts" label="Workouts" icon="barbell" dataTour="workouts" />
           ) : isLive ? (
-            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Workouts</span>
             </div>
@@ -314,24 +327,26 @@ export default function AppNav({
           {showLessons ? (
             <a
               href="https://learn.getfitaf.fitness/dashboard.html"
+              data-tour="lessons"
               className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
             >
               <TabIcon name="book" className="text-zinc-500" />
               <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
             </a>
           ) : isLive ? (
-            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Lessons</span>
             </div>
           )}
           <button
             onClick={() => setMoreOpen(true)}
+            data-tour="avatar-menu"
             className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
           >
             <TabIcon name="dots" className="text-zinc-500" />

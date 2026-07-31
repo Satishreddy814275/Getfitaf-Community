@@ -129,10 +129,21 @@ export default async function HelpPage() {
       </Link>
 
       <h1 className="text-white text-xl font-bold mb-1">How this works</h1>
-      <p className="text-zinc-500 text-sm mb-6">
+      <p className="text-zinc-500 text-sm mb-3">
         A quick guide to getting the most out of your membership. Come back here anytime you need a
         refresher.
       </p>
+      {/* Re-runs the same guided tour new members get automatically -
+          see Tour.tsx - regardless of whether they've already seen it.
+          Has to redirect to /feed first since that's where every
+          spotlighted element actually lives; ?tour=1 is what Tour
+          checks to force-start itself past its own "seen" flag. */}
+      <Link
+        href="/feed?tour=1"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-orange-400 hover:text-orange-300 transition mb-6"
+      >
+        Take the tour →
+      </Link>
 
       <div className="glass rounded-2xl p-5 mb-5">
         <p className="text-white text-sm font-semibold mb-1">Your daily rhythm</p>

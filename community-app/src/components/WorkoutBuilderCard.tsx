@@ -13,7 +13,10 @@ import Link from 'next/link'
 // normal Link instead of ExternalNavLink.
 export default function WorkoutBuilderCard({ href }: { href: string }) {
   return (
-    <div className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-5 sm:p-6">
+    <div
+      data-tour="program"
+      className="mb-6 rounded-2xl border border-orange-500/30 bg-orange-500/5 p-5 sm:p-6"
+    >
       <p className="text-white font-semibold mb-1">Choose your program to get started</p>
       <p className="text-zinc-400 text-sm mb-4">
         Pick the program that matches your level and equipment access - you can swap individual
