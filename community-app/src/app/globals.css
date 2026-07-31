@@ -185,4 +185,12 @@ body {
    premium-only block with no lowticket-only sibling is simply hidden
    with nothing shown in its place - same as the old behaviour. */
 .lesson-content.low-ticket-view .premium-only { display: none; }
-.lesson-content.low-ticket-view .lowticket-only[hidden] { display: block; }
+/* !important is required here: the HTML spec mandates the browser's own
+   UA stylesheet rule for [hidden] use !important ("[hidden] { display:
+   none !important; }"), specifically so authors can't accidentally
+   un-hide something by accident. Verified live - without !important
+   here, this rule loses to the UA rule regardless of selector
+   specificity, and the lowticket-only paragraph stays invisible, same
+   as the premium-only one right above it - i.e. low-ticket members saw
+   neither variant, worse than doing nothing at all. */
+.lesson-content.low-ticket-view .lowticket-only[hidden] { display: block !important; }
