@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { Pin } from 'lucide-react'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
@@ -423,9 +424,33 @@ export default function FeedTabs({
 
         {tab === 'posts' && (
         <div className="space-y-6">
-          {filteredPosts.map((post) => (
-            <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} />
-          ))}
+          {/* A pinned post collapses to a one-line banner instead of
+              rendering full-length inline - the welcome post especially
+              was pushing everything else below the fold before anyone
+              had done anything. Opens through the same selectedPost
+              overlay a media thumbnail or notification link already
+              uses, so it's still a real post underneath: likes,
+              comments, and (for its author/admins) inline editing all
+              still work exactly as before, just one tap away instead
+              of always fully expanded. */}
+          {filteredPosts.map((post) =>
+            post.pinned ? (
+              <button
+                key={post.id}
+                onClick={() => setSelectedPost(post)}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10 transition text-left"
+              >
+                <Pin className="w-4 h-4 text-orange-400 rotate-45 shrink-0" strokeWidth={2.5} />
+                <span className="flex-1 min-w-0 truncate text-sm text-zinc-200">
+                  <span className="font-semibold text-orange-400">Pinned — </span>
+                  {(post.content || '').split('\n')[0].replace(/\*\*/g, '')}
+                </span>
+                <span className="text-xs text-zinc-500 shrink-0">Read more &rarr;</span>
+              </button>
+            ) : (
+              <PostCard key={post.id} post={post} currentUserId={currentUserId} isAdmin={isAdmin} />
+            )
+          )}
           {query && searching && filteredPosts.length === 0 && (
             <p className="text-center text-sm text-zinc-500 py-12">Searching...</p>
           )}
