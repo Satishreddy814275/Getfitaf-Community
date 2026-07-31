@@ -333,12 +333,22 @@ export default function FeedTabs({
               onClick={() => setTab(t.key)}
               className={
                 tab === t.key
-                  ? 'px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
-                  : 'px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
+                  ? 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
+                  : 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
               }
             >
               {t.label}
-              {t.count > 0 ? ` (${t.count})` : ''}
+              {t.count > 0 && (
+                <span
+                  className={
+                    tab === t.key
+                      ? 'rounded-full bg-black/25 px-1.5 py-0.5 text-[11px] font-bold'
+                      : 'rounded-full bg-zinc-800 px-1.5 py-0.5 text-[11px] font-bold text-zinc-400'
+                  }
+                >
+                  {t.count}
+                </span>
+              )}
             </button>
           ))}
         </div>

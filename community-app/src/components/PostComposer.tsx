@@ -161,14 +161,14 @@ export default function PostComposer({
   // silently guessing which space a new post belongs to.
   if (!postSpace) {
     return (
-      <div className="glass rounded-2xl p-4 text-sm text-zinc-400">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4 text-sm text-zinc-400">
         Select Premium or Low-ticket above to post here.
       </div>
     )
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} className="glass rounded-2xl p-4">
+    <form ref={formRef} onSubmit={handleSubmit} className="bg-zinc-900 border border-zinc-700 rounded-2xl p-4">
       {lessonId && initialLessonTitle && (
         <div className="flex items-center justify-between mb-2 px-2 py-1.5 rounded-lg bg-orange-500/10 text-xs text-orange-400">
           <span>Sharing about: {initialLessonTitle}</span>
