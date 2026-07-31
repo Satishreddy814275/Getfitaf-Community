@@ -215,14 +215,11 @@ export default async function LessonPage({ params }: { params: Promise<{ slug: s
 
         <div className="bg-white rounded-lg p-7 sm:p-9 shadow-sm">
           <div className="flex items-center gap-4">
-            {/* eslint-disable-next-line @next/next/no-img-element -- small static asset already served from /public, not worth next/image's overhead here */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- small static asset already served from /public, not worth next/image's overhead here. No onError fallback (that needs a client component) - the file is checked into public/ so this doesn't need one. */}
             <img
               src="/satish-photo.jpg"
               alt="Satish"
               className="w-12 h-12 rounded-full object-cover shrink-0"
-              onError={(e) => {
-                e.currentTarget.style.display = 'none'
-              }}
             />
             <div>
               <p className="text-sm text-[#555] leading-relaxed">I&apos;ll be back tomorrow with your next lesson.</p>
