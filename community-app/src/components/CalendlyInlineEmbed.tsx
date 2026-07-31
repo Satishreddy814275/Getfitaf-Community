@@ -15,11 +15,19 @@ import Script from 'next/script'
 // (which is often taller) scrolls inside its own little box, so the
 // page ends up with two independent scroll regions stacked on top of
 // each other. With it, widget.js reports its real content height back
-// and resizes this div to match, so there's only ever one scrollbar:
-// the page's own. min-height below is just a placeholder to avoid a
-// layout jump before that resize message arrives, not a hard cap -
-// width:100% keeps it filling the card instead of sizing to its own
-// intrinsic (and slightly awkward-looking) default.
+// (confirmed working - it correctly set an explicit height a second or
+// so after load) and resizes this div to match, so there's only ever
+// one scrollbar: the page's own.
+//
+// minHeight is genuinely just a pre-resize placeholder, sized small on
+// purpose: CSS min-height always wins over a *smaller* explicit height,
+// so setting this too tall (700px was) silently overrides the correct,
+// smaller height data-resize computes, leaving dead space at the
+// bottom that shows Calendly's own unpainted white canvas underneath -
+// confirmed live (data-resize set height:602px, min-height:700px still
+// forced the box to 700, leaving a 98px white gap). 300px comfortably
+// clears the "0-height flash before JS loads" case without ever being
+// taller than real content.
 export default function CalendlyInlineEmbed({ url }: { url: string }) {
   return (
     <>
@@ -27,7 +35,7 @@ export default function CalendlyInlineEmbed({ url }: { url: string }) {
         className="calendly-inline-widget rounded-xl overflow-hidden"
         data-url={url}
         data-resize="true"
-        style={{ width: '100%', minWidth: '280px', minHeight: '700px' }}
+        style={{ width: '100%', minWidth: '280px', minHeight: '300px' }}
       />
       <Script src="https://assets.calendly.com/assets/external/widget.js" strategy="lazyOnload" />
     </>
