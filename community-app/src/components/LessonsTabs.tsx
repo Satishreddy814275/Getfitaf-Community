@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import LeaderboardList from './LeaderboardList'
+import HeadphoneIcon from './HeadphoneIcon'
 import type { Lesson, LeaderboardRow } from '@/types'
 
 // Ported from learn.getfitaf.fitness/dashboard.html's tab bar (weeks,
@@ -145,7 +146,7 @@ export default function LessonsTabs({
             activeTab === 'audio' ? 'bg-orange-500 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
           }`}
         >
-          🎧 Audio
+          <HeadphoneIcon size={14} /> Audio
         </button>
         {!isLowTicketOnly && (
           <button
@@ -297,7 +298,7 @@ export default function LessonsTabs({
                       {l.tag}
                     </span>
                   )}
-                  {l.audio_url && <span className="text-zinc-500 shrink-0">🎧</span>}
+                  {l.audio_url && <HeadphoneIcon size={14} className="text-zinc-500 shrink-0" />}
                 </div>
               )
               return locked ? (

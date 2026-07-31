@@ -4,6 +4,7 @@ import Link from 'next/link'
 import ReadingProgressBar from '@/components/ReadingProgressBar'
 import CompleteLessonCard from '@/components/CompleteLessonCard'
 import LessonSidebar from '@/components/LessonSidebar'
+import HeadphoneIcon from '@/components/HeadphoneIcon'
 import type { Lesson } from '@/types'
 
 // Same personalised-follow-up forms the dashboard's own WEEK_FORMS
@@ -162,7 +163,7 @@ export default async function LessonPage({
         {lesson.audio_url && (
           <div className="mb-6">
             <p className="text-sm text-[#555] mb-2 flex items-center gap-1.5">
-              🎧 Prefer to listen?
+              <HeadphoneIcon size={15} /> Prefer to listen?
             </p>
             <audio controls preload="metadata" src={lesson.audio_url} className="w-full">
               Your browser does not support the audio element.

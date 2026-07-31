@@ -204,3 +204,33 @@ body {
       carries low-ticket-view. */
 .lesson-content .lowticket-only { display: none; }
 .lesson-content.low-ticket-view .lowticket-only { display: block; }
+
+/* Visible scrollbar for the lesson jump-to list (LessonSidebar.tsx,
+   both the desktop panel and the mobile slide-up sheet) - a plain
+   default scrollbar there reads as "nothing more here" on most
+   platforms (invisible until hover on Mac, a thin flat gray bar on
+   Windows), when the list is actually the main way to jump straight to
+   any of the 42 lessons. Deliberately thin and translucent rather than
+   a bold solid orange bar - enough to read as "this panel scrolls,
+   and it's part of this app" without becoming its own design element.
+   Firefox uses the standardised scrollbar-color/-width properties;
+   everything else falls back to the ::-webkit-scrollbar rules. Both
+   degrade gracefully to a default scrollbar in any browser that
+   supports neither. */
+.lesson-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(232, 85, 46, 0.35) transparent;
+}
+.lesson-list-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.lesson-list-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.lesson-list-scroll::-webkit-scrollbar-thumb {
+  background: rgba(232, 85, 46, 0.35);
+  border-radius: 999px;
+}
+.lesson-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 85, 46, 0.55);
+}

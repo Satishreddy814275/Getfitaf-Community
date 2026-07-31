@@ -140,7 +140,7 @@ export default function LessonSidebar({
             />
           </div>
           <p className="text-[11px] text-[#999] mb-3">{completedCount} of {lessons.length} done</p>
-          <div className="overflow-y-auto flex-1 -mx-1 px-1">{list()}</div>
+          <div className="lesson-list-scroll overflow-y-auto flex-1 -mx-1 px-1">{list()}</div>
         </div>
       </aside>
 
@@ -187,7 +187,7 @@ export default function LessonSidebar({
                 style={{ width: `${lessons.length ? (completedCount / lessons.length) * 100 : 0}%` }}
               />
             </div>
-            <div className="overflow-y-auto px-4 pb-4 pt-1">{list(() => setMobileOpen(false))}</div>
+            <div className="lesson-list-scroll overflow-y-auto px-4 pb-4 pt-1">{list(() => setMobileOpen(false))}</div>
           </div>
         </div>
       )}
