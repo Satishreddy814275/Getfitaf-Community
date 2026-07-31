@@ -64,7 +64,7 @@ export default async function LessonPage({
       .maybeSingle(),
     supabase
       .from('lessons')
-      .select('id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content')
+      .select('id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content, content_css')
       .eq('is_published', true)
       .order('order'),
   ])
@@ -170,7 +170,13 @@ export default async function LessonPage({
 
         <div className="bg-white rounded-lg p-7 sm:p-9 shadow-sm mb-6">
           {lesson.content ? (
-            <div className="lesson-content" dangerouslySetInnerHTML={{ __html: lesson.content }} />
+            <>
+              {lesson.content_css && <style dangerouslySetInnerHTML={{ __html: lesson.content_css }} />}
+              <div
+                className={`lesson-content${isLowTicketOnly ? ' low-ticket-view' : ''}`}
+                dangerouslySetInnerHTML={{ __html: lesson.content }}
+              />
+            </>
           ) : (
             <p className="text-sm text-[#888]">
               This lesson&apos;s content hasn&apos;t been migrated yet - check back soon.

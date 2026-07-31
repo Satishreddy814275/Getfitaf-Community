@@ -168,3 +168,21 @@ body {
   .lesson-content .data-table { font-size: 12px; }
   .lesson-content .data-table th, .lesson-content .data-table td { padding: 6px 8px; }
 }
+
+/* Per-paragraph premium vs. low-ticket copy swap - ported from the old
+   site's low-ticket-adjust.js (gfa-portal repo). A handful of lessons
+   (day5/11/12/14 as of this port) have spots assuming the reader has
+   an assigned coach ("message your coach"), which is misleading for
+   low-ticket self-guided members. Markup convention carried over
+   as-is from the source HTML:
+     <X class="premium-only">...original copy...</X>
+     <X class="lowticket-only" hidden>...low-ticket copy (optional)...</X>
+   The old site did this with a client-side script that toggled
+   display after checking membership; since this page is server-
+   rendered and already computes isLowTicketOnly, the equivalent is
+   just a CSS switch keyed off a class on the wrapper (see
+   lessons/[slug]/page.tsx) instead of shipping that script. A
+   premium-only block with no lowticket-only sibling is simply hidden
+   with nothing shown in its place - same as the old behaviour. */
+.lesson-content.low-ticket-view .premium-only { display: none; }
+.lesson-content.low-ticket-view .lowticket-only[hidden] { display: block; }

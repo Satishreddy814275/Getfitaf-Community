@@ -52,7 +52,7 @@ export default async function LessonsPage({
         .maybeSingle(),
       supabase
         .from('lessons')
-        .select('id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content')
+        .select('id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content, content_css')
         .eq('is_published', true)
         .order('order'),
       supabase.from('user_progress').select('lesson_id, completed').eq('user_id', targetId),

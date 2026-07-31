@@ -332,4 +332,13 @@ export interface Lesson {
   tag: string | null
   audio_url: string | null
   content: string | null
+  // Per-lesson CSS overrides for classes this specific lesson's prose
+  // uses that either aren't part of the shared .lesson-content baseline
+  // in globals.css, or need different values than that baseline for
+  // this lesson (e.g. day42's dark pull-quote treatment vs. the usual
+  // light one). Rendered as its own inline <style> tag alongside this
+  // lesson's content only - see lessons/[slug]/page.tsx. Null on
+  // lessons fully covered by the shared baseline (many of the simpler,
+  // text-only ones).
+  content_css: string | null
 }
