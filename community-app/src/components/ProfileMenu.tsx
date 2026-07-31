@@ -41,10 +41,31 @@ export default function ProfileMenu({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center rounded-full hover:opacity-80 transition"
+        className="relative flex items-center rounded-full hover:opacity-80 transition"
         aria-label="Account menu"
       >
         <Avatar avatarUrl={avatarUrl} name={fullName} size={28} />
+        {/* Small chevron badge overlapping the avatar's bottom-right
+            edge - the avatar alone doesn't read as clickable/a menu
+            trigger on its own, this is the same "there's more here"
+            affordance a caret/chevron always signals. The border color
+            matches the header's own background so it reads as a
+            cutout notch rather than a ring sitting on top. */}
+        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-zinc-800 border-[1.5px] border-[#0a0a0a] flex items-center justify-center">
+          <svg
+            width={7}
+            height={7}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#d4d4d8"
+            strokeWidth={3.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <polyline points="6,9 12,15 18,9" />
+          </svg>
+        </span>
       </button>
 
       {open && (
