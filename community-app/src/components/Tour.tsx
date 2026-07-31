@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -61,6 +61,9 @@ export default function Tour({
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [index, setIndex] = useState(0)
   const [rect, setRect] = useState<DOMRect | null>(null)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
+  const pad = 8
 
   useEffect(() => {
     const seen = window.localStorage.getItem(storageKey) === 'true'
@@ -100,6 +103,31 @@ export default function Tour({
     }
   }, [steps, index])
 
+  // Decides above-vs-below (and clamps left/right) using the
+  // tooltip's own actual rendered size, not a guessed constant - the
+  // mobile bottom tab bar is what exposed the need for this: those
+  // targets sit right at the bottom edge of the viewport, so "always
+  // place the tooltip below the target, clamped to fit on screen" was
+  // clamping all three of them to the exact same spot instead of
+  // flipping the tooltip above the target when there's no room below.
+  useEffect(() => {
+    if (!rect || !tooltipRef.current) {
+      setPos(null)
+      return
+    }
+    const tw = tooltipRef.current.offsetWidth
+    const th = tooltipRef.current.offsetHeight
+    const gap = pad + 12
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+    const top =
+      spaceBelow >= th + gap || spaceBelow >= spaceAbove
+        ? Math.min(rect.bottom + gap, window.innerHeight - th - 16)
+        : Math.max(16, rect.top - gap - th)
+    const left = Math.max(16, Math.min(rect.left, window.innerWidth - tw - 16))
+    setPos({ top, left })
+  }, [rect])
+
   if (!steps) return null
 
   const finish = () => {
@@ -113,7 +141,6 @@ export default function Tour({
 
   const step = steps[index]
   const isLast = index === steps.length - 1
-  const pad = 8
 
   return (
     <div className="fixed inset-0 z-[60]">
@@ -131,13 +158,11 @@ export default function Tour({
       )}
 
       <div
+        ref={tooltipRef}
         className="fixed z-[61] w-[calc(100%-2rem)] max-w-xs bg-[#111111] border border-zinc-700 rounded-2xl p-4 shadow-xl transition-all duration-300 ease-out"
         style={
-          rect
-            ? {
-                top: Math.min(rect.bottom + pad + 12, window.innerHeight - 200),
-                left: Math.max(16, Math.min(rect.left, window.innerWidth - 320 - 16)),
-              }
+          pos
+            ? { top: pos.top, left: pos.left }
             : { top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }
         }
       >
