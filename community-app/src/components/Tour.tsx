@@ -40,6 +40,25 @@ const STEPS: Step[] = [
   },
 ]
 
+// Desktop and mobile both tag their own element with the same
+// data-tour value (see AppNav.tsx) - the two never coexist visually,
+// but they DO both exist in the DOM at once (Tailwind's hidden/
+// sm:block toggle is display:none, not a real unmount), and desktop's
+// markup happens to come first in document order. A plain
+// querySelector always found that hidden desktop element first,
+// measuring a permanent 0x0 rect on mobile regardless of which step
+// was active - this is what collapsed all three mobile steps to the
+// same spot. Filtering for an actual non-zero rendered size is what
+// picks whichever one the current breakpoint is really showing.
+function getVisibleTarget(target: string): HTMLElement | null {
+  const els = document.querySelectorAll(`[data-tour="${target}"]`)
+  for (const el of els) {
+    const r = (el as HTMLElement).getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) return el as HTMLElement
+  }
+  return null
+}
+
 // Once-ever tour of the feed page, auto-starting right after Community
 // Guidelines are acknowledged (see RulesGate in feed/page.tsx) -
 // replaces what used to be a separate "choose your program" popup plus
@@ -68,7 +87,7 @@ export default function Tour({
   useEffect(() => {
     const seen = window.localStorage.getItem(storageKey) === 'true'
     if (!forceStart && seen) return
-    const applicable = STEPS.filter((s) => document.querySelector(`[data-tour="${s.target}"]`))
+    const applicable = STEPS.filter((s) => getVisibleTarget(s.target))
     if (applicable.length === 0) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSteps(applicable)
@@ -87,7 +106,7 @@ export default function Tour({
   // never synchronously in the effect body itself.
   useEffect(() => {
     if (!steps) return
-    const el = document.querySelector(`[data-tour="${steps[index].target}"]`)
+    const el = getVisibleTarget(steps[index].target)
     if (!el) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRect(null)
