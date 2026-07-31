@@ -185,12 +185,22 @@ body {
    premium-only block with no lowticket-only sibling is simply hidden
    with nothing shown in its place - same as the old behaviour. */
 .lesson-content.low-ticket-view .premium-only { display: none; }
-/* !important is required here: the HTML spec mandates the browser's own
-   UA stylesheet rule for [hidden] use !important ("[hidden] { display:
-   none !important; }"), specifically so authors can't accidentally
-   un-hide something by accident. Verified live - without !important
-   here, this rule loses to the UA rule regardless of selector
-   specificity, and the lowticket-only paragraph stays invisible, same
-   as the premium-only one right above it - i.e. low-ticket members saw
-   neither variant, worse than doing nothing at all. */
-.lesson-content.low-ticket-view .lowticket-only[hidden] { display: block !important; }
+/* The source markup carries a `hidden` attribute on .lowticket-only
+   elements (ported as-is from the old site's convention). That turned
+   out to be unfixable from CSS: the HTML spec requires the browser's
+   own UA stylesheet to hide [hidden] with `!important`, and per the
+   CSS cascade, UA !important always wins over ANY author rule - even
+   an author !important one - so no author selector, however specific,
+   can ever un-hide it while the attribute is present. Confirmed live:
+   adding !important here still left the element display:none.
+   The actual fix has two parts:
+   1. The `hidden` attribute itself is stripped from stored content for
+      the four lessons that use this (day5/11/12/14) at the database
+      level - see the one-off corrective UPDATE run when this was
+      caught - so nothing in the rendered markup carries it anymore.
+   2. Visibility is driven entirely by these two class-based rules
+      instead of the attribute: .lowticket-only is hidden by default
+      (covers premium/admin viewers) and only shown when the wrapper
+      carries low-ticket-view. */
+.lesson-content .lowticket-only { display: none; }
+.lesson-content.low-ticket-view .lowticket-only { display: block; }
