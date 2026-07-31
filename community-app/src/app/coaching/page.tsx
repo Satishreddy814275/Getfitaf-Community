@@ -18,15 +18,13 @@ import CalendlyInlineEmbed from '@/components/CalendlyInlineEmbed'
 // AppNav.tsx's nav links) to launch it for everyone.
 export const dynamic = 'force-dynamic'
 
-// hide_event_type_details=1 (photo/name/duration/location/description)
-// was tried and reverted: it left Calendly's own outer page wrapper
-// exposed as an unstyled white frame around the actual (correctly
-// dark-themed) calendar card - background_color only reaches the inner
-// card, not that wrapper. Keeping the details panel visible is what
-// makes the whole thing render fully dark end to end, and showing your
-// name/photo there isn't something worth losing that over.
+// hide_event_type_details=1 hides the photo/name/duration/location/
+// description panel. Re-testing it now that the real border cause
+// (container width crossing into Calendly's "medium" layout tier, see
+// below) is fixed and isolated, to check whether it's safe to combine
+// with the narrow width instead of assuming it isn't.
 const CALENDLY_URL =
-  'https://calendly.com/getfit_af/30-minute-free-consultation-clone?hide_gdpr_banner=1&background_color=0a0a0a&text_color=f4f4f5&primary_color=f97316'
+  'https://calendly.com/getfit_af/30-minute-free-consultation-clone?hide_gdpr_banner=1&hide_event_type_details=1&background_color=0a0a0a&text_color=f4f4f5&primary_color=f97316'
 
 export default async function CoachingPage() {
   const supabase = await createClient()
@@ -44,13 +42,15 @@ export default async function CoachingPage() {
   if (!profile?.is_admin) redirect('/feed')
 
   return (
-    // Wider than the app's usual max-w-2xl (used on /help, /guidelines) -
-    // Calendly's inline embed switches to a cramped "small window" layout
-    // under 650px of container width, which is exactly what max-w-2xl's
-    // ~632px-after-padding was landing in and reserving unstyled blank
-    // space for. max-w-3xl clears that threshold with real margin
-    // (confirmed against Calendly's own documented layout breakpoints).
-    <div className="max-w-3xl mx-auto w-full py-8 px-4 sm:px-6">
+    // Back to max-w-2xl (same as /help, /guidelines) - widening to
+    // max-w-3xl was a wrong turn: confirmed live in the browser by
+    // resizing the embed's container at different widths that
+    // Calendly's card renders flush/border-free under their own 650px
+    // "small layout" breakpoint, and only picks up a visible margin
+    // around itself once it crosses into "medium" layout (650-1100px).
+    // max-w-2xl keeps it under that line, which is the width it was
+    // already at when this page first shipped with no border at all.
+    <div className="max-w-2xl mx-auto w-full py-8 px-4 sm:px-6">
       <Link
         href="/feed"
         className="inline-flex items-center gap-1 text-sm font-medium text-zinc-400 hover:text-white transition mb-4"
