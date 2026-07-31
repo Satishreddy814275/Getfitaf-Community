@@ -326,43 +326,44 @@ export default function FeedTabs({
           the leaderboard sidebar's left edge below it, instead of just
           drifting to the far right of the full-width row. */}
       <div className="lg:col-span-3 lg:grid lg:grid-cols-3 lg:gap-6 mb-6">
-        <div className="lg:col-span-2 flex items-center gap-2">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={
-                tab === t.key
-                  ? 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
-                  : 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
-              }
-            >
-              {t.label}
-              {t.count > 0 && (
-                <span
-                  className={
-                    tab === t.key
-                      ? 'rounded-full bg-black/25 px-1.5 py-0.5 text-[11px] font-bold'
-                      : 'rounded-full bg-zinc-800 px-1.5 py-0.5 text-[11px] font-bold text-zinc-400'
-                  }
-                >
-                  {t.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+        {/* Space filter now sits on the same row as the content tabs
+            (right-aligned, styled as a muted segmented control rather
+            than the tabs' own solid-orange treatment) instead of its
+            own row stacked under the search box - one fewer row of
+            nav-shaped chrome above the composer. Only ever shown to
+            someone with more than one space (canFilterSpace) -
+            realistically just admins on the merged view, or the rare
+            dual-access member - so most members never see this at all. */}
+        <div className="lg:col-span-2 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={
+                  tab === t.key
+                    ? 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
+                    : 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
+                }
+              >
+                {t.label}
+                {t.count > 0 && (
+                  <span
+                    className={
+                      tab === t.key
+                        ? 'rounded-full bg-black/25 px-1.5 py-0.5 text-[11px] font-bold'
+                        : 'rounded-full bg-zinc-800 px-1.5 py-0.5 text-[11px] font-bold text-zinc-400'
+                    }
+                  >
+                    {t.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
 
-        <div className="mt-2 lg:mt-0 space-y-2">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search members or posts..."
-            className="w-full glass rounded-full px-4 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 transition"
-          />
           {canFilterSpace && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 bg-zinc-900 rounded-full p-1">
               {(
                 (isAdmin
                   ? [
@@ -380,8 +381,8 @@ export default function FeedTabs({
                   onClick={() => setSpaceFilter(opt.key)}
                   className={
                     spaceFilter === opt.key
-                      ? 'px-3 py-1 rounded-full text-xs font-semibold bg-orange-500 text-white transition'
-                      : 'px-3 py-1 rounded-full text-xs font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition'
+                      ? 'px-3 py-1.5 rounded-full text-xs font-semibold bg-zinc-800 text-zinc-100 transition'
+                      : 'px-3 py-1.5 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-300 transition'
                   }
                 >
                   {opt.label}
@@ -389,6 +390,16 @@ export default function FeedTabs({
               ))}
             </div>
           )}
+        </div>
+
+        <div className="mt-2 lg:mt-0">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search members or posts..."
+            className="w-full glass rounded-full px-4 py-2 text-sm text-white placeholder-zinc-500 outline-none focus:border-orange-500/50 transition"
+          />
         </div>
       </div>
 

@@ -44,7 +44,7 @@ export default function ProfileMenu({
         className="relative flex items-center rounded-full hover:opacity-80 transition"
         aria-label="Account menu"
       >
-        <Avatar avatarUrl={avatarUrl} name={fullName} size={28} />
+        <Avatar avatarUrl={avatarUrl} name={fullName} size={32} />
         {/* Small chevron badge overlapping the avatar's bottom-right
             edge - the avatar alone doesn't read as clickable/a menu
             trigger on its own, this is the same "there's more here"
