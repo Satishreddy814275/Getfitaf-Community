@@ -353,20 +353,31 @@ export default function AppNav({
               z-index:auto) purely to make sure it still paints above
               this, not for its own layout. `fixed` on the nav above
               already establishes the containing block this measures
-              top/bottom/left against, so it lines up with the tab row
-              regardless of the safe-area padding below it. */}
+              top/left against, so it lines up with the tab row
+              regardless of the safe-area padding below it.
+              Two nested elements on purpose: the outer one is exactly
+              20% wide (one column) so translateX(N * 100%) - which
+              moves by 100% of the element's OWN width - lands it
+              exactly on column N every time. The visible pill is the
+              inner element, inset 6px on all sides of that column -
+              keeping the inset separate from the step size is what
+              keeps it from drifting off-center as N grows (an earlier
+              version sized the pill itself to 20% - 6px and stepped by
+              its own width, which undershot by 6px per tab). */}
           <div
             aria-hidden="true"
-            className="absolute rounded-xl bg-orange-500/10 transition-transform duration-300 ease-out pointer-events-none"
+            className="absolute top-0 bottom-0 left-0 transition-transform duration-300 ease-out pointer-events-none"
             style={{
-              top: 6,
-              bottom: 6,
-              left: 6,
-              width: 'calc(20% - 6px)',
+              width: '20%',
               transform: `translateX(${(activeTabIndex ?? 0) * 100}%)`,
               opacity: activeTabIndex !== null ? 1 : 0,
             }}
-          />
+          >
+            <div
+              className="absolute rounded-xl bg-orange-500/10"
+              style={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            />
+          </div>
           <BottomTab href="/feed" label="Feed" icon="home" />
           {showWorkouts ? (
             <BottomTab href="/workouts" label="Workouts" icon="barbell" dataTour="workouts" />
