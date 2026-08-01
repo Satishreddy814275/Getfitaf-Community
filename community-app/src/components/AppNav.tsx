@@ -383,7 +383,7 @@ export default function AppNav({
           >
             <div
               className="absolute rounded-xl bg-orange-500/10"
-              style={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ top: 6, bottom: 6, left: 10, right: 10 }}
             />
           </div>
           <BottomTab href="/feed" label="Feed" icon="home" />
