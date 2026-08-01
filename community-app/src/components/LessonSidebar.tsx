@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { Lesson } from '@/types'
 
@@ -19,6 +19,57 @@ import type { Lesson } from '@/types'
 
 function slugOf(lesson: Lesson) {
   return (lesson.url || '').replace('/lessons/', '').replace('.html', '')
+}
+
+// The 42-lesson list only ever partially fits in the sidebar's fixed-
+// height scroll area - on most screens somewhere around 20-25 rows are
+// visible, and the box's bottom edge previously landed as a clean, flush
+// cutoff with nothing about it signalling "more below." People read that
+// as the list simply ending there rather than a scrollable box, since a
+// custom thin scrollbar alone isn't a reliable enough cue. This wraps
+// any such scroll area and overlays a fade at the bottom edge - visible
+// only while there's genuinely more content to scroll to, and it
+// disappears once the real end of the list is reached. Tracks its own
+// overflow state via scroll position rather than assuming there's always
+// more (a short list, or a heavily drip-locked one, may fit without
+// scrolling at all).
+function ScrollFadeArea({
+  className,
+  fadeClassName,
+  children,
+}: {
+  className: string
+  fadeClassName: string
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [hasMore, setHasMore] = useState(false)
+
+  const checkOverflow = () => {
+    const el = ref.current
+    if (!el) return
+    setHasMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4)
+  }
+
+  useEffect(() => {
+    checkOverflow()
+    window.addEventListener('resize', checkOverflow)
+    return () => window.removeEventListener('resize', checkOverflow)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <div className="relative flex-1 min-h-0">
+      <div ref={ref} onScroll={checkOverflow} className={className}>
+        {children}
+      </div>
+      {hasMore && (
+        <div
+          className={`pointer-events-none absolute bottom-0 left-0 right-0 h-8 ${fadeClassName}`}
+        />
+      )}
+    </div>
+  )
 }
 
 function LessonRow({
@@ -140,7 +191,12 @@ export default function LessonSidebar({
             />
           </div>
           <p className="text-[11px] text-[#999] mb-3">{completedCount} of {lessons.length} done</p>
-          <div className="lesson-list-scroll overflow-y-auto flex-1 -mx-1 px-1">{list()}</div>
+          <ScrollFadeArea
+            className="lesson-list-scroll overflow-y-auto h-full -mx-1 px-1"
+            fadeClassName="bg-gradient-to-t from-white to-transparent rounded-b-lg"
+          >
+            {list()}
+          </ScrollFadeArea>
         </div>
       </aside>
 
@@ -187,7 +243,12 @@ export default function LessonSidebar({
                 style={{ width: `${lessons.length ? (completedCount / lessons.length) * 100 : 0}%` }}
               />
             </div>
-            <div className="lesson-list-scroll overflow-y-auto px-4 pb-4 pt-1">{list(() => setMobileOpen(false))}</div>
+            <ScrollFadeArea
+              className="lesson-list-scroll overflow-y-auto h-full px-4 pb-4 pt-1"
+              fadeClassName="bg-gradient-to-t from-[#f2f2f2] to-transparent"
+            >
+              {list(() => setMobileOpen(false))}
+            </ScrollFadeArea>
           </div>
         </div>
       )}
