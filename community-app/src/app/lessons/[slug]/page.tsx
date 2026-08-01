@@ -158,10 +158,37 @@ export default async function LessonPage({
           Lesson {lesson.order}
           {lesson.tag ? ` · ${lesson.tag}` : ''}
         </p>
+
+        {/* Read-time + audio-available pills - present on the old
+            learn.getfitaf.fitness lesson pages (lesson-nav.js's
+            updateReadTime/updateAudioBadge) but dropped during the
+            /lessons/[slug] migration. duration_mins is already fetched
+            above for every lesson, this just renders it. */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {lesson.duration_mins ? (
+            <span className="inline-flex items-center bg-[#eceae6] text-[#555] text-xs font-medium px-3 py-1 rounded-full">
+              {lesson.duration_mins} min read
+            </span>
+          ) : null}
+          {lesson.audio_url && (
+            <span className="inline-flex items-center gap-1.5 bg-[#e8552e] text-white text-xs font-medium px-3 py-1 rounded-full">
+              <HeadphoneIcon size={12} /> Audio available
+            </span>
+          )}
+        </div>
+
         <h1 className="text-[28px] font-bold text-[#1a1a1a] leading-tight mb-8">{lesson.title}</h1>
 
         {lesson.audio_url && (
-          <div className="mb-6">
+          // Wrapped in the same tinted-card treatment as the old site's
+          // audio block (and matching this page's own "got a takeaway"
+          // card further down) - a bare <audio> element with no
+          // container is what made the native control read as squeezed
+          // into a corner instead of a deliberate full-width block.
+          <div
+            className="rounded-lg p-4 sm:p-5 mb-6"
+            style={{ background: 'rgba(232,85,46,0.08)', border: '1px solid rgba(232,85,46,0.25)' }}
+          >
             <p className="text-sm text-[#555] mb-2 flex items-center gap-1.5">
               <HeadphoneIcon size={15} /> Prefer to listen?
             </p>
