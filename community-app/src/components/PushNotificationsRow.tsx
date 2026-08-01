@@ -5,7 +5,7 @@ import { isIOS, isStandalone } from '@/lib/pwa'
 import { getExistingSubscription, pushSupported, subscribeToPush } from '@/lib/push-client'
 import { savePushSubscription, removePushSubscription } from '@/app/profile/actions'
 
-type Status = 'checking' | 'unsupported' | 'ios-not-installed' | 'denied' | 'off' | 'on' | 'working'
+type Status = 'checking' | 'unsupported' | 'ios-not-installed' | 'denied' | 'off' | 'on' | 'working' | 'error'
 
 // Same "check post-mount, not in a lazy initializer" reasoning as
 // InstallAppRow right above this on the profile page - permission
@@ -45,27 +45,46 @@ export default function PushNotificationsRow() {
       setStatus('off')
       return
     }
-    const sub = await subscribeToPush(vapidKey)
-    if (!sub) {
-      // Either the browser prompt was dismissed/denied, or something
-      // failed - re-check permission rather than assuming which.
-      setStatus(Notification.permission === 'denied' ? 'denied' : 'off')
-      return
+    // Wrapped in try/catch as of the 2026-08-01 fix - a client reported
+    // the button stuck on "Enabling..." indefinitely. Root cause: none
+    // of subscribeToPush's internals (Notification.requestPermission,
+    // pushManager.subscribe) or savePushSubscription were ever wrapped,
+    // so a rejected promise anywhere in this chain (most likely
+    // pushManager.subscribe throwing - bad key, browser blocking the
+    // push service, a network hiccup) left status stuck on 'working'
+    // forever with nothing to reset it. Now any failure falls through
+    // to a visible, retryable error state instead of hanging silently.
+    try {
+      const sub = await subscribeToPush(vapidKey)
+      if (!sub) {
+        // Either the browser prompt was dismissed/denied, or something
+        // failed - re-check permission rather than assuming which.
+        setStatus(Notification.permission === 'denied' ? 'denied' : 'off')
+        return
+      }
+      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
+      await savePushSubscription({ endpoint: json.endpoint, keys: json.keys })
+      setSubscription(sub)
+      setStatus('on')
+    } catch (err) {
+      console.error('push: failed to enable notifications', err)
+      setStatus('error')
     }
-    const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
-    await savePushSubscription({ endpoint: json.endpoint, keys: json.keys })
-    setSubscription(sub)
-    setStatus('on')
   }
 
   async function handleDisable() {
     if (!subscription) return
     setStatus('working')
-    const endpoint = subscription.endpoint
-    await subscription.unsubscribe()
-    await removePushSubscription(endpoint)
-    setSubscription(null)
-    setStatus('off')
+    try {
+      const endpoint = subscription.endpoint
+      await subscription.unsubscribe()
+      await removePushSubscription(endpoint)
+      setSubscription(null)
+      setStatus('off')
+    } catch (err) {
+      console.error('push: failed to disable notifications', err)
+      setStatus('error')
+    }
   }
 
   if (status === 'checking' || status === 'unsupported') return null
@@ -88,12 +107,15 @@ export default function PushNotificationsRow() {
         </p>
       )}
 
-      {(status === 'off' || status === 'working') && (
+      {(status === 'off' || status === 'working' || status === 'error') && (
         <>
           <p className="text-xs text-zinc-400 mb-3">
             Get a reminder when today&apos;s lesson is ready, or if it&apos;s been a few days since your last
             workout.
           </p>
+          {status === 'error' && (
+            <p className="text-xs text-red-400 mb-3">Something went wrong turning these on. Try again.</p>
+          )}
           <button
             onClick={handleEnable}
             disabled={status === 'working'}

@@ -47,15 +47,26 @@ export default function PushNotificationsBanner({ storageKey }: { storageKey: st
       setWorking(false)
       return
     }
-    const sub = await subscribeToPush(vapidKey)
-    if (!sub) {
-      setWorking(false)
+    // Same fix as PushNotificationsRow (2026-08-01) - this whole chain
+    // was unwrapped, so any rejection (most likely pushManager.subscribe
+    // failing) left `working` stuck true forever with the button showing
+    // "Enabling..." indefinitely. On failure this now just resets
+    // `working` without dismissing, so the banner stays put and they can
+    // hit Enable again instead of being silently stuck.
+    try {
+      const sub = await subscribeToPush(vapidKey)
+      if (!sub) {
+        setWorking(false)
+        dismiss()
+        return
+      }
+      const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
+      await savePushSubscription({ endpoint: json.endpoint, keys: json.keys })
       dismiss()
-      return
+    } catch (err) {
+      console.error('push: failed to enable notifications', err)
+      setWorking(false)
     }
-    const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } }
-    await savePushSubscription({ endpoint: json.endpoint, keys: json.keys })
-    dismiss()
   }
 
   return (
