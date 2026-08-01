@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import NotificationBell from './NotificationBell'
@@ -188,6 +188,47 @@ export default function AppNav({
   const [moreOpen, setMoreOpen] = useState(false)
   const { sessionActive } = useSessionActive()
   const pathname = usePathname()
+  // Drag-to-dismiss for the More sheet - the handle bar already visually
+  // implies this gesture (it's the standard bottom-sheet convention),
+  // but until now it was purely decorative and only the backdrop tap
+  // actually closed the sheet, which read as broken to anyone who
+  // instinctively tried to swipe it away. Mutates the sheet's transform
+  // directly via a ref instead of React state, since touchmove fires far
+  // too often (up to 60/s) to push through a re-render every frame -
+  // this keeps the drag itself perfectly smooth regardless of how often
+  // the rest of the component re-renders for unrelated reasons.
+  const moreSheetRef = useRef<HTMLDivElement>(null)
+  const dragState = useRef({ dragging: false, startY: 0 })
+
+  function handleSheetDragStart(clientY: number) {
+    dragState.current = { dragging: true, startY: clientY }
+    if (moreSheetRef.current) moreSheetRef.current.style.transition = 'none'
+  }
+
+  function handleSheetDragMove(clientY: number) {
+    if (!dragState.current.dragging || !moreSheetRef.current) return
+    // Only follows the finger downward - dragging up just holds it in
+    // place at the top rather than letting it stretch past its resting
+    // position, since there's nowhere further up for it to go.
+    const dy = Math.max(0, clientY - dragState.current.startY)
+    moreSheetRef.current.style.transform = `translateY(${dy}px)`
+  }
+
+  function handleSheetDragEnd(clientY: number) {
+    if (!dragState.current.dragging || !moreSheetRef.current) return
+    dragState.current.dragging = false
+    const dy = Math.max(0, clientY - dragState.current.startY)
+    moreSheetRef.current.style.transition = 'transform 0.2s ease'
+    // 60px is a deliberately low bar - a small deliberate downward swipe
+    // should close it, not require dragging most of the sheet's height
+    // off-screen first.
+    if (dy > 60) {
+      moreSheetRef.current.style.transform = 'translateY(100%)'
+      setTimeout(() => setMoreOpen(false), 180)
+    } else {
+      moreSheetRef.current.style.transform = 'translateY(0)'
+    }
+  }
   const showWorkouts = hasLowTicket || isAdmin
   // Premium (isApproved) and admin keep the existing
   // learn.getfitaf.fitness experience, unchanged. Low-ticket-only members
@@ -445,8 +486,29 @@ export default function AppNav({
             className="absolute inset-0 bg-black/60"
             onClick={() => setMoreOpen(false)}
           />
-          <div className="relative bg-[#0a0a0a] border-t border-zinc-800 rounded-t-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-1">
-            <div className="w-10 h-1 bg-zinc-700 rounded-full mx-auto mb-3" />
+          <div
+            ref={moreSheetRef}
+            className="relative bg-[#0a0a0a] border-t border-zinc-800 rounded-t-2xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-1"
+          >
+            {/* Drag zone is padded well beyond the visible handle bar
+                itself - a bigger, more forgiving touch target than just
+                the thin 4px-tall bar, matching how native bottom sheets
+                make the whole header area draggable rather than one
+                precise strip. Tap (not drag) on the bar itself still
+                closes immediately too - the touch handlers here don't
+                block the click that naturally fires after a tap that
+                didn't move. */}
+            <div
+              className="-mt-4 -mx-4 pt-4 pb-3 px-4"
+              onTouchStart={(e) => handleSheetDragStart(e.touches[0].clientY)}
+              onTouchMove={(e) => handleSheetDragMove(e.touches[0].clientY)}
+              onTouchEnd={(e) => handleSheetDragEnd(e.changedTouches[0].clientY)}
+            >
+              <div
+                className="w-10 h-1 bg-zinc-700 rounded-full mx-auto"
+                onClick={() => setMoreOpen(false)}
+              />
+            </div>
             {showPrograms && (
               <Link
                 href="/programs"
