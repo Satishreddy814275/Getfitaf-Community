@@ -345,37 +345,42 @@ export default function AppNav({
           on a phone screen, and a mis-tap here would navigate someone
           straight out of an in-progress set. */}
       {!sessionActive && (
-        <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
+        // Floating pill bar - left/right/bottom margins lift it off the
+        // screen edges instead of sitting flush like a standard docked
+        // bar, per Satish's ask for more separation between the tap
+        // targets and the true bottom of the screen. `bottom` combines a
+        // fixed 10px lift with the safe-area inset (rather than the old
+        // pb-[env(...)] internal padding) so the gap holds steady above
+        // a phone's home-indicator zone too. overflow-hidden keeps the
+        // sliding pill's corners from poking past the bar's own rounded
+        // corners at the Feed/More ends.
+        <nav
+          className="sm:hidden fixed left-[10px] right-[10px] z-40 bg-[#0a0a0a] border border-zinc-800 rounded-2xl flex overflow-hidden"
+          style={{ bottom: 'calc(10px + env(safe-area-inset-bottom))' }}
+        >
           {/* Sliding highlight behind the active tab. Plain absolute
               positioning with no z-index - default stacking paints
               positioned elements after non-positioned ones in DOM order,
               so each tab below gets `relative` (position:relative,
               z-index:auto) purely to make sure it still paints above
-              this, not for its own layout. `fixed` on the nav above
-              already establishes the containing block this measures
-              top/left against, so it lines up with the tab row
-              regardless of the safe-area padding below it.
-              Two nested elements on purpose: the outer one is exactly
-              20% wide (one column) so translateX(N * 100%) - which
-              moves by 100% of the element's OWN width - lands it
-              exactly on column N every time. The visible pill is the
-              inner element, inset 6px on all sides of that column -
-              keeping the inset separate from the step size is what
-              keeps it from drifting off-center as N grows (an earlier
-              version sized the pill itself to 20% - 6px and stepped by
-              its own width, which undershot by 6px per tab). */}
+              this, not for its own layout. Two nested elements on
+              purpose: the outer one is exactly 20% wide (one column) so
+              translateX(N * 100%) - which moves by 100% of the
+              element's OWN width - lands it exactly on column N every
+              time. The visible pill is the inner element, inset from
+              that column - keeping the inset separate from the step
+              size is what keeps it from drifting off-center as N grows
+              (an earlier version sized the pill itself to 20% - 6px and
+              stepped by its own width, which undershot by 6px per tab).
+              Now that the nav's own box no longer extends into the
+              safe-area zone (that gap lives in the nav's `bottom` style
+              above instead), this can just span the nav's full height
+              with plain inset-0 rather than special-casing the bottom
+              edge. */}
           <div
             aria-hidden="true"
-            className="absolute top-0 left-0 transition-transform duration-300 ease-out pointer-events-none"
+            className="absolute top-0 bottom-0 left-0 transition-transform duration-300 ease-out pointer-events-none"
             style={{
-              // Bottom bound stops at the safe-area padding rather than
-              // the nav's full box (bottom-0 would include that padding,
-              // since it's part of the nav's own box height) - otherwise
-              // on a notched phone running as an installed PWA (see
-              // env(safe-area-inset-bottom) below on the nav itself)
-              // this element - and the pill inset within it - stretches
-              // down into that reserved zone, reading as oversized.
-              bottom: 'env(safe-area-inset-bottom)',
               width: '20%',
               transform: `translateX(${(activeTabIndex ?? 0) * 100}%)`,
               opacity: activeTabIndex !== null ? 1 : 0,
