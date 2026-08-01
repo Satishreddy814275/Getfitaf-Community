@@ -22,6 +22,8 @@ import BetaProgressPreview from '@/components/BetaProgressPreview'
 import BetaCommunityPreview from '@/components/BetaCommunityPreview'
 import BetaCountdown from '@/components/BetaCountdown'
 import BetaStickyCTA from '@/components/BetaStickyCTA'
+import LessonPreviewCapture from '@/components/LessonPreviewCapture'
+import FreeLessonsBanner from '@/components/FreeLessonsBanner'
 import { renderRichText } from '@/lib/richText'
 import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
@@ -357,6 +359,16 @@ export default async function BetaLandingPage() {
           </div>
         </div>
 
+        {/* Not ready to pay yet - free 7-lesson capture. Live mode
+            only: pre-launch already has WaitlistForm as the primary
+            CTA collecting emails, so this would just be a redundant
+            second form before Aug 1. */}
+        {isLive && (
+          <div id="free-lessons" className="mb-10">
+            <LessonPreviewCapture />
+          </div>
+        )}
+
         {/* CTA - bottom */}
         <div className="glass rounded-2xl p-6">
           {isLive ? (
@@ -380,6 +392,7 @@ export default async function BetaLandingPage() {
       </div>
 
       <BetaStickyCTA isLive={isLive} />
+      {isLive && <FreeLessonsBanner />}
     </div>
   )
 }
