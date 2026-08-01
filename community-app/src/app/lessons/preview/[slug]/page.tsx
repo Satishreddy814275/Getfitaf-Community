@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import ReadingProgressBar from '@/components/ReadingProgressBar'
 import HeadphoneIcon from '@/components/HeadphoneIcon'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -41,25 +40,22 @@ export default async function LessonPreviewPage({
   // is what makes it safe to read with the admin client - only these 7
   // rows are ever reachable through this route, never an arbitrary
   // lesson id someone might guess or enumerate.
+  //
+  // Fetched standalone, deliberately no prev/next between preview
+  // lessons (see 2026-08-01 conversation) - each one only reaches
+  // someone through its own dedicated email in the 7-lesson sequence,
+  // so letting someone click straight through to the next one on-page
+  // would undercut that pacing and dilute "Join now" as the one thing
+  // to do here.
   const supabase = createAdminClient()
-  const { data: lessons } = await supabase
+  const { data: lesson } = await supabase
     .from('lessons')
     .select('id, title, url, duration_mins, order, tag, audio_url, content, content_css')
     .eq('is_published', true)
-    .in(
-      'url',
-      PREVIEW_SLUGS.map((s) => `/lessons/${s}.html`)
-    )
-    .order('order')
+    .eq('url', `/lessons/${slug}.html`)
+    .maybeSingle<Lesson>()
 
-  const all = (lessons as Lesson[] | null) || []
-  const lesson = all.find((l) => l.url === `/lessons/${slug}.html`)
   if (!lesson) notFound()
-
-  const idx = all.findIndex((l) => l.id === lesson.id)
-  const prev = idx > 0 ? all[idx - 1] : null
-  const next = idx < all.length - 1 ? all[idx + 1] : null
-  const slugOf = (l: Lesson) => (l.url || '').replace('/lessons/', '').replace('.html', '')
 
   return (
     <div style={{ background: '#f2f2f2', minHeight: '100vh' }}>
@@ -114,33 +110,6 @@ export default async function LessonPreviewPage({
             <p className="text-sm text-[#888]">This lesson isn&apos;t available right now.</p>
           )}
         </div>
-
-        {(prev || next) && (
-          <div className="flex items-center justify-between gap-4 mb-6">
-            {prev ? (
-              <Link
-                href={`/lessons/preview/${slugOf(prev)}`}
-                className="flex-1 bg-white rounded-lg px-4 py-3 shadow-sm hover:shadow transition"
-              >
-                <span className="block text-xs text-[#888] mb-0.5">← Previous</span>
-                <span className="block text-sm font-semibold text-[#1a1a1a] truncate">{prev.title}</span>
-              </Link>
-            ) : (
-              <div className="flex-1" />
-            )}
-            {next ? (
-              <Link
-                href={`/lessons/preview/${slugOf(next)}`}
-                className="flex-1 bg-white rounded-lg px-4 py-3 shadow-sm hover:shadow transition text-right"
-              >
-                <span className="block text-xs text-[#888] mb-0.5">Next →</span>
-                <span className="block text-sm font-semibold text-[#1a1a1a] truncate">{next.title}</span>
-              </Link>
-            ) : (
-              <div className="flex-1" />
-            )}
-          </div>
-        )}
 
         <div className="rounded-lg p-6 bg-white shadow-sm text-center">
           <p className="text-[#1a1a1a] text-sm font-semibold mb-1">Like what you&apos;re reading?</p>
