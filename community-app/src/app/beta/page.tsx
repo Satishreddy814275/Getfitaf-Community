@@ -128,10 +128,10 @@ export default async function BetaLandingPage() {
                 href="/beta/pay"
                 className="inline-block w-full sm:w-auto text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl transition text-sm"
               >
-                Reserve your spot - ₹249 first month
+                Join now - ₹249 first month
               </a>
               <p className="text-zinc-500 text-xs mt-3">
-                Then ₹499/month. Cancel anytime, no charge until then.
+                ₹499/month from the second month. Cancel anytime.
               </p>
             </div>
           ) : (
@@ -365,7 +365,7 @@ export default async function BetaLandingPage() {
                 href="/beta/pay"
                 className="inline-block w-full sm:w-auto text-center bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-xl transition text-sm"
               >
-                Reserve your spot - ₹249 first month
+                Join now - ₹249 first month
               </a>
             </div>
           ) : (

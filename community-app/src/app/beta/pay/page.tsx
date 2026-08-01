@@ -50,7 +50,7 @@ export default async function RazorpayPayPage() {
         <div className="rounded-2xl p-7 bg-[#111111] border border-zinc-800">
           <div className="w-8 h-0.5 bg-orange-500 mx-auto mb-4" />
           <p className="text-zinc-200 text-sm font-medium tracking-wide mb-5 text-center">
-            Reserve your spot
+            Join now
           </p>
           <RazorpayCheckout email={user.email} discounted={discounted} spotsRemaining={spotsRemaining} />
         </div>
