@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import NotificationBell from './NotificationBell'
@@ -199,6 +199,22 @@ export default function AppNav({
   // the rest of the component re-renders for unrelated reasons.
   const moreSheetRef = useRef<HTMLDivElement>(null)
   const dragState = useRef({ dragging: false, startY: 0 })
+
+  // Without this, dragging inside the sheet on iOS also rubber-bands the
+  // page underneath - the sheet is `fixed`, but a fixed overlay alone
+  // doesn't stop the document behind it from scrolling/bouncing on
+  // touchmove, so both moved at once and the drag felt janky. Locking
+  // body scroll for exactly as long as the sheet is open (and always
+  // restoring it, even if the component unmounts mid-drag) fixes that
+  // without needing to touch anything else on the page.
+  useEffect(() => {
+    if (!moreOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [moreOpen])
 
   function handleSheetDragStart(clientY: number) {
     dragState.current = { dragging: true, startY: clientY }
@@ -500,6 +516,7 @@ export default function AppNav({
                 didn't move. */}
             <div
               className="-mt-4 -mx-4 pt-4 pb-3 px-4"
+              style={{ touchAction: 'none' }}
               onTouchStart={(e) => handleSheetDragStart(e.touches[0].clientY)}
               onTouchMove={(e) => handleSheetDragMove(e.touches[0].clientY)}
               onTouchEnd={(e) => handleSheetDragEnd(e.changedTouches[0].clientY)}
