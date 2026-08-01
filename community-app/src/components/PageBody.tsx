@@ -2,8 +2,8 @@
 
 import { useSessionActive } from './SessionActiveProvider'
 
-// The pb-20 here exists purely to clear AppNav's fixed mobile bottom
-// tab bar (~64px, plus the 10px it now floats above the screen edge -
+// The pb-24 here exists purely to clear AppNav's fixed mobile bottom
+// tab bar (~64px, plus the 20px it now floats above the screen edge -
 // see AppNav's own comment on the bar's `bottom` style) so page content
 // never sits underneath it - once that bar is hidden for an active
 // workout session (see AppNav), the padding has nothing left to clear
@@ -18,5 +18,5 @@ export default function PageBody({
 }) {
   const { sessionActive } = useSessionActive()
   const padded = hasUser && !sessionActive
-  return <div className={padded ? 'pb-20 sm:pb-0' : ''}>{children}</div>
+  return <div className={padded ? 'pb-24 sm:pb-0' : ''}>{children}</div>
 }

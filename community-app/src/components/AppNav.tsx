@@ -356,7 +356,7 @@ export default function AppNav({
         // corners at the Feed/More ends.
         <nav
           className="sm:hidden fixed left-[10px] right-[10px] z-40 bg-[#0a0a0a] border border-zinc-800 rounded-2xl flex overflow-hidden"
-          style={{ bottom: 'calc(10px + env(safe-area-inset-bottom))' }}
+          style={{ bottom: 'calc(20px + env(safe-area-inset-bottom))' }}
         >
           {/* Sliding highlight behind the active tab. Plain absolute
               positioning with no z-index - default stacking paints
