@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import NotificationBell from './NotificationBell'
+import ProfileMenu from './ProfileMenu'
 import ExternalNavLink from './ExternalNavLink'
 import { signOut } from '@/app/login/actions'
 import { useSessionActive } from './SessionActiveProvider'
@@ -26,8 +27,10 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   return (
     <Link
       href={href}
-      className={`text-sm font-medium transition ${
-        active ? 'text-white' : 'text-zinc-400 hover:text-white'
+      className={`block text-sm font-medium transition pb-3 -mb-3 border-b-2 ${
+        active
+          ? 'text-white border-orange-500'
+          : 'text-zinc-400 hover:text-white border-transparent'
       }`}
     >
       {children}
@@ -107,20 +110,47 @@ function TabIcon({
   )
 }
 
+// Small lock glyph for "you don't have access yet" links - orange (this
+// genuinely is an upsell nudge, worth some visual weight) but paired with
+// neutral link text rather than full solid orange, so it stays visually
+// distinct from a real primary-action button like Post or Start.
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  )
+}
+
 function BottomTab({
   href,
   label,
   icon,
+  dataTour,
 }: {
   href: string
   label: string
   icon: 'home' | 'barbell' | 'trophy' | 'book'
+  dataTour?: string
 }) {
   const pathname = usePathname()
   const active = isPathActive(pathname, href)
   return (
     <Link
       href={href}
+      data-tour={dataTour}
       className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
     >
       <TabIcon name={icon} className={active ? 'text-orange-500' : 'text-zinc-500'} />
@@ -136,13 +166,19 @@ export default function AppNav({
   isApproved,
   hasLowTicket,
   showPrograms,
+  showCoaching,
   notifications,
+  fullName,
+  avatarUrl,
 }: {
   isAdmin: boolean
   isApproved: boolean
   hasLowTicket: boolean
   showPrograms: boolean
+  showCoaching: boolean
   notifications: Notification[]
+  fullName: string | null
+  avatarUrl: string | null
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const { sessionActive } = useSessionActive()
@@ -166,10 +202,16 @@ export default function AppNav({
 
   return (
     <>
-      {/* Desktop - unchanged content from before, just with active-state
-          highlighting added via NavLink. Hidden below the sm breakpoint,
-          replaced by the simplified mobile bar + bottom tabs. */}
-      <header className="hidden sm:block border-b border-zinc-800 bg-[#0a0a0a]">
+      {/* Desktop - decluttered from a flat row of 8 equal-weight links
+          down to: primary nav (things members reach for often) plus an
+          avatar menu for everything else (Programs, Guidelines, Edit
+          Profile, Admin, Sign out) - the exact same primary/secondary
+          split the mobile bottom-tab bar + "More" sheet already use, just
+          expressed as a dropdown instead of a bottom sheet. Sticky +
+          backdrop-blur reuses the app's existing .glass language so the
+          header reads as one continuous piece of that system rather than
+          a flat opaque bar sitting on top of the page. */}
+      <header className="hidden sm:block sticky top-0 z-30 border-b border-zinc-800/80 bg-[#0a0a0a]/80 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <Link
             href="/feed"
@@ -178,59 +220,77 @@ export default function AppNav({
             GET<span className="text-orange-500">FIT</span> AF
             <span className="ml-1.5 font-medium text-zinc-400">Community</span>
           </Link>
-          <div className="flex items-center gap-4">
-            <NotificationBell initialNotifications={notifications} />
-            <NavLink href="/leaderboard">Leaderboard</NavLink>
-            <NavLink href="/guidelines">Guidelines</NavLink>
-            <NavLink href="/profile">Edit Profile</NavLink>
-            {isAdmin && <NavLink href="/admin">Admin</NavLink>}
-            {showPremiumLessons ? (
-              <ExternalNavLink
-                href="https://learn.getfitaf.fitness/dashboard.html"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-                loadingLabel="Taking you to your lessons..."
-              >
-                Go to your lessons
-              </ExternalNavLink>
-            ) : showLowTicketLessons ? (
-              <Link
-                href="/lessons"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-              >
-                Go to your lessons
-              </Link>
-            ) : isLive ? (
-              <Link
-                href="/beta/pay"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-              >
-                Join to unlock your lessons
-              </Link>
-            ) : (
-              <span className="text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
-                Daily lessons - opens August 1
+          <div className="flex items-center gap-6">
+            <nav className="flex items-center gap-5">
+              <NavLink href="/leaderboard">Leaderboard</NavLink>
+              {/* Wrapping (rather than passing data-tour through as a
+                  prop) keeps this working regardless of which of the
+                  three branches renders, without touching NavLink/
+                  ExternalNavLink's own prop surface. Note: only the span
+                  itself gets auto-blockified by the flex container - the
+                  link nested inside it does NOT, so it stays at its
+                  default `display: inline` unless given an explicit
+                  `block` class below. That mismatch (this link inline,
+                  Leaderboard's own link auto-blockified to block as a
+                  direct flex child) was causing a real 2px vertical
+                  offset between Leaderboard and these two links -
+                  confirmed via getBoundingClientRect. `block`/`flex`
+                  here makes every state render as its own block box
+                  regardless of nesting, so it can't recur. */}
+              <span data-tour="lessons">
+                {showPremiumLessons ? (
+                  <ExternalNavLink
+                    href="https://learn.getfitaf.fitness/dashboard.html"
+                    className="block text-sm font-medium text-zinc-400 hover:text-white transition pb-3 -mb-3 border-b-2 border-transparent"
+                    loadingLabel="Taking you to your lessons..."
+                  >
+                    Go to your lessons
+                  </ExternalNavLink>
+                ) : showLowTicketLessons ? (
+                  <NavLink href="/lessons">Go to your lessons</NavLink>
+                ) : isLive ? (
+                  <Link
+                    href="/beta/pay"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                  >
+                    <LockIcon className="text-orange-500" />
+                    Join to unlock your lessons
+                  </Link>
+                ) : (
+                  <span className="block text-sm font-medium text-zinc-600" title="Daily lessons open August 1">
+                    Daily lessons - opens August 1
+                  </span>
+                )}
               </span>
-            )}
-            {showPrograms && <NavLink href="/programs">Choose Your Program</NavLink>}
-            {showWorkouts ? (
-              <NavLink href="/workouts">Workouts</NavLink>
-            ) : isLive ? (
-              <Link
-                href="/beta/pay"
-                className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
-              >
-                Join to unlock your workouts
-              </Link>
-            ) : (
-              <span className="text-sm font-medium text-zinc-600" title="Workouts open August 1">
-                Workouts - opens August 1
+              <span data-tour="workouts">
+                {showWorkouts ? (
+                  <NavLink href="/workouts">Workouts</NavLink>
+                ) : isLive ? (
+                  <Link
+                    href="/beta/pay"
+                    className="text-sm font-medium text-zinc-400 hover:text-white transition flex items-center gap-1.5 pb-3 -mb-3 border-b-2 border-transparent"
+                  >
+                    <LockIcon className="text-orange-500" />
+                    Join to unlock your workouts
+                  </Link>
+                ) : (
+                  <span className="block text-sm font-medium text-zinc-600" title="Workouts open August 1">
+                    Workouts - opens August 1
+                  </span>
+                )}
               </span>
-            )}
-            <form action={signOut}>
-              <button className="text-sm font-medium text-zinc-400 hover:text-white transition">
-                Sign out
-              </button>
-            </form>
+            </nav>
+            <div className="w-px h-5 bg-zinc-800" aria-hidden="true" />
+            <div className="flex items-center gap-4">
+              <NotificationBell initialNotifications={notifications} />
+              <ProfileMenu
+                fullName={fullName}
+                avatarUrl={avatarUrl}
+                isAdmin={isAdmin}
+                showPrograms={showPrograms}
+                showCoaching={showCoaching}
+              />
+            </div>
           </div>
         </div>
       </header>
@@ -265,14 +325,14 @@ export default function AppNav({
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
           <BottomTab href="/feed" label="Feed" icon="home" />
           {showWorkouts ? (
-            <BottomTab href="/workouts" label="Workouts" icon="barbell" />
+            <BottomTab href="/workouts" label="Workouts" icon="barbell" dataTour="workouts" />
           ) : isLive ? (
-            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Workouts</span>
             </div>
@@ -281,26 +341,28 @@ export default function AppNav({
           {showPremiumLessons ? (
             <a
               href="https://learn.getfitaf.fitness/dashboard.html"
+              data-tour="lessons"
               className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
             >
               <TabIcon name="book" className="text-zinc-500" />
               <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
             </a>
           ) : showLowTicketLessons ? (
-            <BottomTab href="/lessons" label="Lessons" icon="book" />
+            <BottomTab href="/lessons" label="Lessons" icon="book" dataTour="lessons" />
           ) : isLive ? (
-            <Link href="/beta/pay" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Lessons</span>
             </div>
           )}
           <button
             onClick={() => setMoreOpen(true)}
+            data-tour="avatar-menu"
             className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
           >
             <TabIcon name="dots" className="text-zinc-500" />
@@ -331,13 +393,30 @@ export default function AppNav({
                 <Link
                   href="/beta/pay"
                   onClick={() => setMoreOpen(false)}
-                  className="block w-full text-left text-sm font-medium text-orange-500 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+                  className="flex items-center gap-2 w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
                 >
+                  <LockIcon className="text-orange-500" />
                   Join to unlock your lessons
                 </Link>
               ) : (
                 <p className="text-xs text-zinc-600 px-3 py-2">Daily lessons - opens August 1.</p>
               ))}
+            <Link
+              href="/help"
+              onClick={() => setMoreOpen(false)}
+              className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+            >
+              Help
+            </Link>
+            {showCoaching && (
+              <Link
+                href="/coaching"
+                onClick={() => setMoreOpen(false)}
+                className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+              >
+                One-on-one Coaching
+              </Link>
+            )}
             <Link
               href="/guidelines"
               onClick={() => setMoreOpen(false)}
