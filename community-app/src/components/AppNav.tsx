@@ -366,8 +366,16 @@ export default function AppNav({
               its own width, which undershot by 6px per tab). */}
           <div
             aria-hidden="true"
-            className="absolute top-0 bottom-0 left-0 transition-transform duration-300 ease-out pointer-events-none"
+            className="absolute top-0 left-0 transition-transform duration-300 ease-out pointer-events-none"
             style={{
+              // Bottom bound stops at the safe-area padding rather than
+              // the nav's full box (bottom-0 would include that padding,
+              // since it's part of the nav's own box height) - otherwise
+              // on a notched phone running as an installed PWA (see
+              // env(safe-area-inset-bottom) below on the nav itself)
+              // this element - and the pill inset within it - stretches
+              // down into that reserved zone, reading as oversized.
+              bottom: 'env(safe-area-inset-bottom)',
               width: '20%',
               transform: `translateX(${(activeTabIndex ?? 0) * 100}%)`,
               opacity: activeTabIndex !== null ? 1 : 0,
@@ -375,7 +383,7 @@ export default function AppNav({
           >
             <div
               className="absolute rounded-xl bg-orange-500/10"
-              style={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              style={{ top: 10, bottom: 10, left: 10, right: 10 }}
             />
           </div>
           <BottomTab href="/feed" label="Feed" icon="home" />
