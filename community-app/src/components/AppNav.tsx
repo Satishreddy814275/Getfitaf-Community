@@ -151,10 +151,15 @@ function BottomTab({
     <Link
       href={href}
       data-tour={dataTour}
-      className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
+      className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5"
     >
-      <TabIcon name={icon} className={active ? 'text-orange-500' : 'text-zinc-500'} />
-      <span className={`text-[10px] font-semibold ${active ? 'text-orange-500' : 'text-zinc-500'}`}>
+      <TabIcon
+        name={icon}
+        className={`transition-colors duration-300 ${active ? 'text-orange-500' : 'text-zinc-500'}`}
+      />
+      <span
+        className={`text-[10px] font-semibold transition-colors duration-300 ${active ? 'text-orange-500' : 'text-zinc-500'}`}
+      >
         {label}
       </span>
     </Link>
@@ -182,6 +187,7 @@ export default function AppNav({
 }) {
   const [moreOpen, setMoreOpen] = useState(false)
   const { sessionActive } = useSessionActive()
+  const pathname = usePathname()
   const showWorkouts = hasLowTicket || isAdmin
   // Premium (isApproved) and admin keep the existing
   // learn.getfitaf.fitness experience, unchanged. Low-ticket-only members
@@ -199,6 +205,23 @@ export default function AppNav({
   // "join to unlock" link straight to /beta/pay once the beta is
   // actually live. Same date beta/page.tsx itself switches on.
   const isLive = isBetaLive()
+  // Drives the sliding highlight behind the mobile bottom tab bar - the
+  // bar is always exactly 5 equal flex-1 columns (Feed, Workouts slot,
+  // Ranks, Lessons slot, More) regardless of what's rendered in each
+  // slot, so a single index cleanly maps to "which column to sit under."
+  // null on any page outside these four routes (Profile/Admin/Guidelines,
+  // reached via More) - there's no slot for the indicator to sit under
+  // there, same as how none of the tabs highlight orange on those pages
+  // today either.
+  const activeTabIndex = isPathActive(pathname, '/feed')
+    ? 0
+    : showWorkouts && isPathActive(pathname, '/workouts')
+      ? 1
+      : isPathActive(pathname, '/leaderboard')
+        ? 2
+        : showLowTicketLessons && isPathActive(pathname, '/lessons')
+          ? 3
+          : null
 
   return (
     <>
@@ -323,16 +346,37 @@ export default function AppNav({
           straight out of an in-progress set. */}
       {!sessionActive && (
         <nav className="sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0a0a] border-t border-zinc-800 flex pb-[env(safe-area-inset-bottom)]">
+          {/* Sliding highlight behind the active tab. Plain absolute
+              positioning with no z-index - default stacking paints
+              positioned elements after non-positioned ones in DOM order,
+              so each tab below gets `relative` (position:relative,
+              z-index:auto) purely to make sure it still paints above
+              this, not for its own layout. `fixed` on the nav above
+              already establishes the containing block this measures
+              top/bottom/left against, so it lines up with the tab row
+              regardless of the safe-area padding below it. */}
+          <div
+            aria-hidden="true"
+            className="absolute rounded-xl bg-orange-500/10 transition-transform duration-300 ease-out pointer-events-none"
+            style={{
+              top: 6,
+              bottom: 6,
+              left: 6,
+              width: 'calc(20% - 6px)',
+              transform: `translateX(${(activeTabIndex ?? 0) * 100}%)`,
+              opacity: activeTabIndex !== null ? 1 : 0,
+            }}
+          />
           <BottomTab href="/feed" label="Feed" icon="home" />
           {showWorkouts ? (
             <BottomTab href="/workouts" label="Workouts" icon="barbell" dataTour="workouts" />
           ) : isLive ? (
-            <Link href="/beta/pay" data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="workouts" className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div data-tour="workouts" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="workouts" className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="barbell" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Workouts</span>
             </div>
@@ -342,7 +386,7 @@ export default function AppNav({
             <a
               href="https://learn.getfitaf.fitness/dashboard.html"
               data-tour="lessons"
-              className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
+              className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5"
             >
               <TabIcon name="book" className="text-zinc-500" />
               <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
@@ -350,12 +394,12 @@ export default function AppNav({
           ) : showLowTicketLessons ? (
             <BottomTab href="/lessons" label="Lessons" icon="book" dataTour="lessons" />
           ) : isLive ? (
-            <Link href="/beta/pay" data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <Link href="/beta/pay" data-tour="lessons" className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-orange-500" />
               <span className="text-[10px] font-semibold text-orange-500">Join</span>
             </Link>
           ) : (
-            <div data-tour="lessons" className="flex-1 flex flex-col items-center gap-0.5 py-1.5">
+            <div data-tour="lessons" className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5">
               <TabIcon name="book" className="text-zinc-700" />
               <span className="text-[10px] font-semibold text-zinc-700">Lessons</span>
             </div>
@@ -363,7 +407,7 @@ export default function AppNav({
           <button
             onClick={() => setMoreOpen(true)}
             data-tour="avatar-menu"
-            className="flex-1 flex flex-col items-center gap-0.5 py-1.5"
+            className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5"
           >
             <TabIcon name="dots" className="text-zinc-500" />
             <span className="text-[10px] font-semibold text-zinc-500">More</span>
