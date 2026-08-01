@@ -79,7 +79,13 @@ export async function updateSession(request: NextRequest) {
     // /api/beta-waitlist is the waitlist signup endpoint the /beta
     // page's form posts to - same "no session exists yet" situation
     // as /api/beta-checkout, just a POST instead of a GET.
-    request.nextUrl.pathname.startsWith('/api/beta-waitlist')
+    request.nextUrl.pathname.startsWith('/api/beta-waitlist') ||
+    // /lessons/preview/[slug] is the free 7-lesson sample given to
+    // email leads who haven't signed up yet - same reasoning as /beta:
+    // the whole point is that someone with no account can open the
+    // link from an email and actually see the page, not get bounced to
+    // /login first.
+    request.nextUrl.pathname.startsWith('/lessons/preview')
 
   if (!user && !isPublicRoute) {
     // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
