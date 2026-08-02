@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import AdminMembersList from '@/components/AdminMembersList'
 import AdminNewRequestsList from '@/components/AdminNewRequestsList'
+import type { WorkoutPlanDay } from '@/types'
 
 // See admin/page.tsx for why this is forced dynamic.
 export const dynamic = 'force-dynamic'
@@ -78,6 +79,33 @@ export default async function AdminMembersPage() {
   ])
 
   const planByMember = new Map(plans.map((p) => [p.memberId, p.plan]))
+
+  // Program name isn't on ActiveWorkoutPlan itself (see workoutPlan.ts -
+  // it only carries programTemplateId), so it's looked up here as a
+  // separate pass: collect the distinct template ids actually in use,
+  // then one query for their names rather than a per-member round trip.
+  const templateIds = Array.from(
+    new Set(plans.map((p) => p.plan?.programTemplateId).filter((id): id is string => !!id))
+  )
+  const { data: templateNames } =
+    templateIds.length > 0
+      ? await adminSupabase.from('program_templates').select('id, name').in('id', templateIds)
+      : { data: [] }
+  const nameByTemplateId = new Map((templateNames || []).map((t) => [t.id, t.name as string]))
+
+  // What "View program" opens per member - the exact same name+days
+  // shape ProgramPreviewModal already takes on the member-facing
+  // /programs page, so this reuses that component as-is rather than
+  // building a second preview UI. Only present for members who've
+  // actually picked a program.
+  const programByMember: Record<string, { name: string; days: WorkoutPlanDay[] }> = {}
+  for (const { memberId, plan } of plans) {
+    if (!plan) continue
+    programByMember[memberId] = {
+      name: nameByTemplateId.get(plan.programTemplateId) || 'Untitled program',
+      days: plan.days,
+    }
+  }
   const sessionsByMember = new Map<string, { generation_id: string; week_number: number; day_number: number; completed_at: string }[]>()
   for (const s of sessionsRes.data || []) {
     const list = sessionsByMember.get(s.profile_id) || []
@@ -141,7 +169,11 @@ export default async function AdminMembersPage() {
         </p>
       </div>
 
-      <AdminMembersList members={membersWithSpace} workoutSummaries={workoutSummaries} />
+      <AdminMembersList
+        members={membersWithSpace}
+        workoutSummaries={workoutSummaries}
+        programByMember={programByMember}
+      />
     </div>
   )
 }

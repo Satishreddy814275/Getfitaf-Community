@@ -12,8 +12,9 @@ import {
 import Avatar from './Avatar'
 import WorkoutHistoryList from './WorkoutHistoryList'
 import MiniTrendChart from './MiniTrendChart'
+import ProgramPreviewModal from './ProgramPreviewModal'
 import { convertWeightForDisplay } from '@/lib/weightUnit'
-import type { WorkoutHistoryGroup, BodyWeightEntry } from '@/types'
+import type { WorkoutHistoryGroup, BodyWeightEntry, WorkoutPlanDay } from '@/types'
 
 type Member = {
   id: string
@@ -42,11 +43,24 @@ const FILTERS: { value: Filter; label: string }[] = [
 export default function AdminMembersList({
   members,
   workoutSummaries,
+  programByMember,
 }: {
   members: Member[]
   workoutSummaries: Record<string, WorkoutSummary>
+  // Only present for members who've actually picked a program - same
+  // name+days shape ProgramPreviewModal already takes on the
+  // member-facing /programs page, reused as-is here so "View program"
+  // shows an admin exactly what that member sees, not a paraphrase of
+  // it.
+  programByMember: Record<string, { name: string; days: WorkoutPlanDay[] }>
 }) {
   const [pendingId, setPendingId] = useState<string | null>(null)
+  // Which member's program preview is open, if any - independent of
+  // the workout-log/weight-log accordions below (those expand inline,
+  // this opens as a modal since ProgramPreviewModal already renders as
+  // one on /programs and there's no reason to build a second layout for
+  // the same content here).
+  const [previewMemberId, setPreviewMemberId] = useState<string | null>(null)
   // Optimistic local overrides so the toggle updates immediately
   // rather than waiting on a full page revalidation round-trip.
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
@@ -160,6 +174,7 @@ export default function AdminMembersList({
           {filtered.map((member) => {
             const hasLowTicket = overrides[member.id] ?? member.hasLowTicket
             const summary = workoutSummaries[member.id]
+            const program = programByMember[member.id]
             const isExpanded = expandedMemberId === member.id
             const isWeightExpanded = expandedWeightMemberId === member.id
             return (
@@ -183,9 +198,15 @@ export default function AdminMembersList({
                       </div>
                       {hasLowTicket && summary && (
                         <p className="text-xs text-zinc-500 mt-1">
-                          {summary.hasPlan
-                            ? `${summary.completedCount}/${summary.totalCount} this cycle`
-                            : 'No active plan'}
+                          {summary.hasPlan ? (
+                            <>
+                              {program?.name || 'Program'}
+                              {' · '}
+                              {summary.completedCount}/{summary.totalCount} this cycle
+                            </>
+                          ) : (
+                            "Hasn't picked a program yet"
+                          )}
                           {summary.lastLoggedAt && (
                             <>
                               {' · Last logged '}
@@ -197,6 +218,14 @@ export default function AdminMembersList({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {hasLowTicket && program && (
+                      <button
+                        onClick={() => setPreviewMemberId(member.id)}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-zinc-700 text-zinc-400 hover:text-white transition"
+                      >
+                        View program
+                      </button>
+                    )}
                     {hasLowTicket && summary && (summary.completedCount > 0 || summary.hasPlan) && (
                       <button
                         onClick={() => handleToggleHistory(member)}
@@ -286,6 +315,14 @@ export default function AdminMembersList({
             )
           })}
         </div>
+      )}
+
+      {previewMemberId && programByMember[previewMemberId] && (
+        <ProgramPreviewModal
+          name={programByMember[previewMemberId].name}
+          days={programByMember[previewMemberId].days}
+          onClose={() => setPreviewMemberId(null)}
+        />
       )}
     </div>
   )
