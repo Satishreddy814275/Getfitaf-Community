@@ -95,9 +95,17 @@ export async function savePushSubscription(subscription: {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) return
+  if (!user) throw new Error('Not authenticated')
 
-  await supabase.from('push_subscriptions').upsert(
+  // Deliberately checking `error` here (unlike most other writes in
+  // this file) - the caller (PushNotificationsRow/Banner) treats a
+  // resolved promise as "saved, show Enabled" with no other signal.
+  // Before this check, an RLS failure here (e.g. the missing UPDATE
+  // policy on this table, fixed 2026-08-02) would upsert silently, the
+  // browser would still have a real push subscription, and the UI
+  // would show "Enabled" forever even though no row - and therefore no
+  // future push - ever existed server-side.
+  const { error } = await supabase.from('push_subscriptions').upsert(
     {
       profile_id: user.id,
       endpoint: subscription.endpoint,
@@ -106,6 +114,7 @@ export async function savePushSubscription(subscription: {
     },
     { onConflict: 'endpoint' }
   )
+  if (error) throw error
 
   revalidatePath('/profile')
 }
