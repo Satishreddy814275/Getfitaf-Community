@@ -85,7 +85,22 @@ export async function updateSession(request: NextRequest) {
     // the whole point is that someone with no account can open the
     // link from an email and actually see the page, not get bounced to
     // /login first.
-    request.nextUrl.pathname.startsWith('/lessons/preview')
+    request.nextUrl.pathname.startsWith('/lessons/preview') ||
+    // manifest.json, sw.js, and icons are fetched directly by the
+    // browser/OS (PWA installability checks, service worker
+    // registration/update polling) with no session cookie sent along -
+    // there's no user to check here, ever. Missing this exclusion meant
+    // every one of those fetches got redirected to /login (a 307
+    // returning an HTML page where the browser expected JSON/JS),
+    // discovered 2026-08-02 when a browser stuck retrying a failed
+    // manifest.json fetch in a tight loop appeared to correlate with
+    // the real /feed page intermittently failing to load - same
+    // "forgot to allowlist a public route" pattern as the webhooks,
+    // /beta, and /lessons/preview fixes above.
+    request.nextUrl.pathname === '/manifest.json' ||
+    request.nextUrl.pathname === '/sw.js' ||
+    request.nextUrl.pathname.startsWith('/icons/') ||
+    request.nextUrl.pathname.startsWith('/favicon')
 
   if (!user && !isPublicRoute) {
     // Temporary diagnostic logging - visible in Vercel's Runtime/Edge
