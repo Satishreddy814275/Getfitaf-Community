@@ -1,9 +1,11 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { FEED_PAGE_SIZE, FEED_POST_SELECT, SEARCH_RESULT_LIMIT } from '@/lib/feedPosts'
-import type { Post } from '@/types'
+import { sendPushToProfile } from '@/lib/push'
+import type { Post, Space } from '@/types'
 
 // Infinite-scroll continuation of the first page feed/page.tsx already
 // loaded - same select, same three-key order, just offset forward by
@@ -136,17 +138,96 @@ export async function createPost(formData: FormData) {
     space = membership?.space || 'premium'
   }
 
-  await supabase.from('posts').insert({
-    author_id: user.id,
-    content,
-    media_url: mediaUrl,
-    media_type: mediaType,
-    is_announcement: isAnnouncement,
-    lesson_id: lessonId,
-    space,
-  })
+  const { data: inserted } = await supabase
+    .from('posts')
+    .insert({
+      author_id: user.id,
+      content,
+      media_url: mediaUrl,
+      media_type: mediaType,
+      is_announcement: isAnnouncement,
+      lesson_id: lessonId,
+      space,
+    })
+    .select('id')
+    .single()
 
   revalidatePath('/feed')
+
+  // Push notification for admin posts only (Satish, 2026-08-02) - ANY
+  // post from an admin, not just ones flagged is_announcement, reaches
+  // everyone with access to that post's space as a real push, not just
+  // the in-app bell/tab badge a regular member's post gets. Admin posts
+  // are rare enough (this only fires for is_admin authors) that this
+  // doesn't risk turning into per-post spam the way pushing every
+  // member's post would.
+  if (inserted) {
+    const { data: authorProfile } = await supabase
+      .from('profiles')
+      .select('is_admin, full_name')
+      .eq('id', user.id)
+      .single()
+
+    if (authorProfile?.is_admin) {
+      await notifyAdminPost({
+        postId: inserted.id,
+        space: space as Space,
+        authorId: user.id,
+        authorName: authorProfile.full_name || 'GetFit AF',
+        content,
+      })
+    }
+  }
+}
+
+// Fire-and-awaited (not fire-and-forget - Vercel functions stop
+// running once the response is sent, so this has to finish inside
+// createPost's own invocation) push fanout for an admin's post. Scoped
+// to whoever actually has access to that post's space - a low_ticket
+// post pushing every premium member (or vice versa) would be pushing
+// people about a post they can't even see. Mirrors the same
+// per-space-audience logic feed/page.tsx uses for availableSpaces, just
+// resolved to profile ids here via the admin client instead of a
+// single signed-in user's own RLS-scoped view.
+async function notifyAdminPost({
+  postId,
+  space,
+  authorId,
+  authorName,
+  content,
+}: {
+  postId: string
+  space: Space
+  authorId: string
+  authorName: string
+  content: string | null
+}) {
+  const admin = createAdminClient()
+
+  const recipientIds =
+    space === 'low_ticket'
+      ? (
+          await admin.from('space_memberships').select('profile_id').eq('space', 'low_ticket')
+        ).data?.map((r) => r.profile_id) || []
+      : (await admin.from('profiles').select('id').eq('approved', true)).data?.map((r) => r.id) || []
+
+  const targets = recipientIds.filter((id) => id !== authorId)
+  if (targets.length === 0) return
+
+  // Same first-line/strip-markdown preview style already used for the
+  // pinned-post banner (FeedTabs.tsx) - a push notification's body has
+  // even less room than that banner does.
+  const preview = (content || '').split('\n')[0].replace(/\*\*/g, '').slice(0, 120)
+
+  await Promise.all(
+    targets.map((profileId) =>
+      sendPushToProfile(profileId, {
+        title: `${authorName} posted`,
+        body: preview || 'Tap to see the new post.',
+        url: `/feed?post=${postId}`,
+      })
+    )
+  )
 }
 
 export async function editPost(postId: string, formData: FormData) {
