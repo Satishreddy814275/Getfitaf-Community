@@ -3,6 +3,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { convertWeightToKgForStorage } from '@/lib/weightUnit'
+import { sendPushToProfile } from '@/lib/push'
+
+// How far back a brand-new subscriber's one-time "catch up" push (see
+// savePushSubscription below) will look for something to surface.
+// Deliberately not the same "48h" a live announcement push goes out
+// under - this is a one-time nudge on first-ever enable, not a
+// same-day alert, so it can afford to look back further; but it still
+// needs *some* ceiling so someone enabling push months from now
+// doesn't get resurfaced a long-stale post as if it just happened.
+const CATCH_UP_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
 
 // Deliberately name + avatar only — no email editing here. Email is tied
 // to how Supabase authenticates the account itself, and self-service
@@ -105,6 +115,17 @@ export async function savePushSubscription(subscription: {
   // browser would still have a real push subscription, and the UI
   // would show "Enabled" forever even though no row - and therefore no
   // future push - ever existed server-side.
+  // Checked BEFORE the upsert below - this is how "first-ever
+  // subscription" (see the catch-up push further down) is told apart
+  // from "already had one, just adding a second device/browser." Doing
+  // this check after the upsert would always see the row that upsert
+  // itself just wrote.
+  const { count: existingSubCount } = await supabase
+    .from('push_subscriptions')
+    .select('*', { count: 'exact', head: true })
+    .eq('profile_id', user.id)
+  const isFirstEverSubscription = !existingSubCount
+
   const { error } = await supabase.from('push_subscriptions').upsert(
     {
       profile_id: user.id,
@@ -117,6 +138,76 @@ export async function savePushSubscription(subscription: {
   if (error) throw error
 
   revalidatePath('/profile')
+
+  // One-time "welcome, here's what you missed" nudge (Satish,
+  // 2026-08-02) - someone who enables push for the first time after an
+  // admin has already posted something would otherwise never see that
+  // post as a push, since the admin-post-push feature only fires at
+  // the moment of posting. Deliberately best-effort: any failure here
+  // (no recent post, query hiccup) must never surface as a failure of
+  // the subscription save itself, which already fully succeeded above.
+  if (isFirstEverSubscription) {
+    try {
+      await sendCatchUpPush(user.id)
+    } catch (err) {
+      console.error('push: catch-up notification failed', err)
+    }
+  }
+}
+
+// Finds and sends the single most recent admin post (within
+// CATCH_UP_WINDOW_MS) in a space this member actually has access to -
+// same per-space-audience reasoning as notifyAdminPost in
+// feed/actions.ts, just resolved for one specific new subscriber
+// instead of fanned out to everyone. Only the ONE most recent post,
+// never a backlog - stacking multiple catch-up pushes on someone's
+// very first notification would be a bad first impression, not a
+// welcome-back nudge.
+async function sendCatchUpPush(profileId: string): Promise<void> {
+  const supabase = await createClient()
+
+  const [{ data: profileRow }, { data: memberships }, { data: adminProfiles }] = await Promise.all([
+    supabase.from('profiles').select('approved').eq('id', profileId).single(),
+    supabase.from('space_memberships').select('space').eq('profile_id', profileId),
+    supabase.from('profiles').select('id').eq('is_admin', true),
+  ])
+
+  const spaces: string[] = []
+  if (profileRow?.approved) spaces.push('premium')
+  if ((memberships || []).some((m) => m.space === 'low_ticket')) spaces.push('low_ticket')
+  const adminIds = (adminProfiles || []).map((p) => p.id)
+
+  if (spaces.length === 0 || adminIds.length === 0) return
+
+  const cutoff = new Date(Date.now() - CATCH_UP_WINDOW_MS).toISOString()
+  const { data: recentPost } = await supabase
+    .from('posts')
+    .select('id, author_id, content')
+    .in('author_id', adminIds)
+    .in('space', spaces)
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  // Own post (an admin enabling push on a fresh device shouldn't get
+  // notified about themselves) or nothing recent enough - nothing to
+  // send.
+  if (!recentPost || recentPost.author_id === profileId) return
+
+  const { data: authorProfile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', recentPost.author_id)
+    .single()
+
+  const preview = (recentPost.content || '').split('\n')[0].replace(/\*\*/g, '').slice(0, 120)
+
+  await sendPushToProfile(profileId, {
+    title: `${authorProfile?.full_name || 'GetFit AF'} posted`,
+    body: preview || 'Tap to see the new post.',
+    url: `/feed?post=${recentPost.id}`,
+  })
 }
 
 export async function removePushSubscription(endpoint: string) {
