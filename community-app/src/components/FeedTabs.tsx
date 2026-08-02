@@ -25,6 +25,7 @@ export default function FeedTabs({
   initialPostId,
   initialCommentId,
   leaderboardRows,
+  lastSeenAnnouncementsAt,
 }: {
   // Always the current first page from the server - stays authoritative
   // after a create/edit/delete triggers a re-render (see combinedPosts
