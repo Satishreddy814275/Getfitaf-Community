@@ -318,3 +318,22 @@ export async function markNotificationsRead() {
 
   revalidatePath('/feed')
 }
+
+// Clears the Announcements tab's "new" badge (see FeedTabs.tsx) - one
+// cursor per member, same "mark seen the moment the panel/tab opens"
+// timing as markNotificationsRead above, not gated on an explicit
+// dismiss action.
+export async function markAnnouncementsSeen() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return
+
+  await supabase
+    .from('profiles')
+    .update({ last_seen_announcements_at: new Date().toISOString() })
+    .eq('id', user.id)
+
+  revalidatePath('/feed')
+}

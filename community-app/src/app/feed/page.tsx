@@ -64,7 +64,11 @@ export default async function FeedPage({
 
   const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, enrollmentRes] =
     await Promise.all([
-      supabase.from('profiles').select('is_admin, approved').eq('id', user.id).single(),
+      supabase
+        .from('profiles')
+        .select('is_admin, approved, last_seen_announcements_at')
+        .eq('id', user.id)
+        .single(),
       supabase
         .from('space_memberships')
         .select('space')
@@ -103,6 +107,7 @@ export default async function FeedPage({
   const isApproved = !!profileRes.data?.approved
   const hasLowTicket = !!membershipRes.data
   const hasSelectedProgram = !!enrollmentRes.data
+  const lastSeenAnnouncementsAt = profileRes.data?.last_seen_announcements_at ?? null
 
   // Which spaces this person actually has access to - drives whether
   // FeedTabs shows a space switcher at all, and which spaces it offers.
@@ -219,6 +224,7 @@ export default async function FeedPage({
           initialPostId={initialPostId}
           initialCommentId={initialCommentId}
           leaderboardRows={topFive}
+          lastSeenAnnouncementsAt={lastSeenAnnouncementsAt}
         />
 
         {/* Sidebar — desktop only, full detailed leaderboard, sticky */}

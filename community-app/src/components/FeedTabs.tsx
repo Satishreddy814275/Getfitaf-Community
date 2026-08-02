@@ -7,7 +7,7 @@ import { Pin } from 'lucide-react'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
 import LeaderboardTeaser from './LeaderboardTeaser'
-import { loadMorePosts, searchPosts } from '@/app/feed/actions'
+import { loadMorePosts, markAnnouncementsSeen, searchPosts } from '@/app/feed/actions'
 import type { Post, LeaderboardRow, Space } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
@@ -50,9 +50,18 @@ export default function FeedTabs({
   initialPostId?: string | null
   initialCommentId?: string | null
   leaderboardRows: LeaderboardRow[]
+  // Null means this member has never opened the Announcements tab
+  // before - treated as "everything currently in it is new" below,
+  // same as a brand-new member landing on a feed that already has
+  // announcements in it.
+  lastSeenAnnouncementsAt: string | null
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>('posts')
+  // Optimistic local copy of the server cursor - clearing the badge
+  // shouldn't wait on markAnnouncementsSeen's round-trip, same reasoning
+  // as NotificationBell marking things read the instant its panel opens.
+  const [seenAnnouncementsAt, setSeenAnnouncementsAt] = useState(lastSeenAnnouncementsAt)
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
   // Captured into state (not read straight from the initialCommentId
   // prop) because router.replace below clears the query param shortly
@@ -298,9 +307,33 @@ export default function FeedTabs({
   )
   const mediaPosts = useMemo(() => filteredPosts.filter((p) => p.media_url), [filteredPosts])
 
+  // Unlike Posts/Media (plain totals), this is a "new since last visit"
+  // count - the whole point of this badge (see Satish, 2026-08-02: the
+  // plain total looked like a permanent highlight even after everything
+  // had been seen). Uses spaceScopedPosts, not the search-filtered
+  // filteredPosts, so a search query never changes what counts as
+  // unseen underneath it.
+  const newAnnouncementsCount = useMemo(
+    () =>
+      spaceScopedPosts.filter(
+        (p) =>
+          p.is_announcement &&
+          (!seenAnnouncementsAt || new Date(p.created_at) > new Date(seenAnnouncementsAt))
+      ).length,
+    [spaceScopedPosts, seenAnnouncementsAt]
+  )
+
+  function handleTabClick(key: Tab) {
+    setTab(key)
+    if (key === 'announcements' && newAnnouncementsCount > 0) {
+      setSeenAnnouncementsAt(new Date().toISOString())
+      markAnnouncementsSeen()
+    }
+  }
+
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'posts', label: 'Posts', count: filteredPosts.length },
-    { key: 'announcements', label: 'Announcements', count: announcements.length },
+    { key: 'announcements', label: 'Announcements', count: newAnnouncementsCount },
     { key: 'media', label: 'Media', count: mediaPosts.length },
   ]
 
@@ -340,7 +373,7 @@ export default function FeedTabs({
             {tabs.map((t) => (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => handleTabClick(t.key)}
                 className={
                   tab === t.key
                     ? 'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold bg-orange-500 text-white transition'
