@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import ExerciseLibrary from '@/components/ExerciseLibrary'
 import ExercisesGuestBar from '@/components/ExercisesGuestBar'
+import ExerciseRequestSection from '@/components/ExerciseRequestSection'
 
 export const metadata: Metadata = {
   title: 'Exercise Library — GetFit AF',
@@ -77,6 +78,36 @@ export default async function ExerciseLibraryPage() {
   }
   const exercises = Array.from(byExercise.values()).sort((a, b) => a.name.localeCompare(b.name))
 
+  // Exercises with no real footage yet - the pool the "Can't find the
+  // video? Request it" picker searches over (Satish 2026-08-03). Full
+  // catalog minus whatever byExercise already picked up above, rather
+  // than a second video-status query.
+  const { data: allExercises } = await supabase.from('exercises').select('id, name')
+  const unshotExercises = (allExercises || [])
+    .filter((e) => !byExercise.has(e.id))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  // Top 5 most-requested, auto-excluding anything Satish has since
+  // shot (byExercise has it now) - no manual "mark fulfilled" step for
+  // the common catalog-matched case. Freeform requests (exercise_id
+  // null, something not in the catalog at all) can't be auto-excluded
+  // this way since there's no video row to check, so those just stay
+  // until removed by hand if Satish ever needs to.
+  const { data: requestRows } = await supabase
+    .from('exercise_video_requests')
+    .select('id, exercise_id, exercise_name, request_count')
+    .order('request_count', { ascending: false })
+    .limit(20)
+  const topRequests = (requestRows || [])
+    .filter((r) => !r.exercise_id || !byExercise.has(r.exercise_id))
+    .slice(0, 5)
+    .map((r) => ({
+      id: r.id as string,
+      exerciseId: r.exercise_id as string | null,
+      exerciseName: r.exercise_name as string,
+      requestCount: r.request_count as number,
+    }))
+
   return (
     <div className="max-w-5xl mx-auto w-full py-8 px-4 sm:px-6">
       {!user && <ExercisesGuestBar />}
@@ -88,6 +119,7 @@ export default async function ExerciseLibraryPage() {
         </p>
       </div>
       <ExerciseLibrary exercises={exercises} isGuest={!user} />
+      <ExerciseRequestSection unshotExercises={unshotExercises} initialTopRequests={topRequests} />
     </div>
   )
 }
