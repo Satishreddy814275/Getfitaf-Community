@@ -204,13 +204,27 @@ async function notifyAdminPost({
 }) {
   const admin = createAdminClient()
 
-  const recipientIds =
+  const spaceRecipientIds =
     space === 'low_ticket'
       ? (
           await admin.from('space_memberships').select('profile_id').eq('space', 'low_ticket')
         ).data?.map((r) => r.profile_id) || []
       : (await admin.from('profiles').select('id').eq('approved', true)).data?.map((r) => r.id) || []
 
+  // Admins/coaches always get every admin post's push regardless of
+  // their own space membership - every other tier-gated feature in
+  // this app already treats is_admin as "sees everything" (Workouts,
+  // Lessons, Programs all check isAdmin || ...), this was the one place
+  // that didn't. Real bug, not hypothetical: since the beta launched
+  // every admin post has gone to the low_ticket space, and two admins
+  // (Rishita, Naresh - both approved/premium, neither has a low_ticket
+  // membership row) never once appeared in spaceRecipientIds, so they
+  // never received a single push despite having notifications enabled -
+  // caught and confirmed 2026-08-03.
+  const { data: adminProfiles } = await admin.from('profiles').select('id').eq('is_admin', true)
+  const adminIds = adminProfiles?.map((r) => r.id) || []
+
+  const recipientIds = Array.from(new Set([...spaceRecipientIds, ...adminIds]))
   const targets = recipientIds.filter((id) => id !== authorId)
   if (targets.length === 0) return
 
