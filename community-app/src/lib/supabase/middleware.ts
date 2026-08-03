@@ -86,6 +86,18 @@ export async function updateSession(request: NextRequest) {
     // link from an email and actually see the page, not get bounced to
     // /login first.
     request.nextUrl.pathname.startsWith('/lessons/preview') ||
+    // The bare homepage itself - a logged-out visit now renders a small
+    // "front door" (see app/page.tsx: logo, one line on what this is,
+    // Join the beta / Log in) instead of silently bouncing straight to
+    // /login with no stop in between. Deliberately NOT startsWith, so
+    // this only ever covers the exact root path, nothing deeper.
+    // Satish's explicit call 2026-08-03: a stranger with no account
+    // landing on a bare sign-in form (defaulting to "Welcome back") was
+    // the wrong first impression, but /beta itself - the real,
+    // actively-converting marketing page - was deliberately left
+    // untouched rather than risked, hence this separate, static, no-
+    // logic page instead of just redirecting root to /beta.
+    request.nextUrl.pathname === '/' ||
     // manifest.json, sw.js, and icons are fetched directly by the
     // browser/OS (PWA installability checks, service worker
     // registration/update polling) with no session cookie sent along -
