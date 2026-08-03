@@ -81,9 +81,9 @@ export default function LessonPreviewCapture({
 
   if (status === 'done') {
     return (
-      <div className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-800 text-center">
+      <div className="rounded-2xl p-6 bg-zinc-900 border border-zinc-700 text-center">
         <p className="text-white font-semibold text-sm">Check your inbox.</p>
-        <p className="text-zinc-400 text-xs mt-1">
+        <p className="text-zinc-300 text-xs mt-1">
           Your first lesson is on its way. If you don&apos;t see it in a few minutes, check
           Promotions or Spam.
         </p>
@@ -92,33 +92,35 @@ export default function LessonPreviewCapture({
   }
 
   return (
-    <div className="rounded-2xl p-6 bg-zinc-900/40 border border-zinc-800 text-center">
+    <div className="rounded-2xl p-6 bg-zinc-900 border border-zinc-700 text-center">
       {variant === 'lessonList' ? (
         <>
           <p className="text-white text-base font-bold mb-3">Get your first 7 lessons free</p>
           {/* Same 🔒-badge row treatment as the real /lessons list
               (LessonsTabs.tsx) - shown locked here on purpose, so this
               reads as "real content waiting for you" rather than an
-              abstract bullet list. */}
-          <div className="rounded-xl border border-zinc-800 overflow-hidden text-left mb-4 max-w-sm mx-auto">
+              abstract bullet list. Brightened 2026-08-03 - the original
+              opacity-70 rows + zinc-800/500 text read as too washed out
+              to comfortably read inside the modal. */}
+          <div className="rounded-xl border border-zinc-700 overflow-hidden text-left mb-4 max-w-sm mx-auto">
             {FREE_LESSON_TITLES.map((title) => (
               <div
                 key={title}
-                className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-800/60 last:border-0 opacity-70"
+                className="flex items-center gap-3 px-3 py-2.5 border-b border-zinc-700/70 last:border-0"
               >
-                <span className="w-6 h-6 rounded-full bg-zinc-800 text-zinc-500 flex items-center justify-center text-xs font-bold shrink-0">
+                <span className="w-6 h-6 rounded-full bg-zinc-700 text-zinc-200 flex items-center justify-center text-xs font-bold shrink-0">
                   🔒
                 </span>
-                <span className="flex-1 min-w-0 truncate text-sm text-zinc-300">{title}</span>
+                <span className="flex-1 min-w-0 truncate text-sm text-zinc-100">{title}</span>
               </div>
             ))}
           </div>
-          <p className="text-zinc-500 text-xs mb-4">No payment needed - just your email.</p>
+          <p className="text-zinc-300 text-xs mb-4">No payment needed - just your email.</p>
         </>
       ) : (
         <>
           <p className="text-white text-base font-bold mb-1">Not sure yet?</p>
-          <p className="text-zinc-400 text-xs mb-4 leading-relaxed max-w-sm mx-auto">
+          <p className="text-zinc-300 text-xs mb-4 leading-relaxed max-w-sm mx-auto">
             Get the first 7 lessons free - mindset, nutrition basics, and how to actually track
             progress. No payment needed.
           </p>
@@ -131,7 +133,7 @@ export default function LessonPreviewCapture({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Your first name"
-          className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/50 transition"
+          className="w-full bg-zinc-900 border border-zinc-600 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-orange-500 transition"
         />
         <div className="flex flex-col sm:flex-row gap-2">
           <input
@@ -140,7 +142,7 @@ export default function LessonPreviewCapture({
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="flex-1 bg-zinc-900/60 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/50 transition"
+            className="flex-1 bg-zinc-900 border border-zinc-600 rounded-xl px-4 py-3 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:border-orange-500 transition"
           />
           <button
             type="submit"
