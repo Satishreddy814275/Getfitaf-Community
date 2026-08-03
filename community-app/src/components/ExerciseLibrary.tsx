@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { X } from 'lucide-react'
+import LessonPreviewModal from './LessonPreviewModal'
 
 interface ExerciseEntry {
   id: string
@@ -10,6 +11,19 @@ interface ExerciseEntry {
   coachNotes: string | null
   muscleGroups: string[]
 }
+
+// Soft nudge toward the free 7-lesson email series, shown only to
+// logged-out visitors after they've actually gotten some value out of
+// the library (opened this many distinct videos) - never blocks
+// viewing, dismissible, and snoozes for the rest of the calendar day
+// once dismissed (same pattern as FreeLessonsBanner on /beta). Copy is
+// deliberately NOT "more lessons like these" - Satish flagged
+// 2026-08-03 that the exercise clips and the 7-lesson email series are
+// different content (form demos vs. mindset/nutrition education), so
+// this borrows FreeLessonsBanner's actual wording instead of inventing
+// a comparison to what's on screen.
+const NUDGE_VIDEO_THRESHOLD = 3
+const NUDGE_DISMISS_KEY = 'gfa-exercises-lessons-nudge-dismissed'
 
 // Fixed display order for the muscle chip row - matches the order
 // admins see in AdminExercisesList's starter chips (Chest through Full
@@ -162,10 +176,42 @@ function VideoModal({ exercise, onClose }: { exercise: ExerciseEntry; onClose: (
 // already had. Now that 236/242 exercises carry a muscle_groups tag
 // (backfilled 2026-08-03 from exercise names, admin-editable per
 // exercise afterward), a filter row actually has something to filter.
-export default function ExerciseLibrary({ exercises }: { exercises: ExerciseEntry[] }) {
+export default function ExerciseLibrary({
+  exercises,
+  isGuest = false,
+}: {
+  exercises: ExerciseEntry[]
+  isGuest?: boolean
+}) {
   const [search, setSearch] = useState('')
   const [muscle, setMuscle] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [openedIds, setOpenedIds] = useState<Set<string>>(new Set())
+  const [showNudge, setShowNudge] = useState(false)
+  const [showLessonsModal, setShowLessonsModal] = useState(false)
+
+  function openExerciseModal(id: string) {
+    setOpenId(id)
+    if (!isGuest) return
+
+    setOpenedIds((prev) => {
+      if (prev.has(id)) return prev
+      const next = new Set(prev)
+      next.add(id)
+      if (
+        next.size >= NUDGE_VIDEO_THRESHOLD &&
+        window.localStorage.getItem(NUDGE_DISMISS_KEY) !== new Date().toDateString()
+      ) {
+        setShowNudge(true)
+      }
+      return next
+    })
+  }
+
+  function dismissNudge() {
+    window.localStorage.setItem(NUDGE_DISMISS_KEY, new Date().toDateString())
+    setShowNudge(false)
+  }
 
   const availableMuscles = useMemo(() => {
     const present = new Set<string>()
@@ -231,12 +277,46 @@ export default function ExerciseLibrary({ exercises }: { exercises: ExerciseEntr
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {filtered.map((exercise) => (
-            <ExerciseCard key={exercise.id} exercise={exercise} onOpen={() => setOpenId(exercise.id)} />
+            <ExerciseCard key={exercise.id} exercise={exercise} onOpen={() => openExerciseModal(exercise.id)} />
           ))}
         </div>
       )}
 
       {openExercise && <VideoModal exercise={openExercise} onClose={() => setOpenId(null)} />}
+
+      {showNudge && (
+        <div className="fixed bottom-4 inset-x-0 z-40 px-4 pointer-events-none">
+          <div className="max-w-2xl mx-auto pointer-events-auto">
+            <div className="bg-zinc-900/95 backdrop-blur border border-zinc-700 rounded-2xl shadow-lg shadow-black/40 px-4 py-3 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-xs font-semibold">Liking these?</p>
+                <p className="text-zinc-400 text-[11px] mt-0.5">
+                  Get the first 7 lessons free, no payment needed.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNudge(false)
+                  setShowLessonsModal(true)
+                }}
+                className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition whitespace-nowrap"
+              >
+                Get free lessons
+              </button>
+              <button
+                onClick={dismissNudge}
+                aria-label="Dismiss"
+                className="shrink-0 text-zinc-500 hover:text-white transition text-sm px-1"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showLessonsModal && <LessonPreviewModal onClose={() => setShowLessonsModal(false)} />}
     </div>
   )
 }

@@ -87,7 +87,7 @@ export default async function ExerciseLibraryPage() {
           done.
         </p>
       </div>
-      <ExerciseLibrary exercises={exercises} />
+      <ExerciseLibrary exercises={exercises} isGuest={!user} />
     </div>
   )
 }
