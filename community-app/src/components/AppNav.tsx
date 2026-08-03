@@ -534,6 +534,17 @@ export default function AppNav({
                 onClick={() => setMoreOpen(false)}
               />
             </div>
+            {/* Unconditional, unlike Programs/Coaching below - the
+                library has no tier gating at all (same content for
+                free, paid, and even logged-out visitors, see
+                exercises/page.tsx), so there's no showX check here. */}
+            <Link
+              href="/exercises"
+              onClick={() => setMoreOpen(false)}
+              className="block w-full text-left text-sm font-medium text-zinc-300 px-3 py-3 rounded-xl hover:bg-zinc-900/60 transition"
+            >
+              Exercise Library
+            </Link>
             {showPrograms && (
               <Link
                 href="/programs"

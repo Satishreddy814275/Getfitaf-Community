@@ -87,6 +87,13 @@ export default function ProfileMenu({
               </Link>
             )}
             <Link
+              href="/exercises"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800/60 transition"
+            >
+              Exercise Library
+            </Link>
+            <Link
               href="/help"
               onClick={() => setOpen(false)}
               className="block px-4 py-2.5 text-sm font-medium text-zinc-300 hover:bg-zinc-800/60 transition"

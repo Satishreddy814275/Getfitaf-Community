@@ -63,6 +63,19 @@ export default async function Home() {
             Already have an account? Log in
           </Link>
         </div>
+
+        {/* Deliberately lower-emphasis than the two buttons above - a
+            plain text link, not a third button - so it doesn't compete
+            with Join/Log in. Exists for exactly the case Satish named
+            2026-08-03: someone who doesn't want to create an account or
+            pay yet, but can still get real value (actual coach-shot
+            form videos, no login required - see exercises/page.tsx). */}
+        <Link
+          href="/exercises"
+          className="block mt-5 text-zinc-500 hover:text-orange-400 text-xs transition"
+        >
+          Just here to browse? See the exercise library →
+        </Link>
       </div>
     </div>
   );

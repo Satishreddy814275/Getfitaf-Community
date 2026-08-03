@@ -98,6 +98,12 @@ export async function updateSession(request: NextRequest) {
     // untouched rather than risked, hence this separate, static, no-
     // logic page instead of just redirecting root to /beta.
     request.nextUrl.pathname === '/' ||
+    // Exercise library (see app/exercises/page.tsx) - reachable with no
+    // account at all, same reasoning as the root front door: a way to
+    // see real value (actual coach-shot form videos) before ever
+    // committing to sign up. Satish's explicit call 2026-08-03 to give
+    // this out as its own shareable link (community.getfitaf.fitness/exercises).
+    request.nextUrl.pathname.startsWith('/exercises') ||
     // manifest.json, sw.js, and icons are fetched directly by the
     // browser/OS (PWA installability checks, service worker
     // registration/update polling) with no session cookie sent along -
