@@ -69,7 +69,9 @@ export default function ExercisesGuestBar() {
         </div>
       </div>
 
-      {showLessons && <LessonPreviewModal onClose={() => setShowLessons(false)} />}
+      {showLessons && (
+        <LessonPreviewModal onClose={() => setShowLessons(false)} variant="lessonList" />
+      )}
     </>
   )
 }

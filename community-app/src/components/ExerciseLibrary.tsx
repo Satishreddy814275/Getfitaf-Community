@@ -316,7 +316,9 @@ export default function ExerciseLibrary({
         </div>
       )}
 
-      {showLessonsModal && <LessonPreviewModal onClose={() => setShowLessonsModal(false)} />}
+      {showLessonsModal && (
+        <LessonPreviewModal onClose={() => setShowLessonsModal(false)} variant="lessonList" />
+      )}
     </div>
   )
 }

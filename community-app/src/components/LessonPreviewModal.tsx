@@ -10,7 +10,13 @@ import LessonPreviewCapture from './LessonPreviewCapture'
 // videos), so the email-capture experience is identical no matter
 // which trigger got them there, and the body-scroll-lock/Escape
 // handling only needs to live in one place.
-export default function LessonPreviewModal({ onClose }: { onClose: () => void }) {
+export default function LessonPreviewModal({
+  onClose,
+  variant = 'default',
+}: {
+  onClose: () => void
+  variant?: 'default' | 'lessonList'
+}) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -44,7 +50,7 @@ export default function LessonPreviewModal({ onClose }: { onClose: () => void })
         >
           <X size={20} />
         </button>
-        <LessonPreviewCapture />
+        <LessonPreviewCapture variant={variant} />
       </div>
     </div>
   )
