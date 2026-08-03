@@ -382,7 +382,14 @@ export default function AdminExercisesList({ exercises }: { exercises: ExerciseC
             <div key={entry.id} className="px-4 py-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
-                  <p className="text-sm text-white font-medium">{entry.name}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-sm text-white font-medium">{entry.name}</p>
+                    {entry.hasVideo && (
+                      <span className="text-[9px] uppercase tracking-wide text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-normal">
+                        Has video
+                      </span>
+                    )}
+                  </div>
                   {!isExpanded && (
                     <p className="text-zinc-500 text-xs mt-0.5">
                       {allTagsFlat.length > 0 ? allTagsFlat.join(', ') : 'No tags yet'}

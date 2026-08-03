@@ -36,7 +36,7 @@ export default async function AdminVideosPage() {
       supabase
         .from('exercise_videos')
         .select(
-          'id, exercise_name, video_url, coach_notes, created_at, added_by, video_type, is_placeholder, profiles ( full_name )'
+          'id, exercise_name, video_url, coach_notes, created_at, added_by, video_type, is_placeholder, exercise_id, profiles ( full_name )'
         )
         .order('exercise_name'),
       createAdminClient()
@@ -50,6 +50,17 @@ export default async function AdminVideosPage() {
         .order('name'),
     ])
 
+  // exercise_id already links each video row to its canonical exercise
+  // (populated by findOrCreateExerciseId in admin/actions.ts on every
+  // add/edit - see that function's comment) - real footage only, so a
+  // placeholder-only exercise doesn't count as "has video" here even
+  // though it technically has a row.
+  const exerciseIdsWithRealVideo = new Set(
+    (videosData || [])
+      .filter((v) => v.exercise_id && !v.is_placeholder)
+      .map((v) => v.exercise_id as string)
+  )
+
   const exercises: ExerciseCatalogEntry[] = (exercisesData || []).map((e) => ({
     id: e.id,
     name: e.name,
@@ -57,6 +68,7 @@ export default async function AdminVideosPage() {
     equipmentTags: e.equipment_tags || [],
     typeTags: e.type_tags || [],
     otherTags: e.other_tags || [],
+    hasVideo: exerciseIdsWithRealVideo.has(e.id),
   }))
 
   const videos = (videosData || []).map((v) => ({

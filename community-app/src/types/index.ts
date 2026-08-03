@@ -307,6 +307,13 @@ export interface ExerciseCatalogEntry {
   equipmentTags: string[]
   typeTags: string[]
   otherTags: string[]
+  // True only when this exercise has a linked exercise_videos row (via
+  // exercise_id, not name-guessing) that isn't flagged is_placeholder -
+  // i.e. Satish's own shot footage, not a YouTube stand-in. Computed
+  // server-side in admin/videos/page.tsx. This is the same signal the
+  // future client-facing library will gate visibility on; for now it's
+  // admin-only, shown as a badge in the Catalog tab (AdminExercisesList).
+  hasVideo: boolean
 }
 
 // Migrated in from learn.getfitaf.fitness (see gfa-portal repo) - same
