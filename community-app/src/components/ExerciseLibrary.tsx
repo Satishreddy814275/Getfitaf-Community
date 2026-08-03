@@ -8,7 +8,20 @@ interface ExerciseEntry {
   name: string
   videoUrl: string
   coachNotes: string | null
+  muscleGroups: string[]
 }
+
+// Fixed display order for the muscle chip row - matches the order
+// admins see in AdminExercisesList's starter chips (Chest through Full
+// body) rather than alphabetical, so the row reads top-to-bottom body
+// the way a trainer would group it. Only muscles that actually have at
+// least one tagged, videoed exercise show up as a chip (see
+// availableMuscles below) - no point offering a filter that always
+// empties the grid.
+const MUSCLE_ORDER = [
+  'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Forearms',
+  'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core', 'Full body',
+]
 
 // Handles youtube.com/watch?v=, youtu.be/, and youtube.com/embed/ - the
 // shapes actually seen across the real video library (coaches paste
@@ -144,20 +157,30 @@ function VideoModal({ exercise, onClose }: { exercise: ExerciseEntry; onClose: (
   )
 }
 
-// Name search only for now - most exercises don't have muscle/
-// equipment/type tags populated yet (see the admin Catalog tab), so a
-// filter UI would mostly have nothing to filter by. Straightforward to
-// layer filter chips in later once that data exists, same pattern the
-// admin tools already use.
+// Muscle chips (single-select, tap again to clear) plus name search -
+// the two combine (AND), same "narrow the grid live" feel search
+// already had. Now that 236/242 exercises carry a muscle_groups tag
+// (backfilled 2026-08-03 from exercise names, admin-editable per
+// exercise afterward), a filter row actually has something to filter.
 export default function ExerciseLibrary({ exercises }: { exercises: ExerciseEntry[] }) {
   const [search, setSearch] = useState('')
+  const [muscle, setMuscle] = useState<string | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+
+  const availableMuscles = useMemo(() => {
+    const present = new Set<string>()
+    for (const e of exercises) for (const m of e.muscleGroups) present.add(m)
+    return MUSCLE_ORDER.filter((m) => present.has(m))
+  }, [exercises])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return exercises
-    return exercises.filter((e) => e.name.toLowerCase().includes(q))
-  }, [exercises, search])
+    return exercises.filter((e) => {
+      if (muscle && !e.muscleGroups.includes(muscle)) return false
+      if (q && !e.name.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [exercises, search, muscle])
 
   const openExercise = exercises.find((e) => e.id === openId) || null
 
@@ -168,8 +191,31 @@ export default function ExerciseLibrary({ exercises }: { exercises: ExerciseEntr
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search exercises..."
-        className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 mb-2"
+        className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-600 mb-3"
       />
+
+      {availableMuscles.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 mb-3 -mx-4 px-4 sm:mx-0 sm:px-0">
+          {availableMuscles.map((m) => {
+            const active = muscle === m
+            return (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMuscle(active ? null : m)}
+                className={`shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border transition ${
+                  active
+                    ? 'bg-orange-500 border-orange-500 text-black'
+                    : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                }`}
+              >
+                {m}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <p className="text-zinc-500 text-xs mb-4">
         {exercises.length} exercise{exercises.length === 1 ? '' : 's'} with video
       </p>
@@ -178,7 +224,9 @@ export default function ExerciseLibrary({ exercises }: { exercises: ExerciseEntr
         <p className="text-center text-sm text-zinc-500 py-16">
           {exercises.length === 0
             ? 'No videos yet - check back soon.'
-            : `No exercises match "${search}".`}
+            : search
+              ? `No exercises match "${search}".`
+              : `No ${muscle} exercises with video yet.`}
         </p>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

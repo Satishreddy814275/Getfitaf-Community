@@ -19,7 +19,7 @@ interface ExerciseVideoRow {
   video_url: string
   coach_notes: string | null
   video_type: 'tutorial' | 'demo'
-  exercises: { id: string; name: string } | null
+  exercises: { id: string; name: string; muscle_groups: string[] | null } | null
 }
 
 // Reachable with no login at all (see middleware.ts) as well as by any
@@ -40,7 +40,7 @@ export default async function ExerciseLibraryPage() {
   // badge work) guarantees it's always present.
   const { data } = await supabase
     .from('exercise_videos')
-    .select('exercise_id, video_url, coach_notes, video_type, exercises ( id, name )')
+    .select('exercise_id, video_url, coach_notes, video_type, exercises ( id, name, muscle_groups )')
     .eq('is_placeholder', false)
 
   const rows = (data as unknown as ExerciseVideoRow[] | null) || []
@@ -53,7 +53,7 @@ export default async function ExerciseLibraryPage() {
   // 'demo' videos added yet), so this mostly just picks the only one.
   const byExercise = new Map<
     string,
-    { id: string; name: string; videoUrl: string; coachNotes: string | null }
+    { id: string; name: string; videoUrl: string; coachNotes: string | null; muscleGroups: string[] }
   >()
   for (const row of rows) {
     if (!row.exercises) continue
@@ -64,6 +64,7 @@ export default async function ExerciseLibraryPage() {
         name: row.exercises.name,
         videoUrl: row.video_url,
         coachNotes: row.coach_notes,
+        muscleGroups: row.exercises.muscle_groups || [],
       })
     }
   }
