@@ -104,6 +104,16 @@ export async function updateSession(request: NextRequest) {
     // committing to sign up. Satish's explicit call 2026-08-03 to give
     // this out as its own shareable link (community.getfitaf.fitness/exercises).
     request.nextUrl.pathname.startsWith('/exercises') ||
+    // /api/exercise-requests is the write endpoint behind /exercises'
+    // "Can't find the video? Request it" section - same "no session
+    // exists for a logged-out visitor" situation as /api/beta-waitlist.
+    // Missing this exclusion meant every submission from a signed-out
+    // visitor got redirected to /login (an HTML page, not JSON), which
+    // res.json() then failed to parse - the exact same "forgot to
+    // allowlist a public route" pattern as the webhook/cron/manifest
+    // fixes above, caught 2026-08-03 when Satish saw "Something went
+    // wrong" on every click from the search suggestions.
+    request.nextUrl.pathname.startsWith('/api/exercise-requests') ||
     // manifest.json, sw.js, and icons are fetched directly by the
     // browser/OS (PWA installability checks, service worker
     // registration/update polling) with no session cookie sent along -
