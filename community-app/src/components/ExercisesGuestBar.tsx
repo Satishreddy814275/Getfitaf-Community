@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { ArrowRight } from 'lucide-react'
 import LessonPreviewModal from './LessonPreviewModal'
 
 // Logged-out-only top bar for the public /exercises page. AppNav never
@@ -10,14 +11,14 @@ import LessonPreviewModal from './LessonPreviewModal'
 // explore coaching, or leave an email at all (Satish caught this
 // 2026-08-03).
 //
-// Logo left, all three CTAs right (back to inline-with-logo after
-// briefly trying stacked-below - Satish's call 2026-08-03: stacked
-// under the logo read as a subheading/tagline that's easy to skim past,
-// right-aligned next to the logo reads as actual navigation). All three
-// share the same outline pill style now too - a filled/orange "Know
-// more about the community" button read as the active tab, which isn't
-// the intent since none of these is a "current page" the visitor is
-// already on.
+// Logo left, all three CTAs right. Filled zinc-800 pills with a
+// trailing arrow, not outline - Satish's call 2026-08-03: outline
+// pills (same treatment as the muscle filter chips further down the
+// page) read as inert labels rather than clickable buttons. Confirmed
+// with a side-by-side mockup before building - the fill + arrow
+// combination was the one that actually read as "click me," and it
+// also reads clearly distinct from the muscle chips' outline/pill-full
+// style below, so the two control types don't blur together anymore.
 //
 // - "Daily Lessons" opens the shared LessonPreviewModal (email capture
 //   -> free 7-lesson series, same card already live on /beta). Labeled
@@ -41,7 +42,7 @@ import LessonPreviewModal from './LessonPreviewModal'
 //   rather than being folded into the community one. Opens in a new
 //   tab since it's a different domain/site entirely.
 const PILL_CLASS =
-  'text-xs font-semibold text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-2 rounded-lg transition whitespace-nowrap'
+  'inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-lg transition whitespace-nowrap'
 
 export default function ExercisesGuestBar() {
   const [showLessons, setShowLessons] = useState(false)
@@ -55,12 +56,15 @@ export default function ExercisesGuestBar() {
         <div className="flex flex-wrap items-center justify-end gap-2">
           <button type="button" onClick={() => setShowLessons(true)} className={PILL_CLASS}>
             Daily Lessons
+            <ArrowRight size={13} />
           </button>
           <Link href="/beta" className={PILL_CLASS}>
             Know more about the community
+            <ArrowRight size={13} />
           </Link>
           <a href="https://getfitaf.fitness" target="_blank" rel="noopener noreferrer" className={PILL_CLASS}>
             Explore 1-on-1 coaching
+            <ArrowRight size={13} />
           </a>
         </div>
       </div>
