@@ -7,6 +7,12 @@ import LessonSidebar from '@/components/LessonSidebar'
 import HeadphoneIcon from '@/components/HeadphoneIcon'
 import type { Lesson } from '@/types'
 
+// Kept in sync with the same constant in lessons/page.tsx - both need
+// to agree on exactly how many lessons a free member can open, since
+// this page enforces it server-side independent of the grid (see
+// unlockedDay below).
+const FREE_PREVIEW_LESSON_COUNT = 3
+
 // Same personalised-follow-up forms the dashboard's own WEEK_FORMS
 // object lists (see gfa-portal/dashboard.html) - shown inline on the
 // specific lesson day they're assigned to, top and bottom, exactly
@@ -56,7 +62,7 @@ export default async function LessonPage({
   const targetId = viewAsId && ownProfile?.is_admin ? viewAsId : user.id
   const viewingAs = !!viewAsId && !!ownProfile?.is_admin
 
-  const [{ data: profile }, { data: membership }, { data: allLessons }] = await Promise.all([
+  const [{ data: profile }, { data: membership }, { data: lessonsMetaData }] = await Promise.all([
     supabase.from('profiles').select('is_admin, approved, full_name').eq('id', targetId).single(),
     supabase
       .from('space_memberships')
@@ -64,29 +70,40 @@ export default async function LessonPage({
       .eq('profile_id', targetId)
       .eq('space', 'low_ticket')
       .maybeSingle(),
-    supabase
-      .from('lessons')
-      .select('id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content, content_css')
-      .eq('is_published', true)
-      .order('order'),
+    // Metadata-only (id/title/order/tag/url/audio_url, no content) via
+    // the same get_lessons_list() RPC the grid uses - see its migration
+    // comment for why. Needed here for the sidebar's full jump-to list
+    // and prev/next, without pulling every other lesson's full HTML
+    // body just to render this one. This lesson's own full content is
+    // fetched separately below, only once we've confirmed it's
+    // actually unlocked.
+    supabase.rpc('get_lessons_list'),
   ])
 
   const isAdmin = !!profile?.is_admin
   const isApproved = !!profile?.approved
-  if (!isAdmin && !isApproved && !membership) redirect('/beta')
+  // No longer bounced to /beta - free (not-yet-paid) members now get a
+  // real, if capped, look at individual lessons too (see
+  // FREE_PREVIEW_LESSON_COUNT above and isFreePreviewOnly's unlockedDay
+  // branch below), not just the grid. Confirmed with Satish 2026-08-03.
+  const isFreePreviewOnly = !isAdmin && !isApproved && !membership
 
-  const lessons = (allLessons as Lesson[] | null) || []
-  const lesson = lessons.find((l) => l.url === `/lessons/${slug}.html`)
-  if (!lesson) notFound()
+  const lessonsMeta =
+    (lessonsMetaData as
+      | { id: string; title: string; order: number; tag: string | null; url: string | null; audio_url: string | null }[]
+      | null) || []
+  const lessonMeta = lessonsMeta.find((l) => l.url === `/lessons/${slug}.html`)
+  if (!lessonMeta) notFound()
 
-  // Cumulative day-drip unlock for low-ticket (self-guided) members -
-  // same calendar-day math as the dashboard's own unlockedDay, kept in
-  // sync deliberately: this page has to enforce the same lock the grid
-  // already visually shows, not just trust that nobody navigates here
-  // directly with an old link. Hoisted out of the redirect check (unlike
-  // before) so LessonSidebar can also grey out/lock not-yet-unlocked
-  // rows in the jump-to list - null for admin/approved members, who
-  // have no drip lock at all.
+  // Cumulative day-drip unlock for low-ticket (self-guided) members, or
+  // a fixed preview count for free members - same calendar-day math as
+  // the dashboard's own unlockedDay, kept in sync deliberately: this
+  // page has to enforce the same lock the grid already visually shows,
+  // not just trust that nobody navigates here directly with an old
+  // link. Hoisted out of the redirect check (unlike before) so
+  // LessonSidebar can also grey out/lock not-yet-unlocked rows in the
+  // jump-to list - null for admin/approved members, who have no lock
+  // at all.
   const isLowTicketOnly = !!membership && !isApproved && !isAdmin
   let unlockedDay: number | null = null
   if (isLowTicketOnly && membership) {
@@ -96,8 +113,40 @@ export default async function LessonPage({
     const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const daysSince = Math.floor((nowMidnight.getTime() - joinedMidnight.getTime()) / 86400000)
     unlockedDay = Math.max(1, daysSince + 1)
-    if (lesson.order > unlockedDay) redirect('/lessons')
+  } else if (isFreePreviewOnly) {
+    unlockedDay = FREE_PREVIEW_LESSON_COUNT
   }
+  if (unlockedDay !== null && lessonMeta.order > unlockedDay) redirect('/lessons')
+
+  // Full row - content, content_css, video_url, etc. - fetched only
+  // now that we know this lesson is actually unlocked. RLS backs this
+  // up independently too (see allow_free_preview_lessons_select
+  // migration): a free member's own query for this table can only ever
+  // return order <= 3 regardless of what this page does, so this isn't
+  // the only thing standing between them and locked content.
+  const { data: lessonData } = await supabase
+    .from('lessons')
+    .select(
+      'id, title, description, thumbnail_url, video_url, duration_mins, order, is_published, url, tag, audio_url, content, content_css'
+    )
+    .eq('id', lessonMeta.id)
+    .single()
+  const lesson = lessonData as Lesson | null
+  if (!lesson) notFound()
+
+  // Padded to the full Lesson shape for LessonSidebar's prop type - it
+  // only ever reads id/order/title/url from these, same reasoning as
+  // the grid (see lessons/page.tsx).
+  const lessons: Lesson[] = lessonsMeta.map((l) => ({
+    ...l,
+    description: null,
+    thumbnail_url: null,
+    video_url: null,
+    duration_mins: null,
+    is_published: true,
+    content: null,
+    content_css: null,
+  }))
 
   const [{ data: progress }, { data: allProgress }] = await Promise.all([
     supabase
@@ -120,7 +169,9 @@ export default async function LessonPage({
   const slugOf = (l: Lesson) => (l.url || '').replace('/lessons/', '').replace('.html', '')
   const withViewAs = (href: string) => (viewingAs ? `${href}?view_as=${viewAsId}` : href)
 
-  const form = !isLowTicketOnly ? LESSON_FORMS[lesson.order] : null
+  // Same reasoning as low-ticket: these forms promise personalised
+  // coach follow-up that isn't part of a free preview either.
+  const form = !isLowTicketOnly && !isFreePreviewOnly ? LESSON_FORMS[lesson.order] : null
 
   return (
     <div style={{ background: '#f2f2f2', minHeight: '100vh' }}>
@@ -223,7 +274,7 @@ export default async function LessonPage({
             <>
               {lesson.content_css && <style dangerouslySetInnerHTML={{ __html: lesson.content_css }} />}
               <div
-                className={`lesson-content${isLowTicketOnly ? ' low-ticket-view' : ''}`}
+                className={`lesson-content${isLowTicketOnly || isFreePreviewOnly ? ' low-ticket-view' : ''}`}
                 dangerouslySetInnerHTML={{ __html: lesson.content }}
               />
             </>

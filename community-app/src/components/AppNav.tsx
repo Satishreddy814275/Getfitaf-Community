@@ -255,7 +255,15 @@ export default function AppNav({
   // familiar lessons experience and don't need to be moved off it.
   const showPremiumLessons = isAdmin || isApproved
   const showLowTicketLessons = !showPremiumLessons && hasLowTicket
-  const showLessons = showPremiumLessons || showLowTicketLessons
+  // Free (not-yet-paid) members now get real in-app access too - the
+  // first FREE_PREVIEW_LESSON_COUNT lessons (see lessons/page.tsx),
+  // rest shown locked - rather than the flat "Join to unlock" dead end
+  // this slot used to be their only option. Renders identically to
+  // showLowTicketLessons below (same /lessons page, same BottomTab),
+  // the split just exists because the two tiers get there under
+  // different reasons (drip-locked vs free-preview-locked).
+  const showFreePreviewLessons = !showPremiumLessons && !hasLowTicket
+  const showLessons = showPremiumLessons || showLowTicketLessons || showFreePreviewLessons
   // Drives what someone without Lessons/Workouts access sees in their
   // place, below - plain "opens August 1" text before launch (not
   // clickable, so nobody can jump the gate early via a nav link), a
@@ -276,7 +284,7 @@ export default function AppNav({
       ? 1
       : isPathActive(pathname, '/leaderboard')
         ? 2
-        : showLowTicketLessons && isPathActive(pathname, '/lessons')
+        : (showLowTicketLessons || showFreePreviewLessons) && isPathActive(pathname, '/lessons')
           ? 3
           : null
 
@@ -326,7 +334,7 @@ export default function AppNav({
                   >
                     Go to your lessons
                   </ExternalNavLink>
-                ) : showLowTicketLessons ? (
+                ) : showLowTicketLessons || showFreePreviewLessons ? (
                   <NavLink href="/lessons">Go to your lessons</NavLink>
                 ) : isLive ? (
                   <Link
@@ -472,7 +480,7 @@ export default function AppNav({
               <TabIcon name="book" className="text-zinc-500" />
               <span className="text-[10px] font-semibold text-zinc-500">Lessons</span>
             </a>
-          ) : showLowTicketLessons ? (
+          ) : showLowTicketLessons || showFreePreviewLessons ? (
             <BottomTab href="/lessons" label="Lessons" icon="book" dataTour="lessons" />
           ) : isLive ? (
             <Link href="/beta/pay" data-tour="lessons" className="relative flex-1 flex flex-col items-center gap-0.5 py-1.5">

@@ -50,6 +50,7 @@ export default function LessonsTabs({
   lessons,
   completedIds,
   isLowTicketOnly,
+  isFreePreviewOnly = false,
   unlockedDay,
   leaderboardRows,
   currentUserId,
@@ -59,6 +60,11 @@ export default function LessonsTabs({
   lessons: Lesson[]
   completedIds: string[]
   isLowTicketOnly: boolean
+  // Free (not-yet-paid) member previewing the first N lessons (see
+  // FREE_PREVIEW_LESSON_COUNT in lessons/page.tsx). Optional/defaulted
+  // rather than required so this doesn't need touching anywhere the
+  // caller genuinely can't be in this tier (e.g. an admin's "view as").
+  isFreePreviewOnly?: boolean
   unlockedDay: number | null
   leaderboardRows: LeaderboardRow[]
   currentUserId: string
@@ -68,6 +74,13 @@ export default function LessonsTabs({
   // that same client's view of the lesson page, not the admin's own.
   viewAsId?: string
 }) {
+  // Both tiers get the same restricted display (no Submissions tab, no
+  // Forms filter) - low-ticket members because those forms promise
+  // personalised coach follow-up their tier doesn't include, free
+  // members because there's nothing to submit without a real program
+  // yet. Kept as one derived flag rather than threading two separate
+  // booleans through every check below.
+  const restrictedView = isLowTicketOnly || isFreePreviewOnly
   const lessonHref = (l: Lesson) => (viewAsId ? `/lessons/${slugOf(l)}?view_as=${viewAsId}` : `/lessons/${slugOf(l)}`)
   const weeks = useMemo(
     () => [...new Set(lessons.map((l) => Math.ceil(l.order / 7)))].sort((a, b) => a - b),
@@ -148,7 +161,7 @@ export default function LessonsTabs({
         >
           <HeadphoneIcon size={14} /> Audio
         </button>
-        {!isLowTicketOnly && (
+        {!restrictedView && (
           <button
             onClick={() => setActiveTab('submissions')}
             className={`text-sm font-semibold px-4 py-2 rounded-xl transition ${
@@ -170,7 +183,7 @@ export default function LessonsTabs({
 
       {showTagFilters && (
         <div className="flex gap-2 flex-wrap mb-4">
-          {[...TAGS, ...(isLowTicketOnly ? [] : (['Forms'] as const))].map((tag) => (
+          {[...TAGS, ...(restrictedView ? [] : (['Forms'] as const))].map((tag) => (
             <button
               key={tag}
               onClick={() => setActiveTag(tag)}
@@ -231,7 +244,7 @@ export default function LessonsTabs({
       )}
 
       {/* Submissions tab */}
-      {activeTab === 'submissions' && !isLowTicketOnly && (
+      {activeTab === 'submissions' && !restrictedView && (
         <div className="glass rounded-2xl divide-y divide-zinc-800">
           {submissions.length === 0 ? (
             <p className="text-center text-zinc-500 text-sm py-12">No form submissions yet.</p>
