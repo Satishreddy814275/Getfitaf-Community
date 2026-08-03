@@ -27,7 +27,7 @@ import FreeLessonsBanner from '@/components/FreeLessonsBanner'
 import { renderRichText } from '@/lib/richText'
 import { getBetaPageContent } from '@/lib/betaPageContent'
 import { getBetaTierPreviews, type TierPreview } from '@/lib/betaProgramPreviews'
-import { getWaitlistCount } from '@/lib/betaLaunchSignals'
+import { getWaitlistCount, getBetaEnrolledCount } from '@/lib/betaLaunchSignals'
 import { LAUNCH_AT, isBetaLive } from '@/lib/betaLaunch'
 import { createClient } from '@/lib/supabase/server'
 import { hasExistingAccess } from '@/lib/existingAccess'
@@ -42,6 +42,11 @@ export const metadata: Metadata = {
   description:
     'Self-guided training, daily lessons, and a real community - beta pricing for the first 50 members.',
 }
+
+// Only used to compute the live "spots left" count below - the "50
+// spots" wording elsewhere on this page (pre-launch copy, lower CTA
+// section) is separate static content, out of scope for this fix.
+const BETA_TOTAL_SPOTS = 50
 
 // This page's copy comes from public.beta_page_content (edited via
 // /admin/beta-page, see betaPageContent.ts) rather than being
@@ -70,11 +75,17 @@ export default async function BetaLandingPage() {
     redirect('/feed')
   }
 
-  const [content, tierPreviews, waitlistCount] = await Promise.all([
+  const [content, tierPreviews, waitlistCount, enrolledCount] = await Promise.all([
     getBetaPageContent(),
     getBetaTierPreviews(),
     getWaitlistCount(),
+    getBetaEnrolledCount(),
   ])
+  // Clamped at 0 rather than letting this go negative if enrollment
+  // ever passes 50 before the copy itself gets updated for a closed/
+  // sold-out state - Satish's own call: that's a separate follow-up,
+  // not something this counter needs to solve on its own.
+  const spotsLeft = Math.max(0, BETA_TOTAL_SPOTS - enrolledCount)
   const faqBlocks = parseFaqBlocks(content.faq)
   const howItWorksSteps = parseFaqBlocks(content.how_it_works)
   const coachBio = parseCoachBio(content.about_coach)
@@ -124,7 +135,8 @@ export default async function BetaLandingPage() {
           {isLive ? (
             <div className="text-center">
               <p className="text-orange-500 text-sm font-semibold mb-3">
-                Doors are open - 50 spots, first come first served
+                Doors are open - {spotsLeft} of {BETA_TOTAL_SPOTS} spots left, first come first
+                served
               </p>
               <a
                 href="/beta/pay"
@@ -148,7 +160,11 @@ export default async function BetaLandingPage() {
               <BetaCountdown launchAt={LAUNCH_AT} />
             </div>
           )}
-          {waitlistCount > 0 && (
+          {/* Pre-launch only - once live, the real "spots left" count
+              above already carries the urgency, and this pre-launch
+              waitlist-interest number would otherwise sit right next to
+              it looking like a second, conflicting count. */}
+          {!isLive && waitlistCount > 0 && (
             <p className="text-zinc-500 text-xs text-center mt-3">
               🔥 {waitlistCount} {waitlistCount === 1 ? 'person has' : 'people have'} already joined the waitlist
             </p>
