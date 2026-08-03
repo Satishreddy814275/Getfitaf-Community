@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import ExerciseLibrary from '@/components/ExerciseLibrary'
+import ExercisesGuestBar from '@/components/ExercisesGuestBar'
 
 export const metadata: Metadata = {
   title: 'Exercise Library — GetFit AF',
@@ -27,9 +28,15 @@ interface ExerciseVideoRow {
 // way, there's no tier gating within the library itself (Satish's
 // explicit call 2026-08-03). Logged-in members get the normal app
 // chrome (AppNav) around this same page automatically via the root
-// layout; a logged-out visit just renders this content on its own.
+// layout; AppNav never renders for a signed-out visitor at all (see
+// layout.tsx), so this page renders its own small ExercisesGuestBar
+// instead when there's no user - otherwise a logged-out visitor would
+// have no way to join or leave an email from here at all.
 export default async function ExerciseLibraryPage() {
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
   // Queried from exercise_videos (not exercises) so the is_placeholder
   // filter applies directly at the root of the query rather than
@@ -72,6 +79,7 @@ export default async function ExerciseLibraryPage() {
 
   return (
     <div className="max-w-5xl mx-auto w-full py-8 px-4 sm:px-6">
+      {!user && <ExercisesGuestBar />}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">Exercise Library</h1>
         <p className="text-sm text-zinc-500 mt-1">
