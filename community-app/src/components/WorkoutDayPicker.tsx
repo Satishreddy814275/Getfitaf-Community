@@ -16,6 +16,7 @@ import { collapseExercisesToBlocks, type EditableBlock } from '@/lib/workoutBloc
 import { convertWeightForDisplay, convertWeightToKgForStorage, type WeightUnit } from '@/lib/weightUnit'
 import { formatEquipmentTier } from '@/lib/equipmentTier'
 import MiniTrendChart from './MiniTrendChart'
+import ExerciseVideoModal from './ExerciseVideoModal'
 import {
   Timer,
   Play,
@@ -868,9 +869,18 @@ export default function WorkoutDayPicker({
   // it's shown once as a sticky bar rather than duplicated per card.
   const [restPickerFor, setRestPickerFor] = useState<string | null>(null)
   const [restTimer, setRestTimer] = useState<{ remaining: number; total: number } | null>(null)
-  // Which exercise's coach-notes section is expanded - collapsed by
-  // default per card, same per-card-toggle pattern as restPickerFor.
-  const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null)
+  // Which exercise's video is currently open in the modal (Satish
+  // 2026-08-04: "Watch video" used to pop the video out to a separate
+  // browser tab with no context alongside it - wanted it in a modal
+  // instead, with the coach's instructions shown below the video).
+  // Null when closed. Stores the video's own coachNotes/videoUrl
+  // alongside the display name rather than re-looking the video up by
+  // name when rendering the modal, same reasoning as historyFor above.
+  const [videoModalFor, setVideoModalFor] = useState<{
+    name: string
+    videoUrl: string
+    coachNotes: string | null | undefined
+  } | null>(null)
   // Tracks whether the currently-running (or just-finished) shared
   // restTimer belongs to a perSide exercise's own work timer, and
   // which side it's timing - null whenever restTimer is being used for
@@ -2018,14 +2028,15 @@ export default function WorkoutDayPicker({
           <div className={large ? 'flex items-center justify-between gap-2 mb-1' : 'flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1'}>
               <div className="flex items-center gap-3 flex-wrap gap-y-1">
                 {video ? (
-                  <a
-                    href={video.videoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVideoModalFor({ name: ex.name, videoUrl: video.videoUrl, coachNotes: video.coachNotes })
+                    }
                     className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                   >
                     ▶ Watch video
-                  </a>
+                  </button>
                 ) : (
                   <a
                     href={youtubeSearchUrl(ex.name)}
@@ -2114,21 +2125,11 @@ export default function WorkoutDayPicker({
             </div>
           )}
 
-          {video?.coachNotes && (
-            <div className="mb-2">
-              <button
-                onClick={() => setNotesOpenFor(notesOpenFor === ex.originalName ? null : ex.originalName)}
-                className="text-xs font-medium text-zinc-400 hover:text-white transition"
-              >
-                {notesOpenFor === ex.originalName ? '▾' : '▸'} Coach notes
-              </button>
-              {notesOpenFor === ex.originalName && (
-                <p className="mt-1.5 text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900/60 rounded-lg p-2.5">
-                  {video.coachNotes}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Coach notes used to have their own separate collapsible
+              toggle here - folded into the video modal above instead
+              (Satish 2026-08-04), since this only ever rendered when
+              video existed anyway, i.e. exactly the case the modal now
+              already covers. */}
 
           {restPickerOpen && (
             <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
@@ -2510,14 +2511,15 @@ export default function WorkoutDayPicker({
           <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap gap-y-1">
             <div className="flex items-center gap-3 flex-wrap gap-y-1">
               {video ? (
-                <a
-                  href={video.videoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVideoModalFor({ name: rep.name, videoUrl: video.videoUrl, coachNotes: video.coachNotes })
+                  }
                   className="text-xs font-medium text-orange-400 hover:text-orange-300 transition"
                 >
                   ▶ Watch video
-                </a>
+                </button>
               ) : (
                 <a
                   href={youtubeSearchUrl(rep.name)}
@@ -2624,21 +2626,8 @@ export default function WorkoutDayPicker({
             </div>
           )}
 
-          {video?.coachNotes && (
-            <div className="mb-2">
-              <button
-                onClick={() => setNotesOpenFor(notesOpenFor === rep.originalName ? null : rep.originalName)}
-                className="text-xs font-medium text-zinc-400 hover:text-white transition"
-              >
-                {notesOpenFor === rep.originalName ? '▾' : '▸'} Coach notes
-              </button>
-              {notesOpenFor === rep.originalName && (
-                <p className="mt-1.5 text-xs text-zinc-400 whitespace-pre-wrap bg-zinc-900/60 rounded-lg p-2.5">
-                  {video.coachNotes}
-                </p>
-              )}
-            </div>
-          )}
+          {/* Coach notes folded into the video modal above - see the
+              same note in renderExerciseCard. */}
 
           {restPickerOpen && (
             <div className="mb-3 p-3 bg-zinc-900/60 rounded-lg flex items-center gap-2 flex-wrap">
@@ -3549,6 +3538,15 @@ export default function WorkoutDayPicker({
               )}
             </div>
           </div>
+        )}
+
+        {videoModalFor && (
+          <ExerciseVideoModal
+            name={videoModalFor.name}
+            videoUrl={videoModalFor.videoUrl}
+            coachNotes={videoModalFor.coachNotes}
+            onClose={() => setVideoModalFor(null)}
+          />
         )}
       </div>
     )

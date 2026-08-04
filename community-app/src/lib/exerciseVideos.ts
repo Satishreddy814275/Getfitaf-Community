@@ -59,6 +59,28 @@ export function findExerciseVideo(
   return null
 }
 
+// Handles youtube.com/watch?v=, youtu.be/, and youtube.com/embed/ - the
+// shapes actually seen across the real video library (coaches paste
+// whatever URL YouTube gives them when sharing, not one consistent
+// format). Returns null rather than guessing for anything else, same
+// "no video is better than a wrong one" principle as findExerciseVideo
+// above. Shared by ExerciseLibrary (thumbnail + modal) and
+// ExerciseVideoModal (workout logging's video modal) rather than
+// duplicated in each.
+export function extractYouTubeId(url: string): string | null {
+  try {
+    const u = new URL(url)
+    if (u.hostname.includes('youtu.be')) return u.pathname.slice(1) || null
+    if (u.hostname.includes('youtube.com')) {
+      if (u.pathname === '/watch') return u.searchParams.get('v')
+      if (u.pathname.startsWith('/embed/')) return u.pathname.replace('/embed/', '')
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
 // Zero-curation fallback for anything not in the library yet - a
 // plain YouTube search link works immediately for every exercise, no
 // data entry required.
