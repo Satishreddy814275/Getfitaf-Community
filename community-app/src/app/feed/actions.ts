@@ -280,6 +280,36 @@ export async function addComment(
   const content = ((formData.get('content') as string) || '').trim()
   if (!content) return
 
+  // Server-side double-submit guard, on top of the client-side one in
+  // PostCard/CommentThread (added 2026-08-04 after two real duplicate
+  // pairs turned up in production — one from Satish, one from a
+  // client reply, both a few seconds apart on the same post). The
+  // client guard covers the normal case; this covers what it can't
+  // — a second tab, a retried request, anything that reaches this
+  // action a second time before the first has visibly resolved. If
+  // this exact author already posted this exact text on this exact
+  // post/parent in the last 10 seconds, treat it as the same
+  // submission and hand back that row instead of inserting a copy.
+  const tenSecondsAgo = new Date(Date.now() - 10_000).toISOString()
+  const parentFilter = parentCommentId
+    ? { column: 'parent_comment_id' as const, value: parentCommentId }
+    : null
+  let recentDupeQuery = supabase
+    .from('comments')
+    .select('id')
+    .eq('post_id', postId)
+    .eq('author_id', user.id)
+    .eq('content', content)
+    .gte('created_at', tenSecondsAgo)
+  recentDupeQuery = parentFilter
+    ? recentDupeQuery.eq('parent_comment_id', parentFilter.value)
+    : recentDupeQuery.is('parent_comment_id', null)
+  const { data: recentDupe } = await recentDupeQuery.limit(1).maybeSingle()
+  if (recentDupe) {
+    revalidatePath('/feed')
+    return
+  }
+
   const { data: comment } = await supabase
     .from('comments')
     .insert({
