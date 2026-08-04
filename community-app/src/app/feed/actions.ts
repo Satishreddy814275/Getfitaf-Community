@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { FEED_PAGE_SIZE, FEED_POST_SELECT, SEARCH_RESULT_LIMIT } from '@/lib/feedPosts'
 import { sendPushToProfile } from '@/lib/push'
 import type { Post, Space } from '@/types'
@@ -161,6 +162,24 @@ export async function createPost(formData: FormData) {
   // are rare enough (this only fires for is_admin authors) that this
   // doesn't risk turning into per-post spam the way pushing every
   // member's post would.
+  //
+  // Scheduled via after() instead of awaited inline (Satish 2026-08-04:
+  // clicking Post as an admin sometimes just sat on "Posting..."
+  // forever, even though the post had actually already landed in the
+  // DB - confirmed by checking the posts table directly). Root cause:
+  // this whole push fanout used to run INSIDE createPost's own request/
+  // response cycle, so the client's "Posting..." spinner didn't clear
+  // until every recipient's webpush.sendNotification call had finished
+  // - one slow or hanging push endpoint held up the entire response,
+  // and PostComposer had no timeout/error handling to recover from that
+  // (separately fixed below). after() runs this once the response has
+  // already been sent back to the browser, so the post finishing is no
+  // longer gated on push delivery at all - the two are decoupled the
+  // way the old inline comment here assumed they couldn't be, but
+  // after() (stable since Next 15, this app is on Next 16) is exactly
+  // the API Vercel added to make this actually reliable, unlike a bare
+  // un-awaited call which risks being killed the moment the response
+  // goes out.
   if (inserted) {
     const { data: authorProfile } = await supabase
       .from('profiles')
@@ -169,20 +188,25 @@ export async function createPost(formData: FormData) {
       .single()
 
     if (authorProfile?.is_admin) {
-      await notifyAdminPost({
-        postId: inserted.id,
-        space: space as Space,
-        authorId: user.id,
-        authorName: authorProfile.full_name || 'GetFit AF',
-        content,
-      })
+      const postId = inserted.id
+      const notifySpace = space as Space
+      const authorId = user.id
+      const authorName = authorProfile.full_name || 'GetFit AF'
+      after(() =>
+        notifyAdminPost({
+          postId,
+          space: notifySpace,
+          authorId,
+          authorName,
+          content,
+        })
+      )
     }
   }
 }
 
-// Fire-and-awaited (not fire-and-forget - Vercel functions stop
-// running once the response is sent, so this has to finish inside
-// createPost's own invocation) push fanout for an admin's post. Scoped
+// Push fanout for an admin's post - see the after() call above for why
+// this no longer needs to be awaited inline. Scoped
 // to whoever actually has access to that post's space - a low_ticket
 // post pushing every premium member (or vice versa) would be pushing
 // people about a post they can't even see. Mirrors the same

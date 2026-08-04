@@ -54,13 +54,24 @@ export async function sendPushToProfile(profileId: string, payload: PushPayload)
   await Promise.all(
     subs.map(async (sub) => {
       try {
-        await webpush.sendNotification(
-          {
-            endpoint: sub.endpoint,
-            keys: { p256dh: sub.p256dh, auth: sub.auth },
-          },
-          JSON.stringify(payload)
-        )
+        // web-push has no built-in send timeout - an unresponsive push
+        // endpoint could otherwise hang this call indefinitely. Now
+        // that the caller (createPost's admin push fanout) runs via
+        // after() rather than blocking the request, a hang here no
+        // longer freezes anyone's "Posting..." button, but it could
+        // still keep this background task alive far longer than
+        // needed, so it's still worth a bound. 8s is generous for a
+        // push send under normal conditions.
+        await Promise.race([
+          webpush.sendNotification(
+            {
+              endpoint: sub.endpoint,
+              keys: { p256dh: sub.p256dh, auth: sub.auth },
+            },
+            JSON.stringify(payload)
+          ),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('push send timed out')), 8000)),
+        ])
       } catch (err) {
         const statusCode = (err as { statusCode?: number }).statusCode
         if (statusCode === 404 || statusCode === 410) {

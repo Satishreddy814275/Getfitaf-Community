@@ -39,6 +39,12 @@ export default function PostComposer({
   )
   const [file, setFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Surfaces createPost failures instead of leaving the button stuck on
+  // "Posting..." forever with no explanation (Satish 2026-08-04: hit
+  // this exact thing - the post had actually gone through server-side,
+  // but nothing here ever cleared the spinner or told him what
+  // happened). See handleSubmit's try/finally below.
+  const [postError, setPostError] = useState<string | null>(null)
   const [isAnnouncement, setIsAnnouncement] = useState(false)
   const [lessonId, setLessonId] = useState(initialLessonId)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -102,6 +108,7 @@ export default function PostComposer({
     setFile(null)
     setIsAnnouncement(false)
     setLessonId(null)
+    setPostError(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -114,46 +121,63 @@ export default function PostComposer({
     if (!postSpace) return
 
     setUploading(true)
-    const formData = new FormData()
-    formData.set('content', content)
-    formData.set('is_announcement', String(isAdmin && isAnnouncement))
-    formData.set('space', postSpace)
-    if (lessonId) formData.set('lesson_id', lessonId)
+    setPostError(null)
+    // Everything below used to run with no try/catch at all - if
+    // createPost (or the media upload before it) ever threw or
+    // rejected for any reason, this function just stopped executing
+    // mid-way: resetComposer() and setUploading(false) never ran, so
+    // the button sat on "Posting..." forever with no error shown and
+    // no way to tell if the post had actually gone through or not
+    // (Satish 2026-08-04 - it turned out the post itself had usually
+    // already been created; see the after()-scheduled push fanout fix
+    // in feed/actions.ts for the actual thing that was hanging). This
+    // wrap guarantees the spinner always clears and a real failure is
+    // at least visible, regardless of what fails or why.
+    try {
+      const formData = new FormData()
+      formData.set('content', content)
+      formData.set('is_announcement', String(isAdmin && isAnnouncement))
+      formData.set('space', postSpace)
+      if (lessonId) formData.set('lesson_id', lessonId)
 
-    if (file) {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      if (file) {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
 
-      if (user) {
-        // Images get resized/re-encoded before upload (see
-        // compressImage.ts); videos pass through untouched.
-        const uploadFile = file.type.startsWith('image/') ? await compressImage(file) : file
-        const ext = uploadFile.name.split('.').pop()
-        const path = `${user.id}/${Date.now()}.${ext}`
-        // Upload raw bytes rather than handing the File/Blob object
-        // straight to fetch — some browsers (Safari in particular)
-        // don't reliably transmit a File that was constructed from a
-        // canvas-generated Blob, silently sending an empty body. An
-        // ArrayBuffer has no such issue. contentType is passed
-        // explicitly too, rather than relying on it being inferred.
-        const bytes = await uploadFile.arrayBuffer()
-        const { error } = await supabase.storage.from('post-media').upload(path, bytes, {
-          contentType: uploadFile.type || 'application/octet-stream',
-        })
+        if (user) {
+          // Images get resized/re-encoded before upload (see
+          // compressImage.ts); videos pass through untouched.
+          const uploadFile = file.type.startsWith('image/') ? await compressImage(file) : file
+          const ext = uploadFile.name.split('.').pop()
+          const path = `${user.id}/${Date.now()}.${ext}`
+          // Upload raw bytes rather than handing the File/Blob object
+          // straight to fetch — some browsers (Safari in particular)
+          // don't reliably transmit a File that was constructed from a
+          // canvas-generated Blob, silently sending an empty body. An
+          // ArrayBuffer has no such issue. contentType is passed
+          // explicitly too, rather than relying on it being inferred.
+          const bytes = await uploadFile.arrayBuffer()
+          const { error } = await supabase.storage.from('post-media').upload(path, bytes, {
+            contentType: uploadFile.type || 'application/octet-stream',
+          })
 
-        if (!error) {
-          const { data } = supabase.storage.from('post-media').getPublicUrl(path)
-          formData.set('media_url', data.publicUrl)
-          formData.set('media_type', file.type.startsWith('video') ? 'video' : 'image')
+          if (!error) {
+            const { data } = supabase.storage.from('post-media').getPublicUrl(path)
+            formData.set('media_url', data.publicUrl)
+            formData.set('media_type', file.type.startsWith('video') ? 'video' : 'image')
+          }
         }
       }
-    }
 
-    await createPost(formData)
-    resetComposer()
-    setUploading(false)
+      await createPost(formData)
+      resetComposer()
+    } catch {
+      setPostError("Something went wrong. If your post doesn't show up, try again.")
+    } finally {
+      setUploading(false)
+    }
   }
 
   // Ambiguous target space (admin on the merged "All spaces" view) -
@@ -190,6 +214,7 @@ export default function PostComposer({
         className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500 min-h-[96px] max-h-[320px] overflow-y-auto"
       />
       {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
+      {postError && <p className="text-xs text-red-400 px-2 mt-1">{postError}</p>}
       {isAdmin && (
         <label className="flex items-center gap-2 px-2 mb-2 text-xs text-zinc-400 cursor-pointer select-none">
           <input
