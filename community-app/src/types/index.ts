@@ -349,3 +349,32 @@ export interface Lesson {
   // text-only ones).
   content_css: string | null
 }
+
+// Instagram comment-to-DM automation - see admin/instagram/page.tsx and
+// api/instagram-webhook/route.ts for the full flow this drives.
+export interface InstagramCampaign {
+  id: string
+  name: string
+  keyword: string
+  media_id: string | null
+  public_reply_text: string
+  dm_prompt_text: string
+  confirm_trigger: string
+  file_message_text: string
+  file_url: string
+  active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface InstagramInteraction {
+  id: string
+  campaign_id: string | null
+  ig_user_id: string
+  ig_username: string | null
+  comment_id: string | null
+  state: 'commented' | 'dm_sent' | 'confirmed' | 'file_sent'
+  last_event_at: string
+  created_at: string
+}

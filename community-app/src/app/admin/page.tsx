@@ -104,6 +104,16 @@ export default async function AdminPage() {
           >
             Guidelines →
           </Link>
+          {/* Restricted feature - see admin/instagram/page.tsx for why
+              this doesn't just check is_admin like everything else here. */}
+          {user.email === 'satish0kinng@gmail.com' && (
+            <Link
+              href="/admin/instagram"
+              className="text-sm font-medium text-orange-500 hover:text-orange-400 transition"
+            >
+              Instagram Automation →
+            </Link>
+          )}
         </div>
       </div>
 
