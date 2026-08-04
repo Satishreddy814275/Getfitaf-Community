@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
+import { track } from '@vercel/analytics'
 import LessonPreviewModal from './LessonPreviewModal'
 
 // Logged-out-only top bar for the public /exercises page. AppNav never
@@ -54,15 +55,32 @@ export default function ExercisesGuestBar() {
           GET<span className="text-orange-500">FIT</span> AF
         </p>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <button type="button" onClick={() => setShowLessons(true)} className={PILL_CLASS}>
+          <button
+            type="button"
+            onClick={() => {
+              track('exercises_guest_bar_click', { target: 'daily_lessons' })
+              setShowLessons(true)
+            }}
+            className={PILL_CLASS}
+          >
             Daily Lessons
             <ArrowRight size={13} />
           </button>
-          <Link href="/beta" className={PILL_CLASS}>
+          <Link
+            href="/beta"
+            onClick={() => track('exercises_guest_bar_click', { target: 'community' })}
+            className={PILL_CLASS}
+          >
             Know more about the community
             <ArrowRight size={13} />
           </Link>
-          <a href="https://getfitaf.fitness" target="_blank" rel="noopener noreferrer" className={PILL_CLASS}>
+          <a
+            href="https://getfitaf.fitness"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => track('exercises_guest_bar_click', { target: 'coaching' })}
+            className={PILL_CLASS}
+          >
             Explore 1-on-1 coaching
             <ArrowRight size={13} />
           </a>

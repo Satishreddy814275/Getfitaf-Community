@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
+import { track } from '@vercel/analytics'
 
 interface UnshotExercise {
   id: string
@@ -116,6 +117,10 @@ export default function ExerciseRequestSection({
           : `+1 added for "${data.exerciseName}" - you're the first to ask.`
       )
       markSubmitted(key)
+      // exerciseName rather than exerciseId in eventData - Satish wants
+      // to see which exercises are actually getting requested from the
+      // Vercel dashboard directly, not just a count of clicks.
+      track('exercise_request', { exercise: data.exerciseName, catalogMatch: !!exerciseId })
 
       setTopRequests((prev) => {
         const existingIdx = prev.findIndex((r) => requestKey(r.exerciseId, r.exerciseName) === key)

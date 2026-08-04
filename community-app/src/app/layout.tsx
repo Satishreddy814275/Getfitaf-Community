@@ -13,6 +13,7 @@ const manrope = Manrope({
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-manrope",
 });
+import { Analytics } from "@vercel/analytics/next";
 import { createClient } from "@/lib/supabase/server";
 import AppNav from "@/components/AppNav";
 import ServiceWorkerRegister from "@/components/ServiceWorkerRegister";
@@ -126,6 +127,16 @@ export default async function RootLayout({
           )}
           <PageBody hasUser={!!user}>{children}</PageBody>
         </SessionActiveProvider>
+        {/* Vercel Web Analytics (added 2026-08-03, Satish's call - the
+            site had zero traffic tracking anywhere, code or dashboard,
+            before this). Automatic pageviews on every route; custom
+            click events are tracked separately at the specific buttons
+            worth measuring (ExercisesGuestBar's Daily Lessons link,
+            ExerciseRequestSection's +1s, the coaching link) rather than
+            instrumenting everything. Requires enabling Analytics once
+            in the Vercel dashboard (Project -> Analytics -> Enable) -
+            this component alone doesn't turn it on. */}
+        <Analytics />
       </body>
     </html>
   );
