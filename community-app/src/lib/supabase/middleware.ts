@@ -62,6 +62,15 @@ export async function updateSession(request: NextRequest) {
     // getting redirected to /login before reaching the handler, exactly
     // like the original /api/stripe-webhook incident above.
     request.nextUrl.pathname.startsWith('/api/razorpay-webhook') ||
+    // Same issue, same fix, hit a third time - Meta's webhook
+    // verification handshake and every real event delivery are both
+    // server-to-server calls with no session cookie, so this was also
+    // getting redirected to /login (HTML) instead of reaching the
+    // route. Caught 2026-08-04 when Meta's "Verify and save" returned
+    // "The callback URL or verify token couldn't be validated" - it
+    // was receiving the login page's HTML instead of the plain-text
+    // challenge the route actually returns.
+    request.nextUrl.pathname.startsWith('/api/instagram-webhook') ||
     // Same issue, same fix - Vercel Cron calls this with an
     // Authorization: Bearer <CRON_SECRET> header (checked inside the
     // route itself), not a session cookie, so it was also being
