@@ -1,0 +1,380 @@
+export interface Profile {
+  id: string
+  full_name: string | null
+  avatar_url: string | null
+}
+
+export interface CommentLike {
+  id: string
+  user_id: string
+  // Optional — only populated where the query actually joins it (the
+  // main feed query does; admin's post list doesn't need liker names,
+  // just the count, so it's left out there rather than changing a
+  // query that doesn't need this).
+  profiles?: Profile | null
+}
+
+export interface Comment {
+  id: string
+  content: string
+  created_at: string
+  parent_comment_id: string | null
+  profiles: Profile | null
+  comment_likes: CommentLike[]
+}
+
+export interface Like {
+  id: string
+  user_id: string
+  profiles?: Profile | null
+}
+
+export type NotificationType = 'post_like' | 'post_comment' | 'comment_reply' | 'comment_like'
+
+export interface Notification {
+  id: string
+  type: NotificationType
+  post_id: string
+  comment_id: string | null
+  read: boolean
+  created_at: string
+  actor: Profile | null
+}
+
+export type Space = 'premium' | 'low_ticket'
+
+export interface Post {
+  id: string
+  content: string | null
+  media_url: string | null
+  media_type: 'image' | 'video' | null
+  is_announcement: boolean
+  pinned: boolean
+  space: Space
+  created_at: string
+  // Null = never edited. Set by editPost() in feed/actions.ts whenever
+  // a post's content is saved after the fact - drives the "(edited)"
+  // indicator in PostCard.
+  edited_at: string | null
+  profiles: Profile | null
+  comments: Comment[]
+  likes: Like[]
+}
+
+export interface LeaderboardRow {
+  rank: number
+  user_id: string
+  first_name: string
+  post_count: number
+  comment_count: number
+  score: number
+  streak: number
+}
+
+// Shape written by Getfitaf-workout-builder-main/api/generate.js into
+// workout_generations.structured_plan (verified/community visits only
+// - see project memory). One entry per training day in the plan (rest
+// days are skipped), in Week/Day order, not tied to calendar dates.
+export interface WorkoutExercise {
+  order: number
+  name: string
+  sets: string
+  reps: string
+  // false for bodyweight-only moves (planks, marches, bridges, etc.) -
+  // hides the weight input entirely instead of asking someone to log a
+  // weight that doesn't apply. Absent/true on older AI-generated plans,
+  // where every exercise still shows a weight field same as before.
+  trackWeight?: boolean
+  // True when the "reps" field is actually a duration held, in
+  // seconds - planks, wall sits, dead hangs. Independent of
+  // timerSeconds/trackWeight on purpose: a timed AMRAP move (e.g.
+  // "squat jumps, 30s") has a timer but still logs a rep count, while
+  // a weighted hold (e.g. a loaded farmer's carry) tracks weight AND
+  // duration at once. Absent/false on everything else, which keeps
+  // every existing exercise's behavior unchanged - this only relabels
+  // and reformats the same underlying number, it doesn't add a new
+  // logged value or require a migration.
+  logAsDuration?: boolean
+  // Prescribed rest duration in seconds shown next to Target (e.g. 40)
+  // - like timerSeconds, this is a number to reach for a one-tap timer
+  // with, not something the app enforces or counts down on its own.
+  // Kept as a separate field from timerSeconds (rather than reusing
+  // it) since an exercise can have both a work duration and a rest
+  // duration that differ.
+  restSeconds?: number
+  // Prescribed work duration in seconds (e.g. 600 for a 10-minute
+  // walk, 20 for a 20s hold) - only set on authored program-template
+  // content, where the duration is something we wrote ourselves and
+  // can trust, unlike AI-generated free text. When present, the
+  // logging UI shows a dedicated one-tap timer button pre-loaded to
+  // this exact duration, alongside the regular custom picker for
+  // anyone who wants a different one.
+  timerSeconds?: number
+  // Which circuit round this exercise belongs to (1, 2, 3, ...) -
+  // explicit rather than parsed from the name (which may still say
+  // "(Round 1)" for display/uniqueness reasons - see WorkoutDayPicker).
+  // Absent on exercises that aren't part of a repeating circuit (a
+  // warm-up/cool-down walk, a stretch, or any older non-round content).
+  // A day with any exercise carrying a round number is treated as a
+  // round-based/circuit day and gets the guided one-at-a-time player
+  // instead of the plain list view.
+  round?: number
+  // Which part of the session this exercise belongs to - explicit,
+  // author-set, not inferred from the name. Used purely to show a
+  // one-tap phase-transition screen ("Let's warm up" / "Time for the
+  // main workout" / "Nice work, let's cool down.") the moment the
+  // guided player crosses from one phase into the next - at most 2-3
+  // extra taps across a whole day, regardless of how many rounds or
+  // sets are inside "main". Absent on older content, which just never
+  // shows a phase screen (see isFirstOfPhase in WorkoutDayPicker).
+  phase?: 'warmup' | 'main' | 'cooldown'
+  // True for unilateral moves that need to be done once per side (most
+  // stretches, single-arm/single-leg work) - see WorkoutDayPicker for
+  // how this changes the logging UI. Absent/false on everything else,
+  // which is the overwhelming majority of content.
+  perSide?: boolean
+}
+
+export interface WorkoutPlanDay {
+  // Real, distinct identifiers on program-template content - each
+  // week/day combination is its own authored entry and is shown
+  // exactly once, not a single-week template replayed across a fixed
+  // program length. (On older AI-generated plans, week was always 1
+  // and WorkoutDayPicker used to synthesize a repeating 4-week grid
+  // from it - that replay behavior is gone now that community-app
+  // logging only ever reads from program_templates.)
+  week: number
+  day: number
+  label: string
+  // Explicit, author-set tag - not inferred from exercise text. Only
+  // present on program-template-authored days going forward; absent
+  // (treated as false) on older AI-generated plans. Not yet read
+  // anywhere in the logging UI - captured now so it's available once
+  // cardio-specific logging is actually built.
+  isCardio?: boolean
+  // Free-text session-level instruction shown above the exercise list
+  // (e.g. "Circuit format - 40s rest between exercises") - for things
+  // that apply to the whole day rather than any one exercise. Optional,
+  // absent on older AI-generated plans.
+  notes?: string
+  // Open-vocabulary tag ('upper', 'lower', 'cardio', 'full_body', ...)
+  // used to find a same-focus day in another equipment tier when a
+  // member on a gym program can't make it to the gym - see
+  // getHomeWorkoutOptions in workouts/actions.ts. Deliberately not tied
+  // to day number or program length (those can and do differ between
+  // tiers, e.g. a future push/pull/legs gym split vs. a 3-day at-home
+  // upper/lower/cardio rotation) - matching by this tag instead of
+  // position is what makes that divergence a non-issue. Null/absent on
+  // days that don't have a clean equivalent elsewhere (e.g. Foundations'
+  // "Basic Prep").
+  focus?: string | null
+  exercises: WorkoutExercise[]
+}
+
+// One published program's day, annotated with which program it came
+// from - the shape getHomeWorkoutOptions returns for the "can't make
+// it to the gym" picker. Deliberately a flat snapshot (program name +
+// day, not ids the picker has to re-resolve) since it's built
+// server-side from data the picker never needs to re-fetch.
+export interface HomeWorkoutOption {
+  programId: string
+  programName: string
+  // Raw program_templates.equipment_tier value, formatted for display
+  // via formatEquipmentTier (see lib/equipmentTier.ts) rather than
+  // pre-formatted here, so the picker can style/lay it out however it
+  // needs to.
+  equipmentTier: string | null
+  week: number
+  day: number
+  label: string
+  exercises: WorkoutExercise[]
+}
+
+// A member-applied home-workout substitute for one specific (week, day)
+// occurrence of their current plan (see workout_day_overrides,
+// applyHomeWorkoutSwap in workouts/actions.ts). Presence of one (keyed
+// by "${week}-${day}" in WorkoutDayPicker) means the day's own
+// exercises are replaced by these for display and logging - a one-time
+// swap, not a standing change to the program itself.
+export interface WorkoutDayOverride {
+  week: number
+  day: number
+  sourceProgramName: string
+  sourceLabel: string
+  exercises: WorkoutExercise[]
+}
+
+// A standalone, reusable day - "Upper Body 1," "Lower Body 1" - saved
+// independently of any program, so it can be copied into any program's
+// day slot instead of rebuilt from scratch each time. Same exercises
+// shape as WorkoutPlanDay, just without a week/day/program attached.
+// See admin/actions.ts (addProgramDayFromTemplate/
+// saveProgramDayAsTemplate) for how content moves between this and a
+// real program day - always a one-time copy, never a live link.
+export interface WorkoutTemplate {
+  id: string
+  name: string
+  notes?: string | null
+  exercises: WorkoutExercise[]
+  createdAt: string
+}
+
+// What a member most recently logged for a given exercise, used to
+// show "last time" reference numbers while logging a new session.
+export interface LastLoggedSet {
+  exerciseName: string
+  weight: number | null
+  reps: number | null
+  loggedAt: string
+}
+
+export interface WorkoutHistorySet {
+  exerciseName: string
+  setNumber: number
+  weight: number | null
+  reps: number | null
+}
+
+export interface WorkoutHistorySession {
+  id: string
+  week: number
+  day: number
+  label: string | null
+  completedAt: string
+  sets: WorkoutHistorySet[]
+}
+
+// One group per generation - each regeneration is treated as its own
+// distinct plan for history purposes (consistent with the live grid
+// starting fresh after a regenerate), not merged into one continuous
+// timeline.
+export interface WorkoutHistoryGroup {
+  generationId: string
+  isCurrent: boolean
+  sessions: WorkoutHistorySession[]
+}
+
+// A member-initiated exercise substitution (see
+// migration-exercise-swaps.sql). weekNumber 0 means "apply to any
+// week" - useful when the same exercise/day-number combination
+// recurs across multiple authored weeks and the swap should follow it
+// everywhere. A week-specific swap (matching a real week number)
+// overrides an all-weeks swap for the same day/exercise if both
+// happen to exist. Keyed by originalExerciseName
+// (the untouched template name, not whatever's currently displayed)
+// so swapping twice in a row updates the same row instead of stacking,
+// and swapping back to the original name is just a normal swap.
+export interface WorkoutExerciseSwap {
+  weekNumber: number
+  dayNumber: number
+  originalExerciseName: string
+  newExerciseName: string
+  sets: string
+  reps: string
+}
+
+// One row per member per calendar day (see migration-body-weight.sql -
+// unique on profile_id + logged_date, upserted). weightKg is always
+// canonical kg, same storage pattern as workout_logged_sets.weight -
+// conversion to the member's preferred unit happens only at
+// display/input via weightUnit.ts.
+export interface BodyWeightEntry {
+  id: string
+  loggedDate: string
+  weightKg: number
+}
+
+// One canonical row per real-world exercise (see
+// migration-exercises-catalog.sql, extended by
+// migration-exercises-tag-buckets). Deliberately additive: program
+// content still stores exercise names as plain text, matched to this
+// table by normalized name, same as exercise_videos already does.
+// Owns the metadata program content has nowhere else to attach, split
+// into four independent tag buckets - each is a starter suggestion
+// list (see BUCKET_CONFIG in AdminExercisesList) plus whatever's
+// actually been typed in over time, not a hard enum:
+//   - muscleGroups: which muscles the exercise works
+//   - equipmentTags: what's needed to do it (Gym/Dumbbell/Bands/...)
+//   - typeTags: what kind of exercise it is (Strength/Cardio/...)
+//   - otherTags: catch-all for anything that doesn't fit the above
+//     three (was a single flat "category_tags" field before the
+//     bucket split - renamed at the DB level since it held zero real
+//     data at the time, so nothing needed migrating).
+export interface ExerciseCatalogEntry {
+  id: string
+  name: string
+  muscleGroups: string[]
+  equipmentTags: string[]
+  typeTags: string[]
+  otherTags: string[]
+  // True only when this exercise has a linked exercise_videos row (via
+  // exercise_id, not name-guessing) that isn't flagged is_placeholder -
+  // i.e. Satish's own shot footage, not a YouTube stand-in. Computed
+  // server-side in admin/videos/page.tsx. This is the same signal the
+  // future client-facing library will gate visibility on; for now it's
+  // admin-only, shown as a badge in the Catalog tab (AdminExercisesList).
+  hasVideo: boolean
+}
+
+// Migrated in from learn.getfitaf.fitness (see gfa-portal repo) - same
+// `lessons` table, now also read by community-app's own /lessons
+// routes rather than only the standalone static-HTML portal. `url`
+// keeps its old shape (/lessons/dayN-lesson.html) purely as the
+// existing per-lesson identifier both sites key off of; the new
+// /lessons/[slug] route strips ".html" off the end of it to build its
+// slug rather than introducing a second, redundant identifier column.
+// `content` is the new column - only the lesson's core prose/card
+// body, not the surrounding chrome (forms, complete button, signoff),
+// which the new page renders itself from shared components instead.
+export interface Lesson {
+  id: string
+  title: string
+  description: string | null
+  thumbnail_url: string | null
+  video_url: string | null
+  duration_mins: number | null
+  order: number
+  is_published: boolean
+  url: string | null
+  tag: string | null
+  audio_url: string | null
+  content: string | null
+  // Per-lesson CSS overrides for classes this specific lesson's prose
+  // uses that either aren't part of the shared .lesson-content baseline
+  // in globals.css, or need different values than that baseline for
+  // this lesson (e.g. day42's dark pull-quote treatment vs. the usual
+  // light one). Rendered as its own inline <style> tag alongside this
+  // lesson's content only - see lessons/[slug]/page.tsx. Null on
+  // lessons fully covered by the shared baseline (many of the simpler,
+  // text-only ones).
+  content_css: string | null
+}
+
+// Instagram comment-to-DM automation - see admin/instagram/page.tsx and
+// api/instagram-webhook/route.ts for the full flow this drives.
+export interface InstagramCampaign {
+  id: string
+  name: string
+  keyword: string
+  media_id: string | null
+  public_reply_text: string
+  dm_prompt_text: string
+  confirm_trigger: string
+  file_message_text: string
+  file_url: string
+  active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface InstagramInteraction {
+  id: string
+  campaign_id: string | null
+  ig_user_id: string
+  ig_username: string | null
+  comment_id: string | null
+  state: 'commented' | 'dm_sent' | 'confirmed' | 'file_sent'
+  last_event_at: string
+  created_at: string
+}
