@@ -2,10 +2,32 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { createPost } from '@/app/feed/actions'
+import { createPost, getMentionableMembers } from '@/app/feed/actions'
 import { compressImage } from '@/lib/compressImage'
 import { useMarkdownShortcuts } from '@/lib/useMarkdownShortcuts'
+import type { MentionCandidate } from '@/lib/mentions'
 import type { Space } from '@/types'
+
+const SPACE_LABEL: Record<Space, string> = {
+  premium: 'Premium members',
+  low_ticket: 'Low-ticket members',
+}
+
+// Finds an in-progress "@query" ending exactly at the cursor - the
+// character before "@" must be the start of the text or whitespace
+// (so "email@x" mid-word never triggers this), and nothing between
+// "@" and the cursor can be whitespace (so the trigger clears itself
+// the moment you type a space, rather than staying open indefinitely).
+function findMentionTrigger(text: string, cursor: number): { atIndex: number; query: string } | null {
+  const uptoCursor = text.slice(0, cursor)
+  const at = uptoCursor.lastIndexOf('@')
+  if (at === -1) return null
+  const charBefore = at === 0 ? '' : uptoCursor[at - 1]
+  if (charBefore && !/\s/.test(charBefore)) return null
+  const query = uptoCursor.slice(at + 1)
+  if (/\s/.test(query)) return null
+  return { atIndex: at, query }
+}
 
 export default function PostComposer({
   isAdmin = false,
@@ -46,6 +68,17 @@ export default function PostComposer({
   // happened). See handleSubmit's try/finally below.
   const [postError, setPostError] = useState<string | null>(null)
   const [isAnnouncement, setIsAnnouncement] = useState(false)
+  // @mention autocomplete (Satish 2026-08-04, approved mockup 2026-08-
+  // 04) - mentionTrigger is non-null only while the cursor sits right
+  // after an in-progress "@query" (see findMentionTrigger). Candidates
+  // are fetched once per space and cached rather than re-fetched on
+  // every keystroke - member counts are small enough (see
+  // getMentionableMembers) that a single space-scoped list can just be
+  // filtered client-side as the query narrows.
+  const [mentionTrigger, setMentionTrigger] = useState<{ atIndex: number; query: string } | null>(null)
+  const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[] | null>(null)
+  const [mentionCandidatesSpace, setMentionCandidatesSpace] = useState<Space | null>(null)
+  const [mentionLoading, setMentionLoading] = useState(false)
   const [lessonId, setLessonId] = useState(initialLessonId)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -90,6 +123,68 @@ export default function PostComposer({
     textarea.style.height = `${textarea.scrollHeight}px`
   }, [content])
 
+  // Fetches the space-scoped candidate list the moment "@" is first
+  // typed, not on mount - most posts never use a mention at all, so
+  // there's no reason to hit the server for every composer render.
+  // Cached per space (mentionCandidatesSpace) rather than re-fetched on
+  // every "@" - switching space tabs (postSpace changes) invalidates
+  // the cache via the effect below.
+  useEffect(() => {
+    if (!mentionTrigger || !postSpace) return
+    if (mentionCandidatesSpace === postSpace) return
+    let cancelled = false
+    setMentionLoading(true)
+    getMentionableMembers(postSpace)
+      .then((members) => {
+        if (cancelled) return
+        setMentionCandidates(members)
+        setMentionCandidatesSpace(postSpace)
+      })
+      .finally(() => {
+        if (!cancelled) setMentionLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mentionTrigger, postSpace, mentionCandidatesSpace])
+
+  // Switching which space this composer posts into (the tab above it)
+  // invalidates the cached candidate list and closes any open trigger -
+  // the previous space's names are wrong for the new one.
+  useEffect(() => {
+    setMentionCandidates(null)
+    setMentionCandidatesSpace(null)
+    setMentionTrigger(null)
+  }, [postSpace])
+
+  const mentionMatches = (mentionCandidates || [])
+    .filter((m) => m.fullName.toLowerCase().includes((mentionTrigger?.query || '').toLowerCase()))
+    .slice(0, 6)
+
+  function handleContentChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const value = e.target.value
+    setContent(value)
+    setMentionTrigger(findMentionTrigger(value, e.target.selectionStart))
+  }
+
+  function selectMention(member: MentionCandidate) {
+    if (!mentionTrigger) return
+    const cursor = textareaRef.current?.selectionStart ?? content.length
+    const marker = `@[${member.fullName}](${member.id}) `
+    const next = content.slice(0, mentionTrigger.atIndex) + marker + content.slice(cursor)
+    setContent(next)
+    setMentionTrigger(null)
+    // Put the caret right after the inserted marker+space, not wherever
+    // it happened to land from the raw value swap above.
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      const pos = mentionTrigger.atIndex + marker.length
+      textarea.focus()
+      textarea.setSelectionRange(pos, pos)
+    })
+  }
+
   // Cmd/Ctrl+B and Cmd/Ctrl+I - lightweight markdown-style formatting
   // (**bold**, _italic_) rather than a full rich-text editor, since
   // content is still stored and posted as plain text. FormattedPostText
@@ -109,6 +204,7 @@ export default function PostComposer({
     setIsAnnouncement(false)
     setLessonId(null)
     setPostError(null)
+    setMentionTrigger(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -205,14 +301,60 @@ export default function PostComposer({
           </button>
         </div>
       )}
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Share an update, win, or question with the group..."
-        className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500 min-h-[96px] max-h-[320px] overflow-y-auto"
-      />
+      <div className="relative">
+        <textarea
+          ref={textareaRef}
+          value={content}
+          onChange={handleContentChange}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && mentionTrigger) {
+              setMentionTrigger(null)
+              return
+            }
+            handleKeyDown(e)
+          }}
+          placeholder="Share an update, win, or question with the group... (type @ to mention someone)"
+          className="w-full resize-none border-0 focus:ring-0 text-sm p-2 outline-none bg-transparent text-white placeholder-zinc-500 min-h-[96px] max-h-[320px] overflow-y-auto"
+        />
+
+        {mentionTrigger && (
+          <div className="absolute z-10 top-full left-2 right-2 -mt-1 rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden shadow-lg">
+            <p className="text-[10px] uppercase tracking-wide text-zinc-500 px-3 pt-2 pb-1">
+              {SPACE_LABEL[postSpace]}
+            </p>
+            {mentionLoading && !mentionCandidates ? (
+              <p className="text-xs text-zinc-500 px-3 pb-3">Loading members...</p>
+            ) : mentionMatches.length === 0 ? (
+              <p className="text-xs text-zinc-500 px-3 pb-3">No matches.</p>
+            ) : (
+              mentionMatches.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onMouseDown={(e) => {
+                    // mousedown (not click) fires before the textarea's
+                    // own blur, so selectMention can still read/restore
+                    // the cursor position reliably.
+                    e.preventDefault()
+                    selectMention(m)
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-zinc-800 transition border-t border-zinc-800 first:border-t-0"
+                >
+                  <span className="w-6 h-6 rounded-full bg-zinc-700 text-zinc-200 flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {m.fullName
+                      .split(' ')
+                      .map((p) => p[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase()}
+                  </span>
+                  <span className="text-xs text-white truncate">{m.fullName}</span>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
       {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
       {postError && <p className="text-xs text-red-400 px-2 mt-1">{postError}</p>}
       {isAdmin && (

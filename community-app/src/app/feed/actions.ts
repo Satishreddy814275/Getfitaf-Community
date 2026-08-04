@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { FEED_PAGE_SIZE, FEED_POST_SELECT, SEARCH_RESULT_LIMIT } from '@/lib/feedPosts'
 import { sendPushToProfile } from '@/lib/push'
+import { extractMentionedIds, stripMentionMarkers, type MentionCandidate } from '@/lib/mentions'
 import type { Post, Space } from '@/types'
 
 // Infinite-scroll continuation of the first page feed/page.tsx already
@@ -187,11 +188,12 @@ export async function createPost(formData: FormData) {
       .eq('id', user.id)
       .single()
 
+    const postId = inserted.id
+    const notifySpace = space as Space
+    const authorId = user.id
+    const authorName = authorProfile?.full_name || 'GetFit AF'
+
     if (authorProfile?.is_admin) {
-      const postId = inserted.id
-      const notifySpace = space as Space
-      const authorId = user.id
-      const authorName = authorProfile.full_name || 'GetFit AF'
       after(() =>
         notifyAdminPost({
           postId,
@@ -202,7 +204,53 @@ export async function createPost(formData: FormData) {
         })
       )
     }
+
+    // @mentions (Satish 2026-08-04) - independent of the admin-post
+    // broadcast above, so a regular member's post can still notify
+    // whoever they tagged even though only admin posts get the wider
+    // push. Runs whether or not the author is an admin.
+    const mentionedIds = extractMentionedIds(content)
+    if (mentionedIds.length > 0) {
+      after(() =>
+        notifyMentions({
+          postId,
+          space: notifySpace,
+          authorId,
+          authorName,
+          content,
+          mentionedIds,
+        })
+      )
+    }
   }
+}
+
+// Who actually has access to a given space - low_ticket via a real
+// space_memberships row, premium via profiles.approved (that space has
+// never used space_memberships rows, see notifyAdminPost's original
+// comment below) - plus every admin/coach regardless of their own
+// membership, same "is_admin sees everything" rule every other
+// tier-gated feature in this app already follows (Workouts, Lessons,
+// Programs all check isAdmin || ...). Shared by the admin-post push
+// fanout, the @mention push fanout, and the mention autocomplete's
+// candidate list (getMentionableMembers) below - one definition of
+// "who's actually reachable in this space" instead of three that could
+// drift apart.
+async function getSpaceAudienceIds(
+  admin: ReturnType<typeof createAdminClient>,
+  space: Space
+): Promise<string[]> {
+  const spaceIds =
+    space === 'low_ticket'
+      ? (
+          await admin.from('space_memberships').select('profile_id').eq('space', 'low_ticket')
+        ).data?.map((r) => r.profile_id) || []
+      : (await admin.from('profiles').select('id').eq('approved', true)).data?.map((r) => r.id) || []
+
+  const { data: adminProfiles } = await admin.from('profiles').select('id').eq('is_admin', true)
+  const adminIds = adminProfiles?.map((r) => r.id) || []
+
+  return Array.from(new Set([...spaceIds, ...adminIds]))
 }
 
 // Push fanout for an admin's post - see the after() call above for why
@@ -213,6 +261,14 @@ export async function createPost(formData: FormData) {
 // per-space-audience logic feed/page.tsx uses for availableSpaces, just
 // resolved to profile ids here via the admin client instead of a
 // single signed-in user's own RLS-scoped view.
+//
+// Real bug fixed here 2026-08-03, not hypothetical: since the beta
+// launched every admin post has gone to the low_ticket space, and two
+// admins (Rishita, Naresh - both approved/premium, neither has a
+// low_ticket membership row) never once appeared in the recipient list,
+// so they never received a single push despite having notifications
+// enabled - the is_admin-always-included rule in getSpaceAudienceIds
+// above is what fixed that.
 async function notifyAdminPost({
   postId,
   space,
@@ -227,35 +283,19 @@ async function notifyAdminPost({
   content: string | null
 }) {
   const admin = createAdminClient()
-
-  const spaceRecipientIds =
-    space === 'low_ticket'
-      ? (
-          await admin.from('space_memberships').select('profile_id').eq('space', 'low_ticket')
-        ).data?.map((r) => r.profile_id) || []
-      : (await admin.from('profiles').select('id').eq('approved', true)).data?.map((r) => r.id) || []
-
-  // Admins/coaches always get every admin post's push regardless of
-  // their own space membership - every other tier-gated feature in
-  // this app already treats is_admin as "sees everything" (Workouts,
-  // Lessons, Programs all check isAdmin || ...), this was the one place
-  // that didn't. Real bug, not hypothetical: since the beta launched
-  // every admin post has gone to the low_ticket space, and two admins
-  // (Rishita, Naresh - both approved/premium, neither has a low_ticket
-  // membership row) never once appeared in spaceRecipientIds, so they
-  // never received a single push despite having notifications enabled -
-  // caught and confirmed 2026-08-03.
-  const { data: adminProfiles } = await admin.from('profiles').select('id').eq('is_admin', true)
-  const adminIds = adminProfiles?.map((r) => r.id) || []
-
-  const recipientIds = Array.from(new Set([...spaceRecipientIds, ...adminIds]))
+  const recipientIds = await getSpaceAudienceIds(admin, space)
   const targets = recipientIds.filter((id) => id !== authorId)
   if (targets.length === 0) return
 
   // Same first-line/strip-markdown preview style already used for the
   // pinned-post banner (FeedTabs.tsx) - a push notification's body has
-  // even less room than that banner does.
-  const preview = (content || '').split('\n')[0].replace(/\*\*/g, '').slice(0, 120)
+  // even less room than that banner does. stripMentionMarkers first so
+  // a post that also happens to @mention someone doesn't leak the raw
+  // @[Name](id) marker syntax into this preview.
+  const preview = stripMentionMarkers(content || '')
+    .split('\n')[0]
+    .replace(/\*\*/g, '')
+    .slice(0, 120)
 
   await Promise.all(
     targets.map((profileId) =>
@@ -266,6 +306,121 @@ async function notifyAdminPost({
       })
     )
   )
+}
+
+// Push + notification-bell fanout for anyone @mentioned in a post
+// (Satish 2026-08-04). mentionedIds comes straight from parsing the
+// post's own content (extractMentionedIds) - deliberately re-validated
+// here against getSpaceAudienceIds rather than trusted as-is, since the
+// composer's own autocomplete only offers same-space names but nothing
+// stops a crafted request from submitting a marker for someone outside
+// that space. Anyone not in the actual space audience is silently
+// dropped rather than notified - same "just don't notify" failure mode
+// as everywhere else notifications are best-effort in this codebase.
+async function notifyMentions({
+  postId,
+  space,
+  authorId,
+  authorName,
+  content,
+  mentionedIds,
+}: {
+  postId: string
+  space: Space
+  authorId: string
+  authorName: string
+  content: string | null
+  mentionedIds: string[]
+}) {
+  const admin = createAdminClient()
+  const audienceIds = new Set(await getSpaceAudienceIds(admin, space))
+  const targets = mentionedIds.filter((id) => id !== authorId && audienceIds.has(id))
+  if (targets.length === 0) return
+
+  await admin.from('notifications').insert(
+    targets.map((recipientId) => ({
+      recipient_id: recipientId,
+      actor_id: authorId,
+      type: 'mention',
+      post_id: postId,
+      comment_id: null,
+    }))
+  )
+
+  const preview = stripMentionMarkers(content || '')
+    .split('\n')[0]
+    .replace(/\*\*/g, '')
+    .slice(0, 120)
+
+  await Promise.all(
+    targets.map((profileId) =>
+      sendPushToProfile(profileId, {
+        title: `${authorName} mentioned you`,
+        body: preview || 'Tap to see the post.',
+        url: `/feed?post=${postId}`,
+      })
+    )
+  )
+}
+
+// Space-scoped candidate list for the composer's @ autocomplete
+// (Satish 2026-08-04's explicit rule: low-ticket members can only tag
+// low-ticket members, premium members can only tag premium members,
+// admins get the audience for whichever space's page/post they're
+// actually on - not a global everyone list). Uses the admin client
+// since space_memberships' own RLS only lets a regular member read
+// their OWN row (space_memberships_select_own), not the full
+// membership list this needs - but the caller's own right to see THIS
+// space's list is still checked first via the normal RLS-scoped
+// client, so a low-ticket member can't call this with space:'premium'
+// and get premium names back just because profiles themselves are
+// publicly readable.
+export async function getMentionableMembers(space: Space): Promise<MentionCandidate[]> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: callerProfile } = await supabase
+    .from('profiles')
+    .select('is_admin, approved')
+    .eq('id', user.id)
+    .single()
+
+  if (!callerProfile?.is_admin) {
+    // Mirrors getSpaceAudienceIds' own definition of "belongs to this
+    // space" exactly - premium has never used space_memberships rows
+    // at all (see notifyAdminPost's original audience query), only
+    // profiles.approved, so checking space_memberships for a
+    // space:'premium' caller would incorrectly deny every real premium
+    // member.
+    const belongsToSpace =
+      space === 'low_ticket'
+        ? !!(
+            await supabase
+              .from('space_memberships')
+              .select('space')
+              .eq('profile_id', user.id)
+              .eq('space', 'low_ticket')
+              .maybeSingle()
+          ).data
+        : !!callerProfile?.approved
+    if (!belongsToSpace) return []
+  }
+
+  const admin = createAdminClient()
+  const audienceIds = (await getSpaceAudienceIds(admin, space)).filter((id) => id !== user.id)
+  if (audienceIds.length === 0) return []
+
+  const { data: profiles } = await admin
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .in('id', audienceIds)
+
+  return (profiles || [])
+    .map((p) => ({ id: p.id, fullName: p.full_name || 'Member', avatarUrl: p.avatar_url }))
+    .sort((a, b) => a.fullName.localeCompare(b.fullName))
 }
 
 export async function editPost(postId: string, formData: FormData) {

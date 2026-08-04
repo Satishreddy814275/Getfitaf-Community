@@ -12,6 +12,7 @@ const LABELS: Record<NotificationType, string> = {
   post_comment: 'commented on your post',
   comment_reply: 'replied to your comment',
   comment_like: 'liked your comment',
+  mention: 'mentioned you in a post',
 }
 
 export default function NotificationBell({

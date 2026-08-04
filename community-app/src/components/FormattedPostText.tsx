@@ -1,12 +1,16 @@
+import { parseMentionSegments } from '@/lib/mentions'
+
 // Turns the **bold**/_italic_ markers PostComposer's Cmd/Ctrl+B and
-// Cmd/Ctrl+I shortcuts insert back into real <strong>/<em> elements.
-// Deliberately not dangerouslySetInnerHTML - this builds actual React
-// elements from parsed segments, so there's no HTML string being
-// injected and no sanitization to get right. Posts only for now (not
-// comments - see project_community_guidelines-adjacent discussion),
-// since comments don't even preserve whitespace today.
+// Cmd/Ctrl+I shortcuts insert, and @[Name](id) mention markers
+// PostComposer's @ autocomplete inserts (Satish 2026-08-04), back into
+// real <strong>/<em>/highlighted elements. Deliberately not
+// dangerouslySetInnerHTML - this builds actual React elements from
+// parsed segments, so there's no HTML string being injected and no
+// sanitization to get right. Posts only for now (not comments - see
+// project_community_guidelines-adjacent discussion), since comments
+// don't even preserve whitespace today.
 interface Segment {
-  type: 'text' | 'bold' | 'italic'
+  type: 'text' | 'bold' | 'italic' | 'mention'
   content: string
 }
 
@@ -33,10 +37,27 @@ function parseFormattedText(text: string): Segment[] {
   return segments
 }
 
+// Mentions are parsed first (they can't nest inside bold/italic - the
+// composer only ever inserts a mention marker as its own token), then
+// each resulting plain-text run gets the existing bold/italic pass
+// applied on top, and the two segment lists are flattened into one.
+function parseSegments(text: string): Segment[] {
+  const mentionSegments = parseMentionSegments(text)
+  const out: Segment[] = []
+  for (const seg of mentionSegments) {
+    if (seg.type === 'mention') {
+      out.push({ type: 'mention', content: seg.name })
+    } else {
+      out.push(...parseFormattedText(seg.content))
+    }
+  }
+  return out
+}
+
 export default function FormattedPostText({ text }: { text: string }) {
   return (
     <>
-      {parseFormattedText(text).map((seg, i) => {
+      {parseSegments(text).map((seg, i) => {
         // Explicit font-bold/italic classes rather than relying on the
         // browser's bare <strong>/<em> default weight - against
         // Manrope (loaded at 400/500/600/700/800, see layout.tsx) the
@@ -53,6 +74,11 @@ export default function FormattedPostText({ text }: { text: string }) {
           <em key={i} className="italic">
             {seg.content}
           </em>
+        )
+        if (seg.type === 'mention') return (
+          <span key={i} className="font-semibold text-orange-400">
+            @{seg.content}
+          </span>
         )
         return <span key={i}>{seg.content}</span>
       })}

@@ -29,7 +29,7 @@ export interface Like {
   profiles?: Profile | null
 }
 
-export type NotificationType = 'post_like' | 'post_comment' | 'comment_reply' | 'comment_like'
+export type NotificationType = 'post_like' | 'post_comment' | 'comment_reply' | 'comment_like' | 'mention'
 
 export interface Notification {
   id: string
