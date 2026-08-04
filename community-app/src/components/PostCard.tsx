@@ -29,6 +29,14 @@ export default function PostCard({
   isAdmin?: boolean
 }) {
   const [commentText, setCommentText] = useState('')
+  // Guards against double-submit: with no disabled state here, a
+  // double Enter or an Enter-then-click-Send before the first request
+  // resolved fired addComment twice with the same unclear text,
+  // producing two identical comment rows on the same click (Satish
+  // 2026-08-04). commentText only clears once the request resolves,
+  // so this flag is what actually blocks the second fire in the
+  // meantime.
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
   // Opened via a notification pointing at a specific comment/reply —
   // start with comments already expanded instead of landing on the
   // post and still requiring a click to see what the notification was
@@ -55,11 +63,16 @@ export default function PostCard({
 
   async function handleComment(e: React.FormEvent) {
     e.preventDefault()
-    if (!commentText.trim()) return
+    if (!commentText.trim() || commentSubmitting) return
+    setCommentSubmitting(true)
     const formData = new FormData()
     formData.set('content', commentText)
-    await addComment(post.id, formData)
-    setCommentText('')
+    try {
+      await addComment(post.id, formData)
+      setCommentText('')
+    } finally {
+      setCommentSubmitting(false)
+    }
   }
 
   function startEditing() {
@@ -258,10 +271,15 @@ export default function PostCard({
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 placeholder="Write a comment..."
-                className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
+                disabled={commentSubmitting}
+                className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
               />
-              <button type="submit" className="text-sm font-medium text-orange-500 hover:text-orange-400">
-                Send
+              <button
+                type="submit"
+                disabled={commentSubmitting}
+                className="text-sm font-medium text-orange-500 hover:text-orange-400 disabled:opacity-50"
+              >
+                {commentSubmitting ? '...' : 'Send'}
               </button>
             </form>
           </div>

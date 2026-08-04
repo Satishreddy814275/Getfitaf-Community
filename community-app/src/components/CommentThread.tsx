@@ -101,6 +101,10 @@ function CommentRow({
 }) {
   const [replying, setReplying] = useState(false)
   const [replyText, setReplyText] = useState('')
+  // Same double-submit guard as PostCard's top-level comment form
+  // (Satish 2026-08-04) - without it a double Enter/click before the
+  // first request resolved produced two identical reply rows.
+  const [replySubmitting, setReplySubmitting] = useState(false)
   const [showLikers, setShowLikers] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
 
@@ -125,19 +129,24 @@ function CommentRow({
 
   async function handleReply(e: React.FormEvent) {
     e.preventDefault()
-    if (!replyText.trim()) return
+    if (!replyText.trim() || replySubmitting) return
     const content = isReply
       ? `@${comment.profiles?.full_name || 'Member'} ${replyText}`
       : replyText
     const formData = new FormData()
     formData.set('content', content)
-    // parent_comment_id is always the exact row that was replied to
-    // (even if that's itself a reply) — this keeps notification
-    // recipients accurate (whoever you actually replied to gets
-    // pinged) even though the rendering flattens everything visually.
-    await addComment(postId, formData, comment.id)
-    setReplyText('')
-    setReplying(false)
+    setReplySubmitting(true)
+    try {
+      // parent_comment_id is always the exact row that was replied to
+      // (even if that's itself a reply) — this keeps notification
+      // recipients accurate (whoever you actually replied to gets
+      // pinged) even though the rendering flattens everything visually.
+      await addComment(postId, formData, comment.id)
+      setReplyText('')
+      setReplying(false)
+    } finally {
+      setReplySubmitting(false)
+    }
   }
 
   return (
