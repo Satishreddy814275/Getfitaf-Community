@@ -5,7 +5,31 @@ import { addComment, toggleCommentLike } from '@/app/feed/actions'
 import Avatar from './Avatar'
 import LikeButton from './LikeButton'
 import LikersModal from './LikersModal'
-import type { Comment } from '@/types'
+import MentionDropdown from './MentionDropdown'
+import { useMentionAutocomplete } from '@/lib/useMentionAutocomplete'
+import { parseMentionSegments } from '@/lib/mentions'
+import type { Comment, Space } from '@/types'
+
+// Comments never picked up FormattedPostText's **bold**/_italic_
+// support (they don't preserve whitespace the same way posts do), so
+// this is a lighter-weight renderer - mentions only, straight off
+// parseMentionSegments, same highlighted-span treatment as
+// FormattedPostText uses for posts.
+function CommentText({ text }: { text: string }) {
+  return (
+    <>
+      {parseMentionSegments(text).map((seg, i) =>
+        seg.type === 'mention' ? (
+          <span key={i} className="font-semibold text-orange-400">
+            @{seg.name}
+          </span>
+        ) : (
+          <span key={i}>{seg.content}</span>
+        )
+      )}
+    </>
+  )
+}
 
 // Renders comments as a two-tier thread: top-level comments, with
 // every reply underneath them at one single indent level — no matter
@@ -18,11 +42,17 @@ import type { Comment } from '@/types'
 // people reply to a specific reply.
 export default function CommentThread({
   postId,
+  postSpace,
   comments,
   currentUserId,
   highlightCommentId,
 }: {
   postId: string
+  // Threaded down from PostCard's post.space (Satish 2026-08-04) -
+  // scopes the reply form's @mention candidates to whoever's actually
+  // in this post's space, same rule the composer and top-level comment
+  // form already follow.
+  postSpace: Space
   comments: Comment[]
   currentUserId: string
   highlightCommentId?: string | null
@@ -61,6 +91,7 @@ export default function CommentThread({
         <div key={comment.id}>
           <CommentRow
             postId={postId}
+            postSpace={postSpace}
             comment={comment}
             topLevelId={comment.id}
             currentUserId={currentUserId}
@@ -72,6 +103,7 @@ export default function CommentThread({
                 <CommentRow
                   key={reply.id}
                   postId={postId}
+                  postSpace={postSpace}
                   comment={reply}
                   topLevelId={comment.id}
                   currentUserId={currentUserId}
@@ -88,12 +120,14 @@ export default function CommentThread({
 
 function CommentRow({
   postId,
+  postSpace,
   comment,
   topLevelId,
   currentUserId,
   highlightId,
 }: {
   postId: string
+  postSpace: Space
   comment: Comment
   topLevelId: string
   currentUserId: string
@@ -107,6 +141,16 @@ function CommentRow({
   const [replySubmitting, setReplySubmitting] = useState(false)
   const [showLikers, setShowLikers] = useState(false)
   const rowRef = useRef<HTMLDivElement>(null)
+  const replyInputRef = useRef<HTMLInputElement>(null)
+  // @mention autocomplete on replies (Satish 2026-08-04) - opt-in only,
+  // separate from the plain-text @prefix below (that's cosmetic
+  // disambiguation for reply-to-a-reply, not a real mention marker).
+  const replyMention = useMentionAutocomplete({
+    space: postSpace,
+    content: replyText,
+    setContent: setReplyText,
+    inputRef: replyInputRef,
+  })
 
   const liked = comment.comment_likes.some((l) => l.user_id === currentUserId)
   const likeCount = comment.comment_likes.length
@@ -144,6 +188,7 @@ function CommentRow({
       await addComment(postId, formData, comment.id)
       setReplyText('')
       setReplying(false)
+      replyMention.reset()
     } finally {
       setReplySubmitting(false)
     }
@@ -165,7 +210,7 @@ function CommentRow({
             <span className="font-semibold text-white">
               {comment.profiles?.full_name || 'Member'}:{' '}
             </span>
-            {comment.content}
+            <CommentText text={comment.content} />
           </p>
           <div className="flex items-center gap-3 mt-1">
             <LikeButton
@@ -192,13 +237,28 @@ function CommentRow({
 
       {replying && (
         <form onSubmit={handleReply} className="flex gap-2 mt-2 ml-8">
-          <input
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder={`Reply to ${comment.profiles?.full_name || 'this comment'}...`}
-            className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
-            autoFocus
-          />
+          <div className="relative flex-1">
+            <input
+              ref={replyInputRef}
+              value={replyText}
+              onChange={replyMention.handleChange}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape' && replyMention.handleKeyDown(e)) return
+              }}
+              placeholder={`Reply to ${comment.profiles?.full_name || 'this comment'}... (type @ to mention someone)`}
+              className="w-full text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition"
+              autoFocus
+            />
+            {replyMention.trigger && (
+              <MentionDropdown
+                space={postSpace}
+                loading={replyMention.loading}
+                hasCandidates={replyMention.matches.length > 0}
+                matches={replyMention.matches}
+                onSelect={replyMention.select}
+              />
+            )}
+          </div>
           <button type="submit" className="text-sm font-medium text-orange-500 hover:text-orange-400">
             Send
           </button>

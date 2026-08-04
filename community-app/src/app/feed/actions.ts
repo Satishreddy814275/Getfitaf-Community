@@ -317,8 +317,14 @@ async function notifyAdminPost({
 // that space. Anyone not in the actual space audience is silently
 // dropped rather than notified - same "just don't notify" failure mode
 // as everywhere else notifications are best-effort in this codebase.
+// commentId is null for a post mention, set for a comment/reply mention
+// (Satish 2026-08-04: extended mentions to comments/replies too) - the
+// notification row and the push deep-link both need to point at the
+// actual comment, not just the post, same as comment_reply/post_comment
+// already do (see NotificationBell's href construction).
 async function notifyMentions({
   postId,
+  commentId,
   space,
   authorId,
   authorName,
@@ -326,6 +332,7 @@ async function notifyMentions({
   mentionedIds,
 }: {
   postId: string
+  commentId?: string | null
   space: Space
   authorId: string
   authorName: string
@@ -343,7 +350,7 @@ async function notifyMentions({
       actor_id: authorId,
       type: 'mention',
       post_id: postId,
-      comment_id: null,
+      comment_id: commentId || null,
     }))
   )
 
@@ -357,7 +364,7 @@ async function notifyMentions({
       sendPushToProfile(profileId, {
         title: `${authorName} mentioned you`,
         body: preview || 'Tap to see the post.',
-        url: `/feed?post=${postId}`,
+        url: commentId ? `/feed?post=${postId}&comment=${commentId}` : `/feed?post=${postId}`,
       })
     )
   )
@@ -537,6 +544,39 @@ export async function addComment(
           post_id: postId,
           comment_id: comment.id,
         })
+      }
+    }
+
+    // @mentions in comments/replies (Satish 2026-08-04: "I think I'd
+    // want this for comments too") - opt-in only, never auto-inserted
+    // on reply (see CommentThread's plain-text @prefix above, which is
+    // cosmetic disambiguation only, not a real mention - the reply
+    // notifications above already cover that person). content's space
+    // is looked up here from the post itself rather than trusted from
+    // the client, same reasoning as getMentionableMembers' own
+    // caller-authorization check - a crafted request could otherwise
+    // claim any space it wants.
+    const mentionedIds = extractMentionedIds(content)
+    if (mentionedIds.length > 0) {
+      const [{ data: mentionPost }, { data: authorProfile }] = await Promise.all([
+        supabase.from('posts').select('space').eq('id', postId).single(),
+        supabase.from('profiles').select('full_name').eq('id', user.id).single(),
+      ])
+      const mentionSpace = mentionPost?.space as Space | undefined
+      if (mentionSpace) {
+        const commentId = comment.id
+        const authorName = authorProfile?.full_name || 'Member'
+        after(() =>
+          notifyMentions({
+            postId,
+            commentId,
+            space: mentionSpace,
+            authorId: user.id,
+            authorName,
+            content,
+            mentionedIds,
+          })
+        )
       }
     }
   }

@@ -9,7 +9,9 @@ import LikeButton from './LikeButton'
 import LikeSummary from './LikeSummary'
 import CommentThread from './CommentThread'
 import FormattedPostText from './FormattedPostText'
+import MentionDropdown from './MentionDropdown'
 import { useMarkdownShortcuts } from '@/lib/useMarkdownShortcuts'
+import { useMentionAutocomplete } from '@/lib/useMentionAutocomplete'
 import type { Post } from '@/types'
 
 export default function PostCard({
@@ -37,6 +39,17 @@ export default function PostCard({
   // so this flag is what actually blocks the second fire in the
   // meantime.
   const [commentSubmitting, setCommentSubmitting] = useState(false)
+  const commentInputRef = useRef<HTMLInputElement>(null)
+  // @mention autocomplete on top-level comments (Satish 2026-08-04 -
+  // "I think I'd want this for comments too"), same shared hook the
+  // composer uses. post.space scopes candidates to whoever's actually
+  // in this post's space - see useMentionAutocomplete/getMentionableMembers.
+  const commentMention = useMentionAutocomplete({
+    space: post.space,
+    content: commentText,
+    setContent: setCommentText,
+    inputRef: commentInputRef,
+  })
   // Opened via a notification pointing at a specific comment/reply —
   // start with comments already expanded instead of landing on the
   // post and still requiring a click to see what the notification was
@@ -70,6 +83,7 @@ export default function PostCard({
     try {
       await addComment(post.id, formData)
       setCommentText('')
+      commentMention.reset()
     } finally {
       setCommentSubmitting(false)
     }
@@ -262,18 +276,34 @@ export default function PostCard({
           <div className="space-y-2">
             <CommentThread
               postId={post.id}
+              postSpace={post.space}
               comments={post.comments}
               currentUserId={currentUserId}
               highlightCommentId={initialCommentId}
             />
             <form onSubmit={handleComment} className="flex gap-2 mt-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Write a comment..."
-                disabled={commentSubmitting}
-                className="flex-1 text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
-              />
+              <div className="relative flex-1">
+                <input
+                  ref={commentInputRef}
+                  value={commentText}
+                  onChange={commentMention.handleChange}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape' && commentMention.handleKeyDown(e)) return
+                  }}
+                  placeholder="Write a comment... (type @ to mention someone)"
+                  disabled={commentSubmitting}
+                  className="w-full text-sm bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-600 focus:outline-none focus:border-orange-500 transition disabled:opacity-50"
+                />
+                {commentMention.trigger && (
+                  <MentionDropdown
+                    space={post.space}
+                    loading={commentMention.loading}
+                    hasCandidates={commentMention.matches.length > 0}
+                    matches={commentMention.matches}
+                    onSelect={commentMention.select}
+                  />
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={commentSubmitting}
