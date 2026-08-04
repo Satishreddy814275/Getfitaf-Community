@@ -118,8 +118,21 @@ export default async function ExerciseLibraryPage() {
           done.
         </p>
       </div>
-      <ExerciseLibrary exercises={exercises} isGuest={!user} />
-      <ExerciseRequestSection unshotExercises={unshotExercises} initialTopRequests={topRequests} />
+      {/* Persistent sidebar on md+ (Satish's call 2026-08-03 - not a
+          toggle/tab, it just sits next to the grid the whole time),
+          collapses to a compact bar on narrow screens where there's no
+          room for a second column. order-first/md:order-last puts that
+          compact bar ABOVE the grid on mobile (not buried below 100+
+          exercise cards, the original complaint) while still landing
+          as the right-hand column on desktop. */}
+      <div className="flex flex-col md:grid md:grid-cols-[1fr_260px] md:gap-6 md:items-start">
+        <ExerciseRequestSection
+          unshotExercises={unshotExercises}
+          initialTopRequests={topRequests}
+          className="order-first md:order-last mb-4 md:mb-0"
+        />
+        <ExerciseLibrary exercises={exercises} isGuest={!user} />
+      </div>
     </div>
   )
 }
