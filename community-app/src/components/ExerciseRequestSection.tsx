@@ -163,13 +163,20 @@ export default function ExerciseRequestSection({
     return (
       <div
         key={r.id}
-        className="flex items-center gap-2 py-2 border-b border-zinc-700/70 last:border-0"
+        className="flex items-start gap-2 py-2 border-b border-zinc-700/70 last:border-0"
       >
-        <span className="w-5 h-5 rounded-full bg-zinc-800 text-zinc-300 flex items-center justify-center text-[11px] font-bold shrink-0">
+        <span className="w-5 h-5 rounded-full bg-zinc-800 text-zinc-300 flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5">
           {index + 1}
         </span>
-        <span className="flex-1 min-w-0 truncate text-xs text-zinc-100">{r.exerciseName}</span>
-        <span className="text-[11px] text-zinc-500 shrink-0">{r.requestCount}</span>
+        {/* line-clamp-2 instead of truncate - a single-line ellipsis
+            was cutting off longer exercise names badly enough that
+            Satish couldn't tell what he was even looking at
+            (2026-08-03). Row just gets taller for a two-line name;
+            items-start above keeps the number badge and count/button
+            pinned to the top instead of vertically centering against
+            a taller block. */}
+        <span className="flex-1 min-w-0 text-xs text-zinc-100 line-clamp-2">{r.exerciseName}</span>
+        <span className="text-[11px] text-zinc-500 shrink-0 mt-0.5">{r.requestCount}</span>
         <button
           type="button"
           disabled={isSubmitted || isPending}
@@ -187,11 +194,13 @@ export default function ExerciseRequestSection({
     )
   }
 
+  // Request box comes BEFORE the "Most wanted" list - Satish's call
+  // 2026-08-03: with the list showing first, the actual way to
+  // request a new exercise got pushed down below it, so the primary
+  // action read as an afterthought under a list of other people's
+  // requests instead of the other way around.
   const listAndForm = (
     <>
-      {topRequests.length > 0 && (
-        <div className="mb-3">{topRequests.map((r, i) => requestRow(r, i))}</div>
-      )}
       <form onSubmit={handleSubmit} className="relative">
         <input
           type="text"
@@ -231,6 +240,15 @@ export default function ExerciseRequestSection({
 
       {feedback && <p className="text-orange-400 text-[11px] mt-2">{feedback}</p>}
       {error && <p className="text-red-400 text-[11px] mt-2">{error}</p>}
+
+      {topRequests.length > 0 && (
+        <div className="mt-4">
+          <p className="text-zinc-500 text-[11px] font-semibold uppercase tracking-wide mb-1">
+            Most wanted
+          </p>
+          {topRequests.map((r, i) => requestRow(r, i))}
+        </div>
+      )}
     </>
   )
 
@@ -240,8 +258,8 @@ export default function ExerciseRequestSection({
           the grid - no toggle. Sticky so it stays in view while
           scrolling through the grid. */}
       <div className="hidden md:block sticky top-6 rounded-xl border border-zinc-700 bg-zinc-900 p-4">
-        <p className="text-white font-semibold text-sm">Most wanted</p>
-        <p className="text-zinc-500 text-[11px] mt-0.5 mb-3">Can&apos;t find a video? Ask below.</p>
+        <p className="text-white font-semibold text-sm">Can&apos;t find a video?</p>
+        <p className="text-zinc-500 text-[11px] mt-0.5 mb-3">Request it below.</p>
         {listAndForm}
       </div>
 
