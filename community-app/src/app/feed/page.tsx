@@ -5,12 +5,13 @@ import FeedTabs from '@/components/FeedTabs'
 import InstallAppBanner from '@/components/InstallAppBanner'
 import PushNotificationsBanner from '@/components/PushNotificationsBanner'
 import LeaderboardList from '@/components/LeaderboardList'
+import WorkoutLeaderboardList from '@/components/WorkoutLeaderboardList'
 import WorkoutBuilderCard from '@/components/WorkoutBuilderCard'
 import Tour from '@/components/Tour'
 import RulesGate from '@/components/RulesGate'
 import { getCommunityGuidelines } from '@/lib/communityGuidelines'
 import { FEED_PAGE_SIZE, FEED_POST_SELECT } from '@/lib/feedPosts'
-import type { Post, LeaderboardRow, Space } from '@/types'
+import type { Post, LeaderboardRow, WorkoutLeaderboardRow, Space } from '@/types'
 
 export default async function FeedPage({
   searchParams,
@@ -62,7 +63,7 @@ export default async function FeedPage({
   // there's no reason to block one on the other.
   const guidelinesPromise = getCommunityGuidelines()
 
-  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, enrollmentRes] =
+  const [profileRes, membershipRes, postsRes, streakRes, leaderboardRes, workoutLeaderboardRes, enrollmentRes] =
     await Promise.all([
       supabase
         .from('profiles')
@@ -97,6 +98,12 @@ export default async function FeedPage({
         .range(0, FEED_PAGE_SIZE - 1),
       supabase.rpc('get_user_streak', { uid: user.id }),
       supabase.rpc('get_community_leaderboard'),
+      // Workouts-completed board (Satish 2026-08-12) - shown first in
+      // the desktop sidebar and is the sole mobile teaser line now, per
+      // his explicit ordering ask for this page specifically (the
+      // /leaderboard page and Lessons tab both still lead with
+      // Community - see LeaderboardTabs).
+      supabase.rpc('get_workout_leaderboard'),
       // program_enrollments has proper RLS (owner-scoped), unlike the
       // old workout_intakes check this replaced - no admin client
       // needed here anymore.
@@ -163,6 +170,8 @@ export default async function FeedPage({
   const inTopFive = topFive.some((r) => r.user_id === user.id)
   const fifthPlaceScore = topFive[4]?.score ?? null
 
+  const topFiveWorkouts = ((workoutLeaderboardRes.data as WorkoutLeaderboardRow[] | null) || []).slice(0, 5)
+
   return (
     <div className="max-w-6xl mx-auto w-full py-8 px-4 sm:px-6">
       {streak > 0 && (
@@ -223,7 +232,7 @@ export default async function FeedPage({
           initialContent={initialContent}
           initialPostId={initialPostId}
           initialCommentId={initialCommentId}
-          leaderboardRows={topFive}
+          workoutLeaderboardRows={topFiveWorkouts}
           lastSeenAnnouncementsAt={lastSeenAnnouncementsAt}
         />
 
@@ -240,6 +249,14 @@ export default async function FeedPage({
               </Link>
             </div>
             <p className="text-zinc-500 text-xs mb-2">Most active this month</p>
+
+            {/* Workouts first, Community second (Satish 2026-08-12) -
+                reversed from /leaderboard and the Lessons tab
+                deliberately, per his explicit ask for this page. */}
+            <p className="text-xs font-semibold text-orange-400 mb-2">💪 Workouts</p>
+            <WorkoutLeaderboardList rows={topFiveWorkouts} currentUserId={user.id} />
+
+            <p className="text-xs font-semibold text-orange-400 mt-4 mb-2">🏆 Community</p>
             <LeaderboardList rows={topFive} currentUserId={user.id} />
 
             {topFive.length > 0 && !inTopFive && myRow && fifthPlaceScore !== null && (

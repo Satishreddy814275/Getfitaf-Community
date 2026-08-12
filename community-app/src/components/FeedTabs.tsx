@@ -6,9 +6,9 @@ import Image from 'next/image'
 import { Pin } from 'lucide-react'
 import PostCard from './PostCard'
 import PostComposer from './PostComposer'
-import LeaderboardTeaser from './LeaderboardTeaser'
+import WorkoutLeaderboardTeaser from './WorkoutLeaderboardTeaser'
 import { loadMorePosts, markAnnouncementsSeen, searchPosts } from '@/app/feed/actions'
-import type { Post, LeaderboardRow, Space } from '@/types'
+import type { Post, WorkoutLeaderboardRow, Space } from '@/types'
 
 type Tab = 'posts' | 'announcements' | 'media'
 type SpaceFilter = 'all' | Space
@@ -24,7 +24,7 @@ export default function FeedTabs({
   initialContent,
   initialPostId,
   initialCommentId,
-  leaderboardRows,
+  workoutLeaderboardRows,
   lastSeenAnnouncementsAt,
 }: {
   // Always the current first page from the server - stays authoritative
@@ -50,7 +50,11 @@ export default function FeedTabs({
   initialContent?: string | null
   initialPostId?: string | null
   initialCommentId?: string | null
-  leaderboardRows: LeaderboardRow[]
+  // Mobile-only teaser now shows the workout board specifically, not
+  // community activity (Satish 2026-08-12: with room for only one line
+  // on mobile, wanted it to be workouts - the desktop sidebar in
+  // feed/page.tsx shows both, workouts first).
+  workoutLeaderboardRows: WorkoutLeaderboardRow[]
   // Null means this member has never opened the Announcements tab
   // before - treated as "everything currently in it is new" below,
   // same as a brand-new member landing on a feed that already has
@@ -442,7 +446,7 @@ export default function FeedTabs({
           grid placement) at the lg breakpoint where the real sidebar
           takes over. */}
       <div className="lg:hidden">
-        <LeaderboardTeaser rows={leaderboardRows} />
+        <WorkoutLeaderboardTeaser rows={workoutLeaderboardRows} />
       </div>
 
       <div className="lg:col-span-2">
