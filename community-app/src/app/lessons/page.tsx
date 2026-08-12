@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import LessonsTabs from '@/components/LessonsTabs'
-import type { Lesson, LeaderboardRow } from '@/types'
+import type { Lesson, LeaderboardRow, WorkoutLeaderboardRow } from '@/types'
 
 // How many lessons a free (not-yet-paid) member can read in full before
 // hitting the lock - Satish's call, confirmed 2026-08-03. Free members
@@ -48,8 +48,14 @@ export default async function LessonsPage({
   const viewingAs = !!viewAsId && !!ownProfile?.is_admin
   const targetId = viewingAs ? viewAsId! : user.id
 
-  const [{ data: profile }, { data: membership }, { data: lessonsData }, { data: progressData }, { data: leaderboardData }] =
-    await Promise.all([
+  const [
+    { data: profile },
+    { data: membership },
+    { data: lessonsData },
+    { data: progressData },
+    { data: leaderboardData },
+    { data: workoutLeaderboardData },
+  ] = await Promise.all([
       supabase.from('profiles').select('is_admin, approved, full_name').eq('id', targetId).single(),
       supabase
         .from('space_memberships')
@@ -73,6 +79,9 @@ export default async function LessonsPage({
       supabase.rpc('get_lessons_list'),
       supabase.from('user_progress').select('lesson_id, completed').eq('user_id', targetId),
       supabase.rpc('get_community_leaderboard'),
+      // Workouts-completed leaderboard (Satish 2026-08-12) - same
+      // Leaderboard tab, second view via LeaderboardTabs.
+      supabase.rpc('get_workout_leaderboard'),
     ])
 
   const isAdmin = !!profile?.is_admin
@@ -136,6 +145,7 @@ export default async function LessonsPage({
   }
 
   const leaderboardRows = (leaderboardData as LeaderboardRow[] | null) || []
+  const workoutLeaderboardRows = (workoutLeaderboardData as WorkoutLeaderboardRow[] | null) || []
 
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
@@ -187,6 +197,7 @@ export default async function LessonsPage({
         isFreePreviewOnly={isFreePreviewOnly}
         unlockedDay={unlockedDay}
         leaderboardRows={leaderboardRows}
+        workoutLeaderboardRows={workoutLeaderboardRows}
         currentUserId={user.id}
         submissions={submissions}
         viewAsId={viewingAs ? viewAsId : undefined}

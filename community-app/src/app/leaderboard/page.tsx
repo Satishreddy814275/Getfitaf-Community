@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import LeaderboardList from '@/components/LeaderboardList'
-import type { LeaderboardRow } from '@/types'
+import LeaderboardTabs from '@/components/LeaderboardTabs'
+import type { LeaderboardRow, WorkoutLeaderboardRow } from '@/types'
 
 export default async function LeaderboardPage() {
   const supabase = await createClient()
@@ -36,8 +36,12 @@ export default async function LeaderboardPage() {
     redirect('/beta')
   }
 
-  const { data } = await supabase.rpc('get_community_leaderboard')
+  const [{ data }, { data: workoutData }] = await Promise.all([
+    supabase.rpc('get_community_leaderboard'),
+    supabase.rpc('get_workout_leaderboard'),
+  ])
   const rows = (data as LeaderboardRow[] | null) || []
+  const workoutRows = (workoutData as WorkoutLeaderboardRow[] | null) || []
 
   return (
     <div className="max-w-4xl mx-auto w-full py-8 px-4 sm:px-6">
@@ -51,13 +55,11 @@ export default async function LeaderboardPage() {
       <div className="mb-6">
         <h1 className="text-xl font-bold text-white">Community Leaderboard</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Most active members over the last 30 days - posts and comments count.
+          Most active members over the last 30 days - posts, comments, and workouts completed.
         </p>
       </div>
 
-      <div className="glass rounded-2xl p-5">
-        <LeaderboardList rows={rows} currentUserId={user.id} />
-      </div>
+      <LeaderboardTabs communityRows={rows} workoutRows={workoutRows} currentUserId={user.id} />
     </div>
   )
 }

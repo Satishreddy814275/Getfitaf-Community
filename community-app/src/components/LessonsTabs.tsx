@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import LeaderboardList from './LeaderboardList'
+import LeaderboardTabs from './LeaderboardTabs'
 import HeadphoneIcon from './HeadphoneIcon'
-import type { Lesson, LeaderboardRow } from '@/types'
+import type { Lesson, LeaderboardRow, WorkoutLeaderboardRow } from '@/types'
 
 // Ported from learn.getfitaf.fitness/dashboard.html's tab bar (weeks,
 // All Lessons w/ tag filter + search, Audio, My Submissions,
@@ -53,6 +53,7 @@ export default function LessonsTabs({
   isFreePreviewOnly = false,
   unlockedDay,
   leaderboardRows,
+  workoutLeaderboardRows,
   currentUserId,
   submissions,
   viewAsId,
@@ -67,6 +68,7 @@ export default function LessonsTabs({
   isFreePreviewOnly?: boolean
   unlockedDay: number | null
   leaderboardRows: LeaderboardRow[]
+  workoutLeaderboardRows: WorkoutLeaderboardRow[]
   currentUserId: string
   submissions: { form_title: string; submitted_at: string }[]
   // Admin "view as" preview (see /lessons/page.tsx) - appended to every
@@ -215,9 +217,11 @@ export default function LessonsTabs({
 
       {/* Leaderboard tab */}
       {activeTab === 'leaderboard' && (
-        <div className="glass rounded-2xl p-5">
-          <LeaderboardList rows={leaderboardRows} currentUserId={currentUserId} />
-        </div>
+        <LeaderboardTabs
+          communityRows={leaderboardRows}
+          workoutRows={workoutLeaderboardRows}
+          currentUserId={currentUserId}
+        />
       )}
 
       {/* Audio tab */}

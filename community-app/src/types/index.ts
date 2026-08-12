@@ -71,6 +71,22 @@ export interface LeaderboardRow {
   streak: number
 }
 
+// From get_workout_leaderboard() (Satish 2026-08-12) - same 30-day
+// window and low_ticket-inclusive/admin-excluded audience rule as
+// LeaderboardRow above, scored by completed workout_sessions instead
+// of posts/comments. No streak field on purpose: the existing 🔥
+// streak is specifically a posting streak (activity_log is only
+// written to by posts/comments triggers - workouts never touch it),
+// so reusing it here would be misleading. last_completed drives the
+// "today / 2d ago" relative label shown per row instead.
+export interface WorkoutLeaderboardRow {
+  rank: number
+  user_id: string
+  first_name: string
+  workout_count: number
+  last_completed: string | null
+}
+
 // Shape written by Getfitaf-workout-builder-main/api/generate.js into
 // workout_generations.structured_plan (verified/community visits only
 // - see project memory). One entry per training day in the plan (rest
