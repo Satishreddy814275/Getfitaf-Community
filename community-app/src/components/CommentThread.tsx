@@ -256,6 +256,7 @@ function CommentRow({
                 hasCandidates={replyMention.matches.length > 0}
                 matches={replyMention.matches}
                 onSelect={replyMention.select}
+                anchorRef={replyInputRef}
               />
             )}
           </div>

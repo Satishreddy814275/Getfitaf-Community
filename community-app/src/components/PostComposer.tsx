@@ -304,6 +304,7 @@ export default function PostComposer({
             hasCandidates={mention.matches.length > 0}
             matches={mention.matches}
             onSelect={mention.select}
+            anchorRef={textareaRef}
           />
         )}
       </div>

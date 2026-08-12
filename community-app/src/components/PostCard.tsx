@@ -301,6 +301,7 @@ export default function PostCard({
                     hasCandidates={commentMention.matches.length > 0}
                     matches={commentMention.matches}
                     onSelect={commentMention.select}
+                    anchorRef={commentInputRef}
                   />
                 )}
               </div>
