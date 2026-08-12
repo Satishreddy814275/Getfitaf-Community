@@ -9,6 +9,24 @@ import { useMentionAutocomplete } from '@/lib/useMentionAutocomplete'
 import MentionDropdown from './MentionDropdown'
 import type { Space } from '@/types'
 
+// Matches the post-media storage bucket's own file_size_limit exactly
+// (see the bucket config). Images aren't checked against this -
+// compressImage always runs first and reliably brings them well under
+// this limit, so this only ever gates video.
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+const FILE_TOO_LARGE_MESSAGE =
+  "That video's too large to attach (25MB max). Share a Google Drive link instead — just make sure sharing is turned on so we can actually open it."
+// Shown the moment ANY video is picked, before the size check even
+// runs - most phones default to recording well above 25MB for even a
+// few seconds of footage, so waiting to fail on a specific file (the
+// previous version of this) meant most people hit the error message
+// anyway. Leading with the Drive suggestion up front saves that
+// round-trip. Short/heavily-compressed clips that do fit still attach
+// normally in the background - this is guidance, not a block, unless
+// the size check below actually rejects the file.
+const VIDEO_HINT_MESSAGE =
+  'Videos are usually too large to attach directly here — for anything longer than a few seconds, share a Google Drive link instead (make sure sharing is turned on). Short clips under 25MB will still attach normally.'
+
 export default function PostComposer({
   isAdmin = false,
   postSpace,
@@ -47,6 +65,12 @@ export default function PostComposer({
   // but nothing here ever cleared the spinner or told him what
   // happened). See handleSubmit's try/finally below.
   const [postError, setPostError] = useState<string | null>(null)
+  // Separate from postError - this is specifically about the picked
+  // file (video-size guidance/rejection), shown right under the
+  // filename rather than as a generic submit failure. 'hint' is
+  // informational and doesn't block anything; 'error' means the file
+  // was actually rejected, or a real upload failed.
+  const [fileNote, setFileNote] = useState<{ type: 'hint' | 'error'; text: string } | null>(null)
   const [isAnnouncement, setIsAnnouncement] = useState(false)
   const [lessonId, setLessonId] = useState(initialLessonId)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -114,11 +138,42 @@ export default function PostComposer({
   function resetComposer() {
     setContent('')
     setFile(null)
+    setFileNote(null)
     setIsAnnouncement(false)
     setLessonId(null)
     setPostError(null)
     mention.reset()
     if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // Runs on selection, before anything is uploaded. Any video gets the
+  // proactive Drive hint immediately, regardless of size - most phone
+  // video is too big for this to ever succeed, so leading with the
+  // suggestion beats waiting to fail first (see VIDEO_HINT_MESSAGE). A
+  // video that's actually over MAX_UPLOAD_BYTES is additionally
+  // rejected outright (replacing the hint with the harder error and
+  // clearing the native input), rather than letting someone sit through
+  // a slow mobile upload that was never going to succeed.
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = e.target.files?.[0] || null
+    if (!picked) {
+      setFileNote(null)
+      setFile(null)
+      return
+    }
+    if (picked.type.startsWith('video/')) {
+      if (picked.size > MAX_UPLOAD_BYTES) {
+        setFileNote({ type: 'error', text: FILE_TOO_LARGE_MESSAGE })
+        setFile(null)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        return
+      }
+      setFileNote({ type: 'hint', text: VIDEO_HINT_MESSAGE })
+      setFile(picked)
+      return
+    }
+    setFileNote(null)
+    setFile(picked)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -176,6 +231,21 @@ export default function PostComposer({
             const { data } = supabase.storage.from('post-media').getPublicUrl(path)
             formData.set('media_url', data.publicUrl)
             formData.set('media_type', file.type.startsWith('video') ? 'video' : 'image')
+          } else {
+            // This return doesn't skip the finally below - setUploading(false)
+            // still runs. Previously this branch didn't exist at all: a
+            // failed upload with no caption text meant the post
+            // submission had neither content nor media_url, so
+            // createPost silently no-op'd - the most likely explanation
+            // for a client reporting they "can't upload a video" with
+            // no error ever shown.
+            setFileNote({
+              type: 'error',
+              text: error.message?.toLowerCase().includes('size')
+                ? FILE_TOO_LARGE_MESSAGE
+                : "That file couldn't be uploaded — try again, or share a Google Drive link instead (make sure sharing is turned on).",
+            })
+            return
           }
         }
       }
@@ -238,6 +308,15 @@ export default function PostComposer({
         )}
       </div>
       {file && <p className="text-xs text-zinc-500 px-2">{file.name} selected</p>}
+      {fileNote && (
+        <p
+          className={`text-xs px-2 leading-relaxed ${
+            fileNote.type === 'error' ? 'text-red-400' : 'text-zinc-400'
+          }`}
+        >
+          {fileNote.text}
+        </p>
+      )}
       {postError && <p className="text-xs text-red-400 px-2 mt-1">{postError}</p>}
       {isAdmin && (
         <label className="flex items-center gap-2 px-2 mb-2 text-xs text-zinc-400 cursor-pointer select-none">
@@ -255,7 +334,7 @@ export default function PostComposer({
           ref={fileInputRef}
           type="file"
           accept="image/*,video/*"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          onChange={handleFileChange}
           className="text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-zinc-800 file:text-zinc-300 file:text-xs hover:file:bg-zinc-700"
         />
         <div className="flex items-center gap-2">
