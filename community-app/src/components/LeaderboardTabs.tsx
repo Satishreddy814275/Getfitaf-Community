@@ -1,18 +1,20 @@
-'use client'
-
-import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
 import LeaderboardList from './LeaderboardList'
 import type { LeaderboardRow, WorkoutLeaderboardRow } from '@/types'
 
 // Satish 2026-08-12: wanted a second leaderboard scored by workouts
-// completed, not just community activity. Mocked up as a two-tab
-// toggle inside the same card (approved before building) rather than
-// a separate list bolted on elsewhere, so both boards share one
-// visual home instead of competing for space. Community tab keeps
-// using the existing LeaderboardList as-is; Workouts gets its own
-// lighter row (no streak - see WorkoutLeaderboardRow's own comment for
-// why reusing the posting streak here would be misleading).
+// completed, not just community activity. First shipped as a two-tab
+// toggle, but that meant clicking into /leaderboard (or the Lessons
+// tab) AND THEN clicking again to see workouts - Satish flagged this
+// as too many clicks to reach something meant to be motivating to
+// glance at. Mocked up two fixes (side-by-side columns vs. stacked
+// full-width) and stacked won - both boards always visible, one
+// straight after the other, no toggle/state needed at all anymore
+// (this went from a client component back to a plain server-renderable
+// one). Community section keeps using the existing LeaderboardList
+// as-is; Workouts gets its own lighter row (no streak - see
+// WorkoutLeaderboardRow's own comment for why reusing the posting
+// streak here would be misleading).
 export default function LeaderboardTabs({
   communityRows,
   workoutRows,
@@ -22,36 +24,13 @@ export default function LeaderboardTabs({
   workoutRows: WorkoutLeaderboardRow[]
   currentUserId?: string
 }) {
-  const [tab, setTab] = useState<'community' | 'workouts'>('community')
-
   return (
     <div className="glass rounded-2xl p-5">
-      <div className="flex items-center gap-2 mb-2">
-        <button
-          type="button"
-          onClick={() => setTab('community')}
-          className={`flex-1 text-sm font-semibold px-3.5 py-2 rounded-xl transition ${
-            tab === 'community' ? 'bg-orange-500 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
-          }`}
-        >
-          🏆 Community
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('workouts')}
-          className={`flex-1 text-sm font-semibold px-3.5 py-2 rounded-xl transition ${
-            tab === 'workouts' ? 'bg-orange-500 text-white' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
-          }`}
-        >
-          💪 Workouts
-        </button>
-      </div>
+      <p className="text-sm font-semibold text-orange-400 mb-2">🏆 Community</p>
+      <LeaderboardList rows={communityRows} currentUserId={currentUserId} />
 
-      {tab === 'community' ? (
-        <LeaderboardList rows={communityRows} currentUserId={currentUserId} />
-      ) : (
-        <WorkoutLeaderboardList rows={workoutRows} currentUserId={currentUserId} />
-      )}
+      <p className="text-sm font-semibold text-orange-400 mt-5 mb-2">💪 Workouts</p>
+      <WorkoutLeaderboardList rows={workoutRows} currentUserId={currentUserId} />
     </div>
   )
 }
