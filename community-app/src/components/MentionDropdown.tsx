@@ -3,12 +3,6 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { MentionCandidate } from '@/lib/mentions'
-import type { Space } from '@/types'
-
-const SPACE_LABEL: Record<Space, string> = {
-  premium: 'Premium members',
-  low_ticket: 'Low-ticket members',
-}
 
 // Shared @mention suggestion list - same look wherever
 // useMentionAutocomplete is wired up (PostComposer, PostCard's comment
@@ -29,15 +23,22 @@ const SPACE_LABEL: Record<Space, string> = {
 // A portal is the standard escape hatch: render outside the DOM
 // subtree entirely, and compute screen position from the anchor
 // input's own getBoundingClientRect() so it still visually tracks it.
+// Heading stays neutral on purpose - not "Premium members" / "Low-ticket
+// members" (Satish 2026-08-13: this dropdown is the one place in the
+// whole app where that internal tier language reached every regular
+// paying member, not just admins - everywhere else "Low-ticket" as
+// visible text is admin-only, e.g. the merged-feed badge and space
+// filter in FeedTabs). The audience is still correctly scoped to the
+// caller's own space (see useMentionAutocomplete/getMentionableMembers)
+// - a member never sees the other space's names either way - so the
+// heading doesn't need to describe the split at all.
 export default function MentionDropdown({
-  space,
   loading,
   hasCandidates,
   matches,
   onSelect,
   anchorRef,
 }: {
-  space: Space
   loading: boolean
   hasCandidates: boolean
   matches: MentionCandidate[]
@@ -79,7 +80,7 @@ export default function MentionDropdown({
       className="z-50 rounded-xl border border-zinc-700 bg-zinc-900 overflow-hidden shadow-lg"
     >
       <p className="text-[10px] uppercase tracking-wide text-zinc-500 px-3 pt-2 pb-1">
-        {SPACE_LABEL[space]}
+        Members
       </p>
       {loading && !hasCandidates ? (
         <p className="text-xs text-zinc-500 px-3 pb-3">Loading members...</p>

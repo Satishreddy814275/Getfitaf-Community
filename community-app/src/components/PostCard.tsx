@@ -296,7 +296,6 @@ export default function PostCard({
                 />
                 {commentMention.trigger && (
                   <MentionDropdown
-                    space={post.space}
                     loading={commentMention.loading}
                     hasCandidates={commentMention.matches.length > 0}
                     matches={commentMention.matches}

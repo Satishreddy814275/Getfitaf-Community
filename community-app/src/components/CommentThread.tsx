@@ -252,7 +252,6 @@ function CommentRow({
             />
             {replyMention.trigger && (
               <MentionDropdown
-                space={postSpace}
                 loading={replyMention.loading}
                 hasCandidates={replyMention.matches.length > 0}
                 matches={replyMention.matches}

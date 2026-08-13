@@ -299,7 +299,6 @@ export default function PostComposer({
 
         {mention.trigger && postSpace && (
           <MentionDropdown
-            space={postSpace}
             loading={mention.loading}
             hasCandidates={mention.matches.length > 0}
             matches={mention.matches}
