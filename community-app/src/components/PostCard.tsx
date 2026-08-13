@@ -79,7 +79,7 @@ export default function PostCard({
     if (!commentText.trim() || commentSubmitting) return
     setCommentSubmitting(true)
     const formData = new FormData()
-    formData.set('content', commentText)
+    formData.set('content', commentMention.getSubmitContent())
     try {
       await addComment(post.id, formData)
       setCommentText('')

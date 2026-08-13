@@ -174,9 +174,10 @@ function CommentRow({
   async function handleReply(e: React.FormEvent) {
     e.preventDefault()
     if (!replyText.trim() || replySubmitting) return
+    const submitReplyText = replyMention.getSubmitContent()
     const content = isReply
-      ? `@${comment.profiles?.full_name || 'Member'} ${replyText}`
-      : replyText
+      ? `@${comment.profiles?.full_name || 'Member'} ${submitReplyText}`
+      : submitReplyText
     const formData = new FormData()
     formData.set('content', content)
     setReplySubmitting(true)

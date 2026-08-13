@@ -199,7 +199,7 @@ export default function PostComposer({
     // at least visible, regardless of what fails or why.
     try {
       const formData = new FormData()
-      formData.set('content', content)
+      formData.set('content', mention.getSubmitContent())
       formData.set('is_announcement', String(isAdmin && isAnnouncement))
       formData.set('space', postSpace)
       if (lessonId) formData.set('lesson_id', lessonId)
